@@ -9,6 +9,8 @@ import com.foundry.companion.data.model.*
 import com.foundry.companion.data.repository.CompanionRepository
 import com.foundry.companion.data.session.SessionManager
 import com.foundry.companion.notification.CompanionNotifier
+import com.foundry.companion.util.KNOWN_REASONING_EFFORTS
+import com.foundry.companion.util.normalizeReasoningEffortForModelChoice
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -51,7 +53,9 @@ data class CompanionUiState(
     val smithSending: Boolean = false,
     val orchestratorOptions: OrchestratorOptions? = null,
     val orchestratorState: OrchestratorState? = null,
+    val orchestratorOriginalPlan: GeneratedRunPlan? = null,
     val isPlanning: Boolean = false,
+    val newRunMode: String = "manual",
     val linearConnection: LinearConnectionState? = null,
     val linearIssues: List<LinearIssueSnapshot> = emptyList(),
     val selectedLinearIssue: LinearIssueSnapshot? = null,
@@ -190,6 +194,9 @@ class CompanionViewModel(
 
     fun selectProject(projectId: String) {
         if (projectId.isBlank()) return
+        if (_uiState.value.selectedProjectId != projectId) {
+            resetNewRunComposer()
+        }
         sessionManager?.setSelectedProjectId(projectId)
         _uiState.update { it.copy(selectedProjectId = projectId) }
         loadRuns(projectId)
@@ -371,7 +378,9 @@ class CompanionViewModel(
                     smithSending = false,
                     orchestratorOptions = null,
                     orchestratorState = null,
+                    orchestratorOriginalPlan = null,
                     isPlanning = false,
+                    newRunMode = "manual",
                     linearConnection = null,
                     linearIssues = emptyList(),
                     selectedLinearIssue = null,
@@ -413,6 +422,11 @@ class CompanionViewModel(
 
     fun clearValidationIssues() {
         _uiState.update { it.copy(validationIssues = emptyList()) }
+    }
+
+    fun setNewRunMode(mode: String) {
+        if (mode !in setOf("manual", "orchestrator", "linear")) return
+        _uiState.update { it.copy(newRunMode = mode) }
     }
 
     fun loadNewRunCapabilities() {
@@ -459,6 +473,7 @@ class CompanionViewModel(
         _uiState.update {
             it.copy(
                 orchestratorState = null,
+                orchestratorOriginalPlan = null,
                 isPlanning = true,
                 validationIssues = emptyList(),
                 errorMessage = null
@@ -543,6 +558,8 @@ class CompanionViewModel(
                     _uiState.update {
                         it.copy(
                             orchestratorState = state,
+                            orchestratorOriginalPlan = state.plan
+                                ?: it.orchestratorOriginalPlan,
                             isPlanning = live,
                             validationIssues = if (state.status == "failed") {
                                 listOf(
@@ -586,7 +603,12 @@ class CompanionViewModel(
         orchestratorPollingJob?.cancel()
         orchestratorPollingJob = null
         _uiState.update {
-            it.copy(orchestratorState = null, isPlanning = false, validationIssues = emptyList())
+            it.copy(
+                orchestratorState = null,
+                orchestratorOriginalPlan = null,
+                isPlanning = false,
+                validationIssues = emptyList()
+            )
         }
         if (!planId.isNullOrBlank()) {
             viewModelScope.launch { repository.cancelOrchestratorPlan(planId) }
@@ -598,7 +620,11 @@ class CompanionViewModel(
             cancelOrchestratorPlan()
         } else {
             _uiState.update {
-                it.copy(orchestratorState = null, validationIssues = emptyList())
+                it.copy(
+                    orchestratorState = null,
+                    orchestratorOriginalPlan = null,
+                    validationIssues = emptyList()
+                )
             }
         }
     }
@@ -606,11 +632,48 @@ class CompanionViewModel(
     fun setPlanPhaseModel(phaseName: String, model: String) {
         _uiState.update { current ->
             val plan = current.orchestratorState?.plan ?: return@update current
+            val phase = plan.phases.firstOrNull { it.name == phaseName }
+                ?: return@update current
+            val reasoningEffort = normalizeReasoningEffortForModelChoice(
+                phase.reasoningEffort ?: "medium",
+                model,
+                current.orchestratorOptions?.models.orEmpty()
+            )
             current.copy(
                 orchestratorState = current.orchestratorState.copy(
-                    plan = plan.withPhaseModel(phaseName, model)
+                    plan = plan
+                        .withPhaseModel(phaseName, model)
+                        .withPhaseReasoningEffort(phaseName, reasoningEffort)
                 )
             )
+        }
+    }
+
+    fun setPlanPhaseReasoningEffort(phaseName: String, reasoningEffort: String) {
+        if (reasoningEffort !in KNOWN_REASONING_EFFORTS) return
+        _uiState.update { current ->
+            val state = current.orchestratorState ?: return@update current
+            val plan = state.plan ?: return@update current
+            val phase = plan.phases.firstOrNull { it.name == phaseName }
+                ?: return@update current
+            val normalized = normalizeReasoningEffortForModelChoice(
+                reasoningEffort,
+                phase.model.orEmpty(),
+                current.orchestratorOptions?.models.orEmpty()
+            )
+            current.copy(
+                orchestratorState = state.copy(
+                    plan = plan.withPhaseReasoningEffort(phaseName, normalized)
+                )
+            )
+        }
+    }
+
+    fun restorePlanPhaseSettings() {
+        _uiState.update { current ->
+            val state = current.orchestratorState ?: return@update current
+            val original = current.orchestratorOriginalPlan ?: return@update current
+            current.copy(orchestratorState = state.copy(plan = original))
         }
     }
 
@@ -781,7 +844,9 @@ class CompanionViewModel(
                 _uiState.update {
                     it.copy(
                         orchestratorState = null,
+                        orchestratorOriginalPlan = null,
                         isPlanning = false,
+                        newRunMode = "manual",
                         selectedLinearIssue = null,
                         linearWorkflowStates = emptyList(),
                         validationIssues = emptyList()
@@ -814,7 +879,9 @@ class CompanionViewModel(
         _uiState.update {
             it.copy(
                 orchestratorState = null,
+                orchestratorOriginalPlan = null,
                 isPlanning = false,
+                newRunMode = "manual",
                 selectedLinearIssue = null,
                 linearWorkflowStates = emptyList(),
                 linearStatusMapping = it.linearConnection?.statusMapping ?: LinearStatusMapping(),

@@ -582,11 +582,21 @@ class CompanionViewModelTest {
         val plan = state.plan!!
         assertTrue(plan.phases.isNotEmpty())
         assertEquals("Investigate", plan.phases.first().name)
+        assertEquals("high", plan.phases.first().reasoningEffort)
+        assertEquals(plan, planning.orchestratorOriginalPlan)
 
-        // Phase re-cast keeps the rest of the generated payload.
+        // Phase appointments remain editable and can be restored together.
+        viewModel.setPlanPhaseReasoningEffort("Investigate", "low")
         viewModel.setPlanPhaseModel("Investigate", "openai/gpt-5.4")
         testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals("openai/gpt-5.4", viewModel.uiState.value.orchestratorState?.plan?.phases?.first()?.model)
+        val editedPhase = viewModel.uiState.value.orchestratorState?.plan?.phases?.first()
+        assertEquals("openai/gpt-5.4", editedPhase?.model)
+        assertEquals("low", editedPhase?.reasoningEffort)
+
+        viewModel.restorePlanPhaseSettings()
+        val restoredPhase = viewModel.uiState.value.orchestratorState?.plan?.phases?.first()
+        assertEquals(options.model, restoredPhase?.model)
+        assertEquals("high", restoredPhase?.reasoningEffort)
 
         var startedRunId: String? = null
         viewModel.startOrchestratedRun("proj_foundry_core") { startedRunId = it }
@@ -596,6 +606,31 @@ class CompanionViewModelTest {
         assertEquals(plan.pipelineId, started.pipelineId)
         assertEquals("adaptive", started.mode)
         assertTrue(started.orchestrated)
+    }
+
+    @Test
+    fun testGeneratedPlanAndModeSurviveComposerNavigation() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val options = viewModel.uiState.value.orchestratorOptions!!
+
+        viewModel.setNewRunMode("orchestrator")
+        viewModel.setNewRunDraft("Keep this composer")
+        viewModel.generateOrchestratorPlan(
+            projectId = "proj_foundry_core",
+            prompt = "Keep this composer",
+            model = options.model,
+            reasoningEffort = "high"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Re-entering the route reloads capabilities but must not reset the draft.
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("orchestrator", viewModel.uiState.value.newRunMode)
+        assertEquals("Keep this composer", viewModel.getNewRunDraft())
+        assertNotNull(viewModel.uiState.value.orchestratorState?.plan)
     }
 
     @Test

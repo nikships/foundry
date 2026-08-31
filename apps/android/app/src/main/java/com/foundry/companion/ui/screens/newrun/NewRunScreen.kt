@@ -37,12 +37,22 @@ import com.foundry.companion.ui.components.FoundryTopBar
 import com.foundry.companion.ui.components.PhaseRibbon
 import com.foundry.companion.ui.components.ReconnectBanner
 import com.foundry.companion.ui.components.foundryBottomChromePadding
-import com.foundry.companion.ui.components.foundryBottomChromePadding
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.util.normalizeReasoningEffortForModelChoice
+import com.foundry.companion.util.supportedReasoningEfforts
 import kotlinx.coroutines.delay
 
 /** How the operator wants this run composed: pick a pipeline, generate one, or start from Linear. */
-enum class NewRunMode { Manual, Orchestrator, Linear }
+enum class NewRunMode(val storageKey: String) {
+    Manual("manual"),
+    Orchestrator("orchestrator"),
+    Linear("linear");
+
+    companion object {
+        fun fromStorageKey(key: String): NewRunMode =
+            entries.firstOrNull { it.storageKey == key } ?: Manual
+    }
+}
 
 @Composable
 fun NewRunScreen(
@@ -63,11 +73,14 @@ fun NewRunScreen(
     // Orchestrator
     orchestratorOptions: OrchestratorOptions? = null,
     orchestratorState: OrchestratorState? = null,
+    orchestratorOriginalPlan: GeneratedRunPlan? = null,
     isPlanning: Boolean = false,
     onGeneratePlan: (projectId: String, prompt: String, model: String, effort: String) -> Unit = { _, _, _, _ -> },
     onCancelPlan: () -> Unit = {},
     onDiscardPlan: () -> Unit = {},
     onSetPlanPhaseModel: (phaseName: String, model: String) -> Unit = { _, _ -> },
+    onSetPlanPhaseReasoningEffort: (phaseName: String, effort: String) -> Unit = { _, _ -> },
+    onRestorePlanPhaseSettings: () -> Unit = {},
     onStartOrchestratedRun: (projectId: String) -> Unit = {},
     // Linear
     linearConnection: LinearConnectionState? = null,
@@ -82,7 +95,8 @@ fun NewRunScreen(
     onSetLinearStatus: (stage: String, stateId: String) -> Unit = { _, _ -> },
     onStartLinearRun: (projectId: String, pipelineId: String, plan: GeneratedRunPlan?) -> Unit = { _, _, _ -> },
     /** Test/launcher seam: which composer mode starts out selected. */
-    initialMode: NewRunMode = NewRunMode.Manual
+    initialMode: NewRunMode = NewRunMode.Manual,
+    onModeChange: (NewRunMode) -> Unit = {}
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -106,7 +120,7 @@ fun NewRunScreen(
 
     var requestText by rememberSaveable { mutableStateOf(initialRequestText) }
     var plannerModel by rememberSaveable { mutableStateOf("") }
-    var plannerEffort by rememberSaveable { mutableStateOf("medium") }
+    var plannerEffort by rememberSaveable { mutableStateOf("") }
     var linearQuery by rememberSaveable { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
@@ -114,9 +128,12 @@ fun NewRunScreen(
     LaunchedEffect(orchestratorOptions) {
         val options = orchestratorOptions ?: return@LaunchedEffect
         if (plannerModel.isBlank()) plannerModel = options.model.ifBlank { "inherit" }
-        if (plannerEffort !in options.models.flatMap { it.supportedReasoningEfforts }) {
-            plannerEffort = options.reasoningEffort
-        }
+        val wanted = plannerEffort.ifBlank { options.reasoningEffort }
+        plannerEffort = normalizeReasoningEffortForModelChoice(
+            wanted,
+            plannerModel,
+            options.models
+        )
     }
 
     // Debounced issue search, matching the desktop composer's pace. Blank is
@@ -165,7 +182,10 @@ fun NewRunScreen(
                 )
                 NewRunModeTabs(
                     mode = mode,
-                    onModeChange = { mode = it },
+                    onModeChange = {
+                        mode = it
+                        onModeChange(it)
+                    },
                     enabled = isConnected
                 )
             }
@@ -204,7 +224,8 @@ fun NewRunScreen(
                         planningLive = planningLive,
                         modelsAvailable = !orchestratorOptions?.models.isNullOrEmpty(),
                         canGenerate = isConnected && requestText.isNotBlank() && plannerModel.isNotBlank() &&
-                            !orchestratorOptions?.models.isNullOrEmpty() && !hasBlockingErrors,
+                            plannerEffort.isNotBlank() && !orchestratorOptions?.models.isNullOrEmpty() &&
+                            !hasBlockingErrors,
                         canStart = isConnected && planReady,
                         disabledReason = when {
                             !isConnected -> "Reconnect to start a run"
@@ -342,11 +363,14 @@ fun NewRunScreen(
                         focusRequester = focusRequester
                     )
 
-                    if (planReady && plan != null) {
+                    if (plan != null) {
                         PlanCard(
                             plan = plan,
+                            originalPlan = orchestratorOriginalPlan,
                             models = orchestratorOptions?.models.orEmpty(),
-                            onSetPhaseModel = onSetPlanPhaseModel
+                            onSetPhaseModel = onSetPlanPhaseModel,
+                            onSetPhaseReasoningEffort = onSetPlanPhaseReasoningEffort,
+                            onRestorePhaseSettings = onRestorePlanPhaseSettings
                         )
                     } else if (planningLive && orchestratorState != null) {
                         PlanningCard(state = orchestratorState)
@@ -355,7 +379,14 @@ fun NewRunScreen(
                             options = orchestratorOptions,
                             model = plannerModel,
                             effort = plannerEffort,
-                            onModelChange = { plannerModel = it },
+                            onModelChange = { selected ->
+                                plannerModel = selected
+                                plannerEffort = normalizeReasoningEffortForModelChoice(
+                                    plannerEffort,
+                                    selected,
+                                    orchestratorOptions?.models.orEmpty()
+                                )
+                            },
                             onEffortChange = { plannerEffort = it }
                         )
                     }
@@ -375,8 +406,11 @@ fun NewRunScreen(
                         onSelectIssue = onSelectLinearIssue,
                         onSetStatus = onSetLinearStatus,
                         plan = plan,
+                        originalPlan = orchestratorOriginalPlan,
                         models = orchestratorOptions?.models.orEmpty(),
                         onSetPhaseModel = onSetPlanPhaseModel,
+                        onSetPhaseReasoningEffort = onSetPlanPhaseReasoningEffort,
+                        onRestorePhaseSettings = onRestorePlanPhaseSettings,
                         pipelines = pipelines,
                         selectedPipelineId = selectedPipelineId,
                         onSelectPipeline = { id ->
@@ -865,14 +899,8 @@ private fun PlannerPicker(
                     modelContentDescription = "Planning model",
                     modelOptions = options.models,
                     chosenModel = model,
-                    effort = if (effort in options.models.flatMap { it.supportedReasoningEfforts }.orEmpty().toSet()) {
-                        effort
-                    } else {
-                        options.reasoningEffort
-                    },
-                    effortOptions = selectedModel?.supportedReasoningEfforts
-                        ?.ifEmpty { DEFAULT_EFFORTS }
-                        ?: DEFAULT_EFFORTS,
+                    effort = effort,
+                    effortOptions = supportedReasoningEfforts(selectedModel),
                     onSelectModel = onModelChange,
                     onSelectEffort = onEffortChange
                 )
@@ -887,9 +915,6 @@ private fun PlannerPicker(
         }
     }
 }
-
-/** The reasoning levels the desktop understands, used until the model's own list loads. */
-private val DEFAULT_EFFORTS = listOf("off", "minimal", "low", "medium", "high", "xhigh", "max")
 
 @Composable
 private fun NewRunChoiceRow(
@@ -1041,8 +1066,11 @@ private fun PlanningCard(state: OrchestratorState) {
 @Composable
 private fun PlanCard(
     plan: GeneratedRunPlan,
+    originalPlan: GeneratedRunPlan?,
     models: List<SmithModelInfo>,
-    onSetPhaseModel: (phaseName: String, model: String) -> Unit
+    onSetPhaseModel: (phaseName: String, model: String) -> Unit,
+    onSetPhaseReasoningEffort: (phaseName: String, effort: String) -> Unit,
+    onRestorePhaseSettings: () -> Unit
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -1112,11 +1140,31 @@ private fun PlanCard(
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = "PHASES",
-                style = typography.eyebrowMono,
-                color = colors.textDim
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "PHASES",
+                    style = typography.eyebrowMono,
+                    color = colors.textDim
+                )
+                if (originalPlan != null && plan.pipeline != originalPlan.pipeline) {
+                    TextButton(
+                        onClick = onRestorePhaseSettings,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Restore proposed phase settings"
+                        }
+                    ) {
+                        Text(
+                            text = "RESTORE",
+                            style = typography.labelMono,
+                            color = colors.accent
+                        )
+                    }
+                }
+            }
             plan.phases.forEachIndexed { index, phase ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1151,28 +1199,67 @@ private fun PlanCard(
                                 color = colors.textFaint
                             )
                         }
-                    }
-                    if (phase.kind == "agent" && models.isNotEmpty()) {
-                        NewRunChoiceMenu(
-                            label = phase.model?.let { modelLabel(it, models) } ?: "inherit",
-                            contentDescription = "Phase model ${phase.name}",
-                            enabled = true,
-                            modifier = Modifier.width(150.dp)
-                        ) { dismiss ->
-                            models.forEach { option ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = option.label,
-                                            style = typography.labelMono,
-                                            color = if (option.id == phase.model) colors.accent else colors.textPrimary
+                        if (phase.kind == "agent") {
+                            val selectedModel = models.firstOrNull { it.id == phase.model }
+                            val efforts = supportedReasoningEfforts(selectedModel)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                NewRunChoiceMenu(
+                                    label = phase.model?.let { modelLabel(it, models) } ?: "inherit",
+                                    contentDescription = "Phase model ${phase.name}",
+                                    enabled = models.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) { dismiss ->
+                                    models.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = option.label,
+                                                    style = typography.labelMono,
+                                                    color = if (option.id == phase.model) {
+                                                        colors.accent
+                                                    } else {
+                                                        colors.textPrimary
+                                                    }
+                                                )
+                                            },
+                                            onClick = {
+                                                onSetPhaseModel(phase.name, option.id)
+                                                dismiss()
+                                            }
                                         )
-                                    },
-                                    onClick = {
-                                        onSetPhaseModel(phase.name, option.id)
-                                        dismiss()
                                     }
-                                )
+                                }
+                                NewRunChoiceMenu(
+                                    label = phase.reasoningEffort.orEmpty().uppercase(),
+                                    contentDescription = "Phase reasoning ${phase.name}",
+                                    enabled = efforts.isNotEmpty(),
+                                    modifier = Modifier.weight(0.7f)
+                                ) { dismiss ->
+                                    efforts.forEach { effort ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = effort.uppercase(),
+                                                    style = typography.labelMono,
+                                                    color = if (effort == phase.reasoningEffort) {
+                                                        colors.accent
+                                                    } else {
+                                                        colors.textPrimary
+                                                    }
+                                                )
+                                            },
+                                            onClick = {
+                                                onSetPhaseReasoningEffort(phase.name, effort)
+                                                dismiss()
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1225,8 +1312,11 @@ private fun LinearComposerSection(
     onSelectIssue: (LinearIssueSnapshot?) -> Unit,
     onSetStatus: (stage: String, stateId: String) -> Unit,
     plan: GeneratedRunPlan?,
+    originalPlan: GeneratedRunPlan?,
     models: List<SmithModelInfo>,
     onSetPhaseModel: (phaseName: String, model: String) -> Unit,
+    onSetPhaseReasoningEffort: (phaseName: String, effort: String) -> Unit,
+    onRestorePhaseSettings: () -> Unit,
     pipelines: List<com.foundry.companion.data.model.PipelineSummary>,
     selectedPipelineId: String,
     onSelectPipeline: (String) -> Unit,
@@ -1334,8 +1424,11 @@ private fun LinearComposerSection(
             if (plan != null) {
                 PlanCard(
                     plan = plan,
+                    originalPlan = originalPlan,
                     models = models,
-                    onSetPhaseModel = onSetPhaseModel
+                    onSetPhaseModel = onSetPhaseModel,
+                    onSetPhaseReasoningEffort = onSetPhaseReasoningEffort,
+                    onRestorePhaseSettings = onRestorePhaseSettings
                 )
                 Text(
                     text = "This run keeps the issue as its source and starts the generated plan.",

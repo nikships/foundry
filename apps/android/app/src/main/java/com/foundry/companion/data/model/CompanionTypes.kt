@@ -457,28 +457,65 @@ data class GeneratedRunPlan(
     val pipelineName: String get() = pipeline.stringOr("name", "Generated plan")
     val pipelineDescription: String get() = pipeline.stringOr("description")
     val phases: List<GeneratedPlanPhase>
-        get() = pipeline.objList("phases").map { phase ->
-            GeneratedPlanPhase(
-                name = phase.stringOr("name"),
-                kind = phase.stringOr("kind", "agent"),
-                description = phase.stringOr("description"),
-                agent = phase.stringOrNull("agent"),
-                model = phase.stringOrNull("model"),
-                raw = phase
-            )
+        get() {
+            val agentEfforts = agents.associate { agent ->
+                agent.stringOr("name") to agent.stringOr("reasoningEffort", "medium")
+            }
+            return pipeline.objList("phases").map { phase ->
+                val kind = phase.stringOr("kind", "agent")
+                val agent = phase.stringOrNull("agent")
+                GeneratedPlanPhase(
+                    name = phase.stringOr("name"),
+                    kind = kind,
+                    description = phase.stringOr("description"),
+                    agent = agent,
+                    model = phase.stringOrNull("model"),
+                    reasoningEffort = if (kind == "agent") {
+                        phase.stringOrNull("reasoningEffort")
+                            ?: agentEfforts[agent]
+                            ?: "medium"
+                    } else {
+                        null
+                    },
+                    raw = phase
+                )
+            }
         }
 
     /** Re-casts one phase while preserving the rest of the generated payload. */
     fun withPhaseModel(phaseName: String, modelId: String): GeneratedRunPlan {
-        val nextPhases = pipeline.objList("phases").map { phase ->
-            if (phase.stringOr("name") != phaseName || phase.stringOr("kind", "agent") != "agent") {
-                phase
-            } else {
-                JsonObject(phase.toMutableMap().apply { put("model", JsonPrimitive(modelId)) })
-            }
+        val nextPhases = withAgentPhaseValue(phaseName, "model", modelId)
+        return withPhases(nextPhases)
+    }
+
+    /** Re-appoints one phase's reasoning level while preserving the raw plan. */
+    fun withPhaseReasoningEffort(
+        phaseName: String,
+        reasoningEffort: String
+    ): GeneratedRunPlan {
+        val nextPhases = withAgentPhaseValue(
+            phaseName,
+            "reasoningEffort",
+            reasoningEffort
+        )
+        return withPhases(nextPhases)
+    }
+
+    private fun withAgentPhaseValue(
+        phaseName: String,
+        key: String,
+        value: String
+    ): List<JsonObject> = pipeline.objList("phases").map { phase ->
+        if (phase.stringOr("name") != phaseName || phase.stringOr("kind", "agent") != "agent") {
+            phase
+        } else {
+            JsonObject(phase.toMutableMap().apply { put(key, JsonPrimitive(value)) })
         }
+    }
+
+    private fun withPhases(phases: List<JsonObject>): GeneratedRunPlan {
         val nextPipeline = JsonObject(
-            pipeline.toMutableMap().apply { put("phases", JsonArray(nextPhases)) }
+            pipeline.toMutableMap().apply { put("phases", JsonArray(phases)) }
         )
         return copy(pipeline = nextPipeline)
     }
@@ -490,6 +527,7 @@ data class GeneratedPlanPhase(
     val description: String,
     val agent: String?,
     val model: String?,
+    val reasoningEffort: String?,
     val raw: JsonObject
 )
 

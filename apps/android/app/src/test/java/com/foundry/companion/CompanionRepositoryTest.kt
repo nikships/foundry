@@ -573,6 +573,7 @@ class CompanionRepositoryTest {
                           "kind": "agent",
                           "agent": "builder",
                           "model": "scripted/alpha",
+                          "reasoningEffort": "high",
                           "prompt": {"inputs": ["request"]}
                         }
                       ],
@@ -618,6 +619,7 @@ class CompanionRepositoryTest {
         assertEquals("Generated plan", plan.pipelineName)
         assertEquals(1, plan.phases.size)
         assertEquals("scripted/alpha", plan.phases.single().model)
+        assertEquals("high", plan.phases.single().reasoningEffort)
 
         // Re-cast one phase; the raw pipeline JSON must keep every other field.
         val recast = plan.withPhaseModel("build", "scripted/beta")
@@ -626,6 +628,10 @@ class CompanionRepositoryTest {
         assertEquals("Build the parity change", recast.prompt)
         assertTrue(recast.pipeline.toString().contains("\"kind\":\"all_phases_pass\""))
 
+        val reappointed = recast.withPhaseReasoningEffort("build", "low")
+        assertEquals("low", reappointed.phases.single().reasoningEffort)
+        assertEquals("scripted/beta", reappointed.phases.single().model)
+
         assertTrue(httpRepository.cancelOrchestratorPlan("plan_http_1").getOrThrow())
 
         val runResult = httpRepository.startRun(
@@ -633,7 +639,7 @@ class CompanionRepositoryTest {
                 projectId = "proj_1",
                 pipelineId = recast.pipelineId,
                 request = recast.prompt,
-                plan = recast
+                plan = reappointed
             )
         ).getOrThrow()
         assertTrue(runResult.ok)
@@ -647,6 +653,7 @@ class CompanionRepositoryTest {
         assertEquals("/v1/runs", startReq.path)
         val body = startReq.body.readUtf8()
         assertTrue(body.contains("generated-plan-1"))
+        assertTrue(body.contains("\"reasoningEffort\":\"low\""))
         assertTrue(body.contains("scripted/beta"))
         assertTrue(body.contains("acceptance"))
     }

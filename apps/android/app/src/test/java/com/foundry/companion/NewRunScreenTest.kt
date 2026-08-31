@@ -309,6 +309,13 @@ class NewRunScreenTest {
                 provider = "scripted",
                 supportedReasoningEfforts = listOf("low", "medium", "high"),
                 defaultReasoningEffort = "medium"
+            ),
+            SmithModelInfo(
+                id = "scripted/beta",
+                displayName = "Beta",
+                provider = "scripted",
+                supportedReasoningEfforts = listOf("off", "low"),
+                defaultReasoningEffort = "low"
             )
         ),
         model = "scripted/alpha",
@@ -338,6 +345,7 @@ class NewRunScreenTest {
                             put("kind", "agent")
                             put("agent", "planner")
                             put("model", "scripted/alpha")
+                            put("reasoningEffort", "high")
                             put("description", "Inspect the gap and scope the change.")
                         }
                     )
@@ -347,6 +355,7 @@ class NewRunScreenTest {
                             put("kind", "agent")
                             put("agent", "builder")
                             put("model", "scripted/alpha")
+                            put("reasoningEffort", "high")
                             put("description", "Implement the parity change.")
                         }
                     )
@@ -400,8 +409,43 @@ class NewRunScreenTest {
         assertEquals("proj_foundry_core", capturedProject)
         assertEquals("Build the parity change", capturedPrompt)
         assertEquals("scripted/alpha", capturedModel)
-        // The UI keeps the built-in default until the operator changes it.
-        assertEquals("medium", capturedEffort)
+        assertEquals("high", capturedEffort)
+    }
+
+    @Test
+    fun testPlannerModelChangeClampsUnsupportedReasoning() {
+        var capturedModel: String? = null
+        var capturedEffort: String? = null
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                NewRunScreen(
+                    projects = sampleProjects,
+                    selectedProjectId = "proj_foundry_core",
+                    onProjectSelect = {},
+                    onDismiss = {},
+                    onStartRun = { _, _, _ -> },
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    orchestratorOptions = sampleOrchestratorOptions.copy(
+                        model = "scripted/beta",
+                        reasoningEffort = "high"
+                    ),
+                    onGeneratePlan = { _, _, model, effort ->
+                        capturedModel = model
+                        capturedEffort = effort
+                    }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        composeTestRule.onNodeWithText("What should the factory build? Be specific: the request is the whole brief.")
+            .performScrollTo()
+            .performTextInput("Use the fast model")
+        composeTestRule.onNodeWithContentDescription("Generate plan").performClick()
+
+        assertEquals("scripted/beta", capturedModel)
+        assertEquals("low", capturedEffort)
     }
 
     @Test
@@ -417,6 +461,7 @@ class NewRunScreenTest {
             detail = "Plan ready."
         )
         var startedProject: String? = null
+        var phaseEffort: Pair<String, String>? = null
 
         composeTestRule.setContent {
             FoundryTheme {
@@ -429,6 +474,10 @@ class NewRunScreenTest {
                     connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
                     orchestratorOptions = sampleOrchestratorOptions,
                     orchestratorState = state,
+                    orchestratorOriginalPlan = sampleGeneratedPlan,
+                    onSetPlanPhaseReasoningEffort = { phase, effort ->
+                        phaseEffort = phase to effort
+                    },
                     onStartOrchestratedRun = { startedProject = it }
                 )
             }
@@ -444,6 +493,11 @@ class NewRunScreenTest {
         composeTestRule.onNodeWithText("Investigate").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithText("WHY THIS SHAPE").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithText("REFINED REQUEST").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Phase reasoning Investigate")
+            .performScrollTo()
+            .performClick()
+        composeTestRule.onNodeWithText("LOW").performClick()
+        assertEquals("Investigate" to "low", phaseEffort)
 
         composeTestRule.onNodeWithText("START RUN").performClick()
         assertEquals("proj_foundry_core", startedProject)
@@ -587,7 +641,6 @@ class NewRunScreenTest {
         assertTrue(generatedPrompt!!.contains("FOU-204"))
         assertTrue(generatedPrompt!!.contains("desktop parity"))
         assertEquals("scripted/alpha", generatedModel)
-        // The UI keeps the built-in default until the operator changes it.
-        assertEquals("medium", generatedEffort)
+        assertEquals("high", generatedEffort)
     }
 }

@@ -16,6 +16,7 @@ import com.foundry.companion.data.session.SessionManager
 import com.foundry.companion.ui.components.LocalOpenConnectionSheet
 import com.foundry.companion.ui.screens.connection.ConnectionBottomSheet
 import com.foundry.companion.ui.screens.inspector.InspectorScreen
+import com.foundry.companion.ui.screens.newrun.NewRunMode
 import com.foundry.companion.ui.screens.newrun.NewRunScreen
 import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
@@ -236,9 +237,6 @@ fun FoundryNavHost(
                     viewModel.setLastUsedPipeline(projId, pipeId)
                 },
                 onDismiss = {
-                    viewModel.resetNewRunComposer()
-                    viewModel.clearNewRunDraft()
-                    viewModel.clearValidationIssues()
                     navController.popBackStack()
                 },
                 onRetryConnection = { viewModel.retryConnection() },
@@ -257,6 +255,7 @@ fun FoundryNavHost(
                 onRequestChange = { viewModel.setNewRunDraft(it) },
                 orchestratorOptions = uiState.orchestratorOptions,
                 orchestratorState = uiState.orchestratorState,
+                orchestratorOriginalPlan = uiState.orchestratorOriginalPlan,
                 isPlanning = uiState.isPlanning,
                 onGeneratePlan = { projectId, prompt, model, effort ->
                     viewModel.generateOrchestratorPlan(projectId, prompt, model, effort)
@@ -265,6 +264,12 @@ fun FoundryNavHost(
                 onDiscardPlan = { viewModel.discardOrchestratorPlan() },
                 onSetPlanPhaseModel = { phaseName, model ->
                     viewModel.setPlanPhaseModel(phaseName, model)
+                },
+                onSetPlanPhaseReasoningEffort = { phaseName, effort ->
+                    viewModel.setPlanPhaseReasoningEffort(phaseName, effort)
+                },
+                onRestorePlanPhaseSettings = {
+                    viewModel.restorePlanPhaseSettings()
                 },
                 onStartOrchestratedRun = { projectId ->
                     viewModel.startOrchestratedRun(projectId) { newRunId ->
@@ -293,7 +298,9 @@ fun FoundryNavHost(
                             popUpTo(NavRoute.Runs.route)
                         }
                     }
-                }
+                },
+                initialMode = NewRunMode.fromStorageKey(uiState.newRunMode),
+                onModeChange = { viewModel.setNewRunMode(it.storageKey) }
             )
         }
 
