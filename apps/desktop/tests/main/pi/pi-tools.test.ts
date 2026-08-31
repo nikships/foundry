@@ -27,6 +27,7 @@ import {
   reportProgressTool,
   runToolsFor,
   submitEnvelopeTool,
+  submitResultTool,
   type PhaseContextEntry,
 } from '../../../src/main/pi/tools.js';
 import type { FoundryToolContext } from '../../../src/main/pi/transport.js';
@@ -149,6 +150,22 @@ describe('the Foundry tool set', () => {
       expect(tool.parameters, `${tool.name} must carry a schema`).toBeDefined();
       expect((tool.parameters as { type?: string }).type).toBe('object');
     }
+  });
+
+  it('captures one-shot structured output behind the supplied schema', async () => {
+    const schema = {
+      type: 'object',
+      properties: { plan: { type: 'string' } },
+      required: ['plan'],
+      additionalProperties: false,
+    };
+    const tool = submitResultTool(schema);
+    expect(tool.definition.name).toBe('submit_result');
+    expect(tool.definition.parameters).toBe(schema);
+    expect(tool.submitted()).toBeNull();
+
+    await call(tool.definition, { plan: 'build then test' });
+    expect(tool.submitted()).toEqual({ plan: 'build then test' });
   });
 
   it('never writes the filesystem', () => {

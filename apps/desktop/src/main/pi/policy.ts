@@ -73,10 +73,9 @@ export function evaluate(
       return allow(`${tool} is read-only`);
 
     case 'foundry':
-      // Foundry's own tools read the run (envelopes, its own diff) and write
-      // only the trace, which is the app's record of the run rather than
-      // anything the write boundary governs.
-      return allow(`${tool} is a Foundry tool and writes nothing but the trace`);
+      // Foundry's own tools read app state, write the trace, or capture a
+      // structured answer in memory. None can write the governed worktree.
+      return allow(`${tool} is a Foundry tool and does not write the worktree`);
 
     case 'command': {
       const command = ask.command ?? pickString(ask.input, ['command']);

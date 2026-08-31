@@ -55,8 +55,8 @@ export interface ContextStats {
 }
 
 /**
- * A JSON Schema the final message of one turn must conform to. Only the shape
- * travels here; where the schema comes from is the engine's business.
+ * A JSON Schema for the structured result one turn should submit. Only the
+ * shape travels here; where the schema comes from is the caller's business.
  */
 export interface OutputFormat {
   type: 'json_schema';
@@ -64,7 +64,7 @@ export interface OutputFormat {
 }
 
 export interface TurnOptions {
-  /** Constrains the FINAL message only; mid-turn tool use is unaffected. */
+  /** Adds a schema-bound answer channel; other mid-turn tool use is unaffected. */
   outputFormat?: OutputFormat;
   /**
    * Standing role for this turn, installed as the system prompt. The user

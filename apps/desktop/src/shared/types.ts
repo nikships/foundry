@@ -1218,6 +1218,13 @@ export interface BoundaryViolation {
   reverted: boolean;
 }
 
+export interface ModelCost {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
 export interface ModelInfo {
   id: string;
   displayName: string;
@@ -1227,6 +1234,8 @@ export interface ModelInfo {
   isCustom: boolean;
   deprecated: boolean;
   contextWindow?: number;
+  /** Per-million-token prices reported by the active model catalog. */
+  cost?: ModelCost;
 }
 
 export interface DoctorCheck {

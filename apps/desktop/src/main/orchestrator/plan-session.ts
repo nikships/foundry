@@ -5,10 +5,10 @@
  * Planning is not a run: no worktree, no pipeline yet, no trace rows. The
  * session opens read-only at the project checkout on the operator-chosen
  * model, asks for a plan, and pushes progress over `orchestrator-progress`.
- * A reply that fails the strict-JSON parse or the store/preflight rails goes
- * back as a correction, bounded by the same `envelopeRetries` budget an
- * envelope gets; a plan that cannot validate within budget fails the session
- * and never reaches the card.
+ * A turn that does not submit a schema-valid result, or whose result fails the
+ * store/preflight rails, goes back as a correction bounded by the same
+ * `envelopeRetries` budget an envelope gets. A plan that cannot validate
+ * within budget fails the session and never reaches the card.
  */
 
 import type {
@@ -34,6 +34,7 @@ import {
   checkPlanRails,
   configuredCastModels,
   parsePlanReply,
+  planOutputFormat,
   planCorrection,
   toGeneratedPlan,
   type PlanPromptInputs,
@@ -141,21 +142,29 @@ export class PlanSession {
     this.panel.finish();
   }
 
+  private async planningFacts(): Promise<{
+    ghAvailable: boolean | undefined;
+    enabledModels: ModelInfo[];
+  }> {
+    if (this.deps.ghAvailable) {
+      this.panel.push({ kind: 'note', text: 'Checking whether this run can finish on GitHub…' });
+    }
+    if (this.deps.enabledModels) {
+      this.panel.push({ kind: 'note', text: 'Reading the models this install can reach…' });
+    }
+    const [ghAvailable, enabledModels] = await Promise.all([
+      this.deps.ghAvailable?.(),
+      this.deps.enabledModels?.() ?? Promise.resolve([] as ModelInfo[]),
+    ]);
+    return { ghAvailable, enabledModels };
+  }
+
   private async ask(): Promise<void> {
     const { model } = this.deps;
     const state = this.panel.state;
-    let ghAvailable: boolean | undefined;
-    if (this.deps.ghAvailable) {
-      this.panel.push({ kind: 'note', text: 'Checking whether this run can finish on GitHub…' });
-      ghAvailable = await this.deps.ghAvailable();
-      if (this.panel.cancelled) return;
-    }
-    let enabledModels: ModelInfo[] = [];
-    if (this.deps.enabledModels) {
-      this.panel.push({ kind: 'note', text: 'Reading the models this install can reach…' });
-      enabledModels = await this.deps.enabledModels();
-      if (this.panel.cancelled) return;
-    }
+    const { ghAvailable, enabledModels } = await this.planningFacts();
+    if (this.panel.cancelled) return;
+
     const castModels = castModelsForPlanning(enabledModels, this.deps.defaultModel, model);
     const allowedModelIds = castModels.map((candidate) => candidate.id);
     const promptInputs: PlanPromptInputs = {
@@ -170,7 +179,8 @@ export class PlanSession {
 
     // One parse-or-correct budget covers both the JSON shape and the rails,
     // exactly as an envelope's parser and validator share one budget.
-    let ask = buildPlanPrompt(promptInputs);
+    const basePrompt = buildPlanPrompt(promptInputs);
+    let ask = basePrompt;
     const attempts = 1 + FIXED_ENGINE_DEFAULTS.envelopeRetries;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       this.panel.push({
@@ -190,12 +200,14 @@ export class PlanSession {
         model,
         reasoningEffort: this.deps.reasoningEffort,
         systemPrompt: ORCHESTRATOR_PROMPT,
+        outputFormat: planOutputFormat(),
         prompt: ask,
       });
       if (!turn) return;
-      state.rawReply = turn.text;
+      const structuredReply = turn.structuredOutput ? JSON.stringify(turn.structuredOutput) : null;
+      state.rawReply = structuredReply ?? turn.text;
 
-      const parsed = parsePlanReply(turn.text, this.planId);
+      const parsed = parsePlanReply(turn.structuredOutput, this.planId);
       const rails = parsed.ok
         ? checkPlanRails(parsed.reply, {
             roster: this.deps.roster,
@@ -232,10 +244,10 @@ export class PlanSession {
       // otherwise that fresh session would see only errors from a plan it had
       // never seen and could not repair them coherently.
       ask = [
-        buildPlanPrompt(promptInputs),
+        basePrompt,
         '',
         '## Previous reply rejected by Foundry',
-        turn.text,
+        structuredReply ?? `(submit_result was not called)\n${turn.text}`,
         '',
         planCorrection(issues),
       ].join('\n');

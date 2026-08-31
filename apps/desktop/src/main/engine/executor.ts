@@ -57,8 +57,9 @@ import {
 } from '@shared/types.js';
 import type { SetupExecution } from './agent-context.js';
 import type { Replanner } from '../orchestrator/replan.js';
-import { phaseModelIssues } from '../orchestrator/plan.js';
+import { generatedCompositionIssues, phaseModelIssues } from '../orchestrator/plan.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
+import { validate as validateAgent } from '../store/roster.js';
 import { preflightForRun } from './preflight.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import { activeRowsForPipeline } from './phase-history.js';
@@ -619,6 +620,8 @@ export class Executor {
       try {
         amendment = await replanner.propose({
           plan: this.plan,
+          roster: this.agents,
+          commands: this.deps.project.commands,
           failedPhase,
           completed,
           remaining,
@@ -692,6 +695,7 @@ export class Executor {
     | { ok: false; issues: ValidationIssue[] } {
     const issues: ValidationIssue[] = [];
     const agentNames = new Set(this.agents.map((agent) => agent.name));
+    const knownEnvelopes = this.deps.envelopeDefs.map((envelope) => envelope.name);
     for (const agent of amendment.agents) {
       if (agentNames.has(agent.name)) {
         issues.push({
@@ -701,6 +705,12 @@ export class Executor {
         });
       }
       agentNames.add(agent.name);
+      issues.push(
+        ...validateAgent(agent, knownEnvelopes).map((issue) => ({
+          ...issue,
+          where: `agents.${agent.name}.${issue.where}`,
+        })),
+      );
     }
 
     const prefix = this.pipeline.phases.slice(0, failedIndex);
@@ -718,7 +728,6 @@ export class Executor {
     const pipeline = { ...this.pipeline, phases: [...prefix, ...amendment.phases] };
     const agents = [...this.agents, ...amendment.agents];
     const commandNames = this.deps.project.commands.map((command) => command.name);
-    const knownEnvelopes = this.deps.envelopeDefs.map((envelope) => envelope.name);
     issues.push(
       ...validatePipeline(pipeline, agents, commandNames, knownEnvelopes),
       ...preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
@@ -729,6 +738,16 @@ export class Executor {
       // engine has no catalog here, so anything else is refused rather than
       // silently falling back to the install default.
       ...phaseModelIssues(amendment.phases, this.confirmedModelIds(), failedIndex),
+      ...generatedCompositionIssues(
+        { phases: amendment.phases },
+        amendment.agents,
+        agents,
+        commandNames,
+        {
+          indexOffset: failedIndex,
+          scaffold: this.deps.project.scaffold === true,
+        },
+      ),
     );
     const errors = issues.filter((issue) => issue.level === 'error');
     if (errors.length) return { ok: false, issues: errors };

@@ -122,6 +122,10 @@ function validAmendment(): string {
   });
 }
 
+function submitted(text: string): ScriptedTurn {
+  return { structuredOutput: JSON.parse(text) as Record<string, unknown> };
+}
+
 function invalidAmendment(): string {
   return JSON.stringify({
     reason: 'This proposal is deliberately malformed.',
@@ -203,7 +207,7 @@ async function until(predicate: () => boolean, detail: string): Promise<void> {
 
 describe('mid-run replanning', () => {
   it('applies a valid amendment, preserves history, and continues through fresh rows', async () => {
-    const started = start([{ text: validAmendment() }]);
+    const started = start([submitted(validAmendment())]);
     const outcome = await started.done;
 
     expect(outcome.status).toBe('accepted');
@@ -230,14 +234,18 @@ describe('mid-run replanning', () => {
       model: 'orchestrator/test-model',
       reasoningEffort: 'high',
       cwd: outcome.worktreePath,
+      outputFormat: { type: 'json_schema' },
     });
+    expect(started.oneShots.calls[0]!.systemPrompt).toContain('Call submit_result exactly once');
+    expect(started.oneShots.prompts[0]).toContain('## Active roster');
+    expect(started.oneShots.prompts[0]).toContain('- builder: prepare the run');
     expect(
       started.tracer.runPlan(started.runId)?.pipeline.phases.map((phase) => phase.name),
     ).toEqual(['prepare', 'broken', 'verify']);
   });
 
   it('spends the budget on invalid amendments without partially applying one', async () => {
-    const started = start([{ text: invalidAmendment() }, { text: invalidAmendment() }]);
+    const started = start([submitted(invalidAmendment()), submitted(invalidAmendment())]);
     const outcome = await started.done;
 
     expect(outcome.status).toBe('rejected');
@@ -257,7 +265,7 @@ describe('mid-run replanning', () => {
   });
 
   it('rejects an amendment whose agent phase inherits a model instead of naming one', async () => {
-    const started = start([{ text: inheritingAmendment() }, { text: validAmendment() }]);
+    const started = start([submitted(inheritingAmendment()), submitted(validAmendment())]);
     const outcome = await started.done;
 
     // The first proposal spends a budget slot and is refused outright rather
@@ -296,7 +304,7 @@ describe('mid-run replanning', () => {
   });
 
   it('never calls the replanner for a manual run', async () => {
-    const started = start([{ text: validAmendment() }], false);
+    const started = start([submitted(validAmendment())], false);
     const outcome = await started.done;
 
     expect(outcome.status).toBe('rejected');

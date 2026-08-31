@@ -14,7 +14,7 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { categorize, evaluate, type PolicyContext } from '../../../src/main/pi/policy.js';
-import { FOUNDRY_TOOL_NAMES } from '../../../src/main/pi/tools.js';
+import { FOUNDRY_TOOL_NAMES, ONESHOT_OUTPUT_TOOL_NAME } from '../../../src/main/pi/tools.js';
 import type { PermissionAsk } from '../../../src/main/pi/transport.js';
 
 const WORKTREE = '/tmp/foundry-worktree';
@@ -52,6 +52,7 @@ describe('tool categories', () => {
     // Without the list they are indistinguishable from anything else, which is
     // why the session passes it rather than the policy hard-coding names.
     expect(categorize('submit_envelope')).toBe('unknown');
+    expect(categorize(ONESHOT_OUTPUT_TOOL_NAME, [ONESHOT_OUTPUT_TOOL_NAME])).toBe('foundry');
   });
 
   it('classifies anything it does not recognise as unknown', () => {
@@ -69,10 +70,13 @@ describe('read-only and Foundry tools', () => {
     }
   });
 
-  it('allows Foundry’s tools, which only write the trace', () => {
+  it('allows explicitly named Foundry tools that cannot write the worktree', () => {
     for (const tool of FOUNDRY_TOOL_NAMES) {
       expect(decide(ask(tool)).decision.outcome, tool).toBe('allow');
     }
+    expect(
+      evaluate(ask(ONESHOT_OUTPUT_TOOL_NAME), ctx(), [ONESHOT_OUTPUT_TOOL_NAME]).decision.outcome,
+    ).toBe('allow');
   });
 });
 
