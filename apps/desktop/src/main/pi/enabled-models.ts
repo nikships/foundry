@@ -27,10 +27,3 @@ export async function enabledModels(
     return [];
   }
 }
-
-export async function enabledModelIds(
-  supportDir: string,
-  hiddenModelIds: readonly string[],
-): Promise<string[]> {
-  return (await enabledModels(supportDir, hiddenModelIds)).map((model) => model.id);
-}

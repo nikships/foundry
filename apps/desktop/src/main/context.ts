@@ -61,7 +61,7 @@ import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
 import { linearCredentials } from './linear/credentials.js';
 import { LinearService } from './linear/service.js';
 import { startPlan } from './orchestrator/start.js';
-import { enabledModelIds, enabledModels } from './pi/enabled-models.js';
+import { enabledModels } from './pi/enabled-models.js';
 import { ghStatus } from './system/gh.js';
 
 export interface Scope {
@@ -193,7 +193,7 @@ export class AppContext {
       registry: this.registry,
       appVersion: () => this.version,
       notifyRuns: () => this.broadcast(IPC.eventRunsChanged),
-      enabledModelIds: () => enabledModelIds(this.supportDir, this.settings.get().hiddenModelIds),
+      enabledModels: () => enabledModels(this.supportDir, this.settings.get().hiddenModelIds),
       onStateChanged: () => this.broadcast(IPC.eventCompanionChanged),
       orchestrator: {
         options: async () => {

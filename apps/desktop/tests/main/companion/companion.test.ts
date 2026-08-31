@@ -126,7 +126,11 @@ const generatedPlan = (
     ...pipeline(),
     id: 'generated-plan-companion-1',
     name: 'Generated companion plan',
-    phases: pipeline().phases.map((phase) => ({ ...phase, model: 'scripted/alpha' })),
+    phases: pipeline().phases.map((phase) => ({
+      ...phase,
+      model: 'scripted/alpha',
+      reasoningEffort: 'high',
+    })),
   },
   agents: [],
   warnings: [],
@@ -399,7 +403,17 @@ beforeEach(async () => {
       registry,
       appVersion: () => '0.0.0-test',
       notifyRuns: () => undefined,
-      enabledModelIds: async () => ['scripted/alpha'],
+      enabledModels: async () => [
+        {
+          id: 'scripted/alpha',
+          displayName: 'Alpha',
+          provider: 'scripted',
+          supportedReasoningEfforts: ['off', 'medium', 'high'],
+          defaultReasoningEffort: 'medium',
+          isCustom: false,
+          deprecated: false,
+        },
+      ],
       onStateChanged: () => changes.push('changed'),
       orchestrator: {
         options: async () => ({

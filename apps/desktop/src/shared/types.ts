@@ -93,6 +93,11 @@ export interface PhaseDef {
   /** Optional phase override of the selected agent's model. Absent means inherit. */
   model?: string;
   /**
+   * Optional phase override of the selected agent's reasoning effort. Absent
+   * means inherit. Generated plans appoint this alongside `model`.
+   */
+  reasoningEffort?: ReasoningEffort;
+  /**
    * Optional phase override of the agent's envelope. Absent means inherit
    * `agent.envelope`. The engine resolves `phase.envelope ?? agent.envelope`.
    */

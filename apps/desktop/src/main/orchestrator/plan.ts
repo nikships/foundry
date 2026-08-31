@@ -41,7 +41,7 @@ Composition rules (enforced by code where possible; follow all of them):
 - Always rewrite the operator's prompt into a full brief first. That brief is "refinedRequest" and becomes the run request; keep every constraint the operator stated.
 - Every implementation phase using a build envelope, and every write-capable review phase, is proven before any commit. When Project commands are listed, immediately follow the agent with a code phase using one {"ref": ...} and set "feedbackTo" to the phase that owns a failure. When no Project command exists, put a configured "command_passes" gate on the agent instead. A new scaffold with no command yet is the only exception.
 - Reviewer/verifier agent phases carry the "verdict_consistent" and "disapproval_halts" gates.
-- When the phase model cast pool is non-empty, **every agent phase names its own model**. Copy one listed id verbatim into "model"; never write "inherit". Use only the supplied context, reasoning support, and token prices to weigh candidates. Do not infer quality, speed, or price from a model's name. When the pool is empty, omit "model".
+- When the phase model cast pool is non-empty, **every agent phase names its own model and reasoning effort**. Copy one listed id verbatim into "model" and one effort that model supports into "reasoningEffort"; never write "inherit". Choose both for that phase's work using only the supplied context, reasoning support, and token prices. Do not infer quality, speed, or price from a model's name. When the pool is empty, omit both fields.
 - A proof code phase's "feedbackTo" names the earlier agent phase that owns the fix.
 - Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.
 - Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile fit. Do not assume capabilities that are not in their summary.
@@ -61,7 +61,7 @@ Call submit_result exactly once with the complete plan object:
 }
 
 Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase it runs in is what names the model.
-Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases. Never emit an engineer/checkpoint phase.
+Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"reasoningEffort"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases. Never emit an engineer/checkpoint phase.
 Do not print the plan as prose or JSON. After submit_result succeeds, stop.`;
 
 export interface PlanPromptInputs {
@@ -119,7 +119,11 @@ function fewShotPipelines(models: readonly ModelInfo[]): string {
         if (phase.kind !== 'agent' || !models.length) return phase;
         const model = models[(pipelineIndex + agentIndex) % models.length]!;
         agentIndex += 1;
-        return { ...phase, model: model.id };
+        return {
+          ...phase,
+          model: model.id,
+          reasoningEffort: model.defaultReasoningEffort,
+        };
       }),
     });
   }).join('\n');
@@ -141,11 +145,11 @@ export function buildPlanPrompt(inputs: PlanPromptInputs): string {
     inputs.roster.length ? rosterLines(inputs.roster) : '(empty roster)',
     '',
     inputs.models.length
-      ? '## Phase model cast pool (every agent phase must name one of these ids verbatim in "model")'
-      : '## Phase model cast pool (empty; omit "model" on agent phases)',
+      ? '## Phase model cast pool (every agent phase must name one id and one supported reasoning effort)'
+      : '## Phase model cast pool (empty; omit "model" and "reasoningEffort" on agent phases)',
     inputs.models.length
       ? modelLines(inputs.models)
-      : '(this install reaches no model right now — omit "model" on agent phases)',
+      : '(this install reaches no model right now — omit both fields on agent phases)',
     '',
     '## Envelopes',
     Object.entries(BUILTIN_ENVELOPE_BLURBS)
@@ -303,14 +307,14 @@ export interface PlanRailsInputs {
   commandNames: string[];
   knownEnvelopes: string[];
   /**
-   * Ids this boundary permits the plan to appoint. Planning passes the
-   * configured cast pool; confirmation passes the live enabled catalog so an
-   * explicit operator re-cast remains a deliberate override of that default.
+   * Models this boundary permits the plan to appoint. Planning and
+   * confirmation pass catalog entries so the model/reasoning pair can be
+   * checked. Mid-run amendments may pass ids when the live catalog is absent.
    * An empty list means the catalog could not be read at all, which is not the
    * plan's fault: the per-phase rail stands down rather than refusing every
    * plan an unreachable catalog would produce.
    */
-  allowedModelIds?: string[];
+  allowedModels?: readonly (ModelInfo | string)[];
   scaffold?: boolean;
 }
 
@@ -489,6 +493,15 @@ function modelIsEnabled(wanted: string, enabled: readonly string[]): boolean {
   return enabled.some((id) => id === wanted || id.slice(id.indexOf('/') + 1) === wanted);
 }
 
+function matchingModel(wanted: string, allowed: readonly (ModelInfo | string)[]): ModelInfo | null {
+  return (
+    allowed.find(
+      (candidate): candidate is ModelInfo =>
+        typeof candidate !== 'string' && modelIsEnabled(wanted, [candidate.id]),
+    ) ?? null
+  );
+}
+
 /**
  * Automatic casting follows the two established phase-relevant pins: the
  * Agent Defaults model and the model appointed to plan this run. With neither
@@ -513,7 +526,8 @@ export function configuredCastModels(
 }
 
 /**
- * Every agent phase names its own model, and names one this boundary permits.
+ * Every agent phase names its own model and reasoning effort, and uses a pair
+ * this boundary permits.
  *
  * Inheritance is the thing being prevented: a phase that declines to choose
  * silently falls back to the install default, which is exactly the invisible
@@ -521,16 +535,19 @@ export function configuredCastModels(
  * rather than in the pipeline store because a hand-built pipeline may still
  * inherit — this rule belongs to generated plans.
  *
- * An empty `allowedModelIds` means the catalog could not be read at all, and
+ * An empty `allowedModels` means the catalog could not be read at all, and
  * the whole rail stands down: refusing every plan over an install-level
  * failure would leave the operator an error they cannot act on from the card.
  */
 export function phaseModelIssues(
   phases: readonly PhaseDef[],
-  allowedModelIds: readonly string[],
+  allowedModels: readonly (ModelInfo | string)[],
   indexOffset = 0,
 ): ValidationIssue[] {
-  if (!allowedModelIds.length) return [];
+  if (!allowedModels.length) return [];
+  const allowedModelIds = allowedModels.map((model) =>
+    typeof model === 'string' ? model : model.id,
+  );
   const issues: ValidationIssue[] = [];
   phases.forEach((phase, index) => {
     if (phase.kind !== 'agent') return;
@@ -546,6 +563,22 @@ export function phaseModelIssues(
         level: 'error',
         where,
         message: `model "${phase.model}" is not allowed at this plan boundary`,
+      });
+    }
+    if (!phase.reasoningEffort) {
+      issues.push({
+        level: 'error',
+        where,
+        message: 'an agent phase must name its own reasoning effort rather than inheriting one',
+      });
+      return;
+    }
+    const model = phase.model ? matchingModel(phase.model, allowedModels) : null;
+    if (model && !model.supportedReasoningEfforts.includes(phase.reasoningEffort)) {
+      issues.push({
+        level: 'error',
+        where,
+        message: `reasoning effort "${phase.reasoningEffort}" is not supported by model "${model.id}"`,
       });
     }
   });
@@ -586,7 +619,7 @@ export function checkPlanRails(reply: ParsedPlanReply, inputs: PlanRailsInputs):
     ...preflightForRun(reply.pipeline, union, inputs.commandNames, inputs.knownEnvelopes, {
       scaffold: inputs.scaffold,
     }),
-    ...phaseModelIssues(reply.pipeline.phases, inputs.allowedModelIds ?? []),
+    ...phaseModelIssues(reply.pipeline.phases, inputs.allowedModels ?? []),
     ...generatedCompositionIssues(reply.pipeline, reply.agents, union, inputs.commandNames, {
       scaffold: inputs.scaffold,
     }),

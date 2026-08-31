@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GeneratedRunPlan } from '@shared/types.js';
+import type { GeneratedRunPlan, ReasoningEffort } from '@shared/types.js';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
 import type { OrchestratorChoice } from '../components/run/OrchestratorPicker.js';
-import { withPhaseModel } from '../view-models/plan-view.js';
+import { withPhaseModel, withPhaseReasoningEffort } from '../view-models/plan-view.js';
 
 export type OrchestratorStage = 'compose' | 'planning' | 'ready';
 
@@ -19,7 +19,8 @@ export interface OrchestratorPlanController {
   cancel(): void;
   discard(): void;
   setPhaseModel(phaseName: string, model: string): void;
-  resetModels(): void;
+  setPhaseReasoningEffort(phaseName: string, effort: ReasoningEffort): void;
+  resetPhaseSettings(): void;
 }
 
 /** One independent Orchestrator planning session, reusable by any request source. */
@@ -31,6 +32,7 @@ export function useOrchestratorPlan(
   const [requestingPlan, setRequestingPlan] = useState(false);
   const [planError, setPlanError] = useState('');
   const [modelOverrides, setModelOverrides] = useState<Record<string, string>>({});
+  const [reasoningOverrides, setReasoningOverrides] = useState<Record<string, ReasoningEffort>>({});
   const progressRef = useRef(new Map<string, OrchestratorState>());
   const planIdRef = useRef('');
   const requestGenerationRef = useRef(0);
@@ -52,6 +54,7 @@ export function useOrchestratorPlan(
     setRequestingPlan(false);
     setPlanError('');
     setModelOverrides({});
+    setReasoningOverrides({});
     return () => {
       requestGenerationRef.current += 1;
       const planId = planIdRef.current;
@@ -64,12 +67,15 @@ export function useOrchestratorPlan(
   const plan = useMemo(
     () =>
       original
-        ? Object.entries(modelOverrides).reduce(
-            (next, [phaseName, model]) => withPhaseModel(next, phaseName, model),
-            original,
+        ? Object.entries(reasoningOverrides).reduce(
+            (next, [phaseName, effort]) => withPhaseReasoningEffort(next, phaseName, effort),
+            Object.entries(modelOverrides).reduce(
+              (next, [phaseName, model]) => withPhaseModel(next, phaseName, model),
+              original,
+            ),
           )
         : null,
-    [original, modelOverrides],
+    [original, modelOverrides, reasoningOverrides],
   );
   const stage: OrchestratorStage = plan
     ? 'ready'
@@ -86,6 +92,7 @@ export function useOrchestratorPlan(
       setRequestingPlan(true);
       setPlanError('');
       setModelOverrides({});
+      setReasoningOverrides({});
       setPlanning(null);
       try {
         const result = await api.orchestrator.plan(
@@ -138,6 +145,7 @@ export function useOrchestratorPlan(
     setPlanning(null);
     setPlanError('');
     setModelOverrides({});
+    setReasoningOverrides({});
   }, []);
 
   const discard = useCallback((): void => {
@@ -147,6 +155,7 @@ export function useOrchestratorPlan(
     setPlanning(null);
     setPlanError('');
     setModelOverrides({});
+    setReasoningOverrides({});
   }, []);
 
   return {
@@ -162,6 +171,11 @@ export function useOrchestratorPlan(
     discard,
     setPhaseModel: (phaseName, model) =>
       setModelOverrides((current) => ({ ...current, [phaseName]: model })),
-    resetModels: () => setModelOverrides({}),
+    setPhaseReasoningEffort: (phaseName, effort) =>
+      setReasoningOverrides((current) => ({ ...current, [phaseName]: effort })),
+    resetPhaseSettings: () => {
+      setModelOverrides({});
+      setReasoningOverrides({});
+    },
   };
 }

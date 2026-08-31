@@ -113,7 +113,7 @@ export interface CompanionHostDeps {
   appVersion(): string;
   notifyRuns(): void;
   /** Models the privileged start boundary may accept on a round-tripped plan. */
-  enabledModelIds?(): Promise<string[]>;
+  enabledModels?(): Promise<ModelInfo[]>;
   /** Fires when host or device state changes, so Settings re-reads. */
   onStateChanged(): void;
   orchestrator?: CompanionOrchestratorDeps;
@@ -831,7 +831,7 @@ export class CompanionHost {
       envelopeDefs: () => this.deps.envelopeDefs(),
       settings: () => this.deps.settings(),
       saveProject: (next) => this.deps.saveProject(next),
-      ...(this.deps.enabledModelIds ? { enabledModelIds: this.deps.enabledModelIds } : {}),
+      ...(this.deps.enabledModels ? { enabledModels: this.deps.enabledModels } : {}),
       oneShot: this.deps.oneShot,
       registry: this.deps.registry,
     };

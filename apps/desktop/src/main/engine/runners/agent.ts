@@ -5,7 +5,7 @@
 
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
+import type { AgentDef, EnvelopeDef, PhaseDef, ReasoningEffort } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
 import { KILLED_DETAIL, type AgentSession } from '../../pi/session.js';
 import * as boundary from '../boundary.js';
@@ -42,8 +42,11 @@ export interface AgentRunnerDeps {
    * instead of appending another correction. `0` disables.
    */
   rewindAfterCorrections: number;
-  /** Session lookup stays with the executor, which also applies phase model overrides. */
-  sessionFor: (agent: AgentDef, modelOverride?: string) => Promise<AgentSession>;
+  /** Session lookup stays with the executor, which applies phase execution overrides. */
+  sessionFor: (
+    agent: AgentDef,
+    overrides: { model?: string; reasoningEffort?: ReasoningEffort },
+  ) => Promise<AgentSession>;
   setupExecution: () => SetupExecution | null;
   /**
    * Which phase prompts each live session still holds. Owned by the executor
@@ -73,7 +76,10 @@ export class AgentPhaseRunner implements PhaseRunner {
       return { kind: 'abort', detail };
     }
 
-    const session = await this.deps.sessionFor(agent, phase.model);
+    const session = await this.deps.sessionFor(agent, {
+      ...(phase.model ? { model: phase.model } : {}),
+      ...(phase.reasoningEffort ? { reasoningEffort: phase.reasoningEffort } : {}),
+    });
     const envelopeKind = phase.envelope ?? agent.envelope;
     const rewinder = await PhaseRewinder.create(ctx.cwd, session, this.deps.rewindAfterCorrections);
     const maxGateAttempts = (phase.retries ?? 0) + 1;

@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { GeneratedRunPlan, ValidationIssue } from '@shared/types.js';
+import {
+  modelForEffortPicker,
+  normalizeReasoningEffortForModelChoice,
+} from '@shared/reasoning-effort.js';
+import type { GeneratedRunPlan, ReasoningEffort, ValidationIssue } from '@shared/types.js';
 import { useApp } from '../../stores/app.js';
 import { useAgentModels } from '../../hooks/useAgentModels.js';
 import { phaseKindColor } from '../../utils/derive.js';
@@ -9,6 +13,7 @@ import {
   missingProjectCommandRefs,
 } from '../../view-models/project-commands-view.js';
 import ModelPicker from '../common/ModelPicker.js';
+import ReasoningEffortPicker from '../common/ReasoningEffortPicker.js';
 import PipelineRibbon from '../pipeline/PipelineRibbon.js';
 import { PhaseGlyph } from '../pipeline/PhaseGlyphs.js';
 import ProjectCommandsModal from '../project/ProjectCommandsModal.js';
@@ -20,7 +25,7 @@ import styles from './PlanCard.module.css';
  * the ordered phases with the model each is appointed to, the agents it
  * synthesized, the acceptance rule, and why the pipeline has this shape.
  * Nothing here starts anything — the operator disposes, and may re-cast any
- * agent phase onto a different model before doing so.
+ * agent phase or change its reasoning effort before doing so.
  */
 export default function PlanCard({
   plan,
@@ -29,7 +34,8 @@ export default function PlanCard({
   startBlocked,
   issues,
   onPhaseModelChange,
-  onResetModels,
+  onPhaseReasoningEffortChange,
+  onResetPhaseSettings,
   onStart,
   onRegenerate,
   onDiscard,
@@ -45,7 +51,8 @@ export default function PlanCard({
   /** Start-time validation failures, shown on the card rather than lost. */
   issues: ValidationIssue[];
   onPhaseModelChange: (phaseName: string, model: string) => void;
-  onResetModels: () => void;
+  onPhaseReasoningEffortChange: (phaseName: string, effort: ReasoningEffort) => void;
+  onResetPhaseSettings: () => void;
   onStart: () => void;
   onRegenerate: () => void;
   onDiscard: () => void;
@@ -107,10 +114,10 @@ export default function PlanCard({
               type="button"
               className={styles.resetModels}
               disabled={starting}
-              onClick={onResetModels}
+              onClick={onResetPhaseSettings}
               data-testid="plan-reset-models"
             >
-              Restore proposed models
+              Restore proposed settings
             </button>
           )}
         </div>
@@ -147,8 +154,27 @@ export default function PlanCard({
                         models={models}
                         showNotes={false}
                         disabled={starting}
-                        onChange={(model) => onPhaseModelChange(phase.name, model)}
+                        onChange={(model) => {
+                          onPhaseModelChange(phase.name, model);
+                          const effort = normalizeReasoningEffortForModelChoice(
+                            phase.reasoningEffort ?? 'medium',
+                            model,
+                            models,
+                          );
+                          if (effort !== phase.reasoningEffort) {
+                            onPhaseReasoningEffortChange(phase.name, effort);
+                          }
+                        }}
                         onRefresh={() => void refresh()}
+                      />
+                      <span className={styles.phaseModelLabel}>Reasoning</span>
+                      <ReasoningEffortPicker
+                        value={phase.reasoningEffort ?? 'medium'}
+                        model={modelForEffortPicker(phase.model, models)}
+                        disabled={starting}
+                        ariaLabel={`Reasoning effort for ${phase.name}`}
+                        data-testid={`plan-effort-${phase.name}`}
+                        onChange={(effort) => onPhaseReasoningEffortChange(phase.name, effort)}
                       />
                       {overridden.has(phase.name) && (
                         <span className={styles.overridden}>overridden</span>

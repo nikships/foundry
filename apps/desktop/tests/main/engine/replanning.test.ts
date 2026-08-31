@@ -58,6 +58,7 @@ function preparePhase(): PhaseDef {
     // A generated plan appoints every agent phase explicitly; the amendment
     // rail reads these ids as the set an amendment may re-cast onto.
     model: 'scripted',
+    reasoningEffort: 'medium',
     description: 'Prepare immutable evidence before the failing command.',
     envelope: 'build',
     prompt: { inputs: ['request'] },

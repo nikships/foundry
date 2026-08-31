@@ -54,7 +54,7 @@ const REPLAN_SYSTEM_PROMPT = `You are the Orchestrator revising an orchestrated 
 
 Propose the smallest valid replacement for the not-yet-completed pipeline tail. Completed phases are immutable. You may re-include the failed phase, insert a repair phase, reorder the remaining work, or extend it. Prefer an agent in the supplied active roster when its summary fits; synthesize one only when none can own a required phase. A code phase's feedbackTo may target only an earlier phase in your replacement tail, never a completed phase.
 
-Every agent phase in your replacement tail names its own "model", copied verbatim from a model id that already appears on a phase of the confirmed plan. Never omit it, never write "inherit", and never leave the choice to the agent or the install default — an amendment with an unnamed model is rejected. Do not infer model strength or cost from its name.
+Every agent phase in your replacement tail names its own "model" and "reasoningEffort". Copy the model verbatim from an id that already appears on a phase of the confirmed plan, and use a reasoning effort already paired with that model there. Never omit either field, never write "inherit", and never leave either choice to the agent or install default. Do not infer model strength or cost from its name.
 
 Every review phase carries "verdict_consistent" and "disapproval_halts". Every build-envelope phase and write-capable review is proven before a commit: when project commands are listed, immediately follow it with a code phase using one listed {"ref":...} and set "feedbackTo" to the agent phase. With no project command, use a configured "command_passes" gate. A synthesized judge-only reviewer uses "writes":[] and "toolProfile":"read-only".
 
