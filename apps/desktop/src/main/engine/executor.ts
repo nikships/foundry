@@ -207,7 +207,8 @@ export class Executor {
         envelopeDefs: deps.envelopeDefs,
         envelopeRetries: deps.envelopeRetries,
         rewindAfterCorrections: deps.rewindAfterCorrections,
-        sessionFor: (agent, modelOverride) => this.sessionFor(agent, modelOverride),
+        sessionFor: (agent, modelOverride, reasoningEffortOverride) =>
+          this.sessionFor(agent, modelOverride, reasoningEffortOverride),
         setupExecution: () => this.currentSetupExecution(),
         prompts: this.prompts,
         onLiveText: deps.onLiveText,
@@ -1012,14 +1013,19 @@ export class Executor {
     return this.setupExecution;
   }
 
-  private async sessionFor(agent: AgentDef, modelOverride?: string): Promise<AgentSession> {
+  private async sessionFor(
+    agent: AgentDef,
+    modelOverride?: string,
+    reasoningEffortOverride?: AgentDef['reasoningEffort'],
+  ): Promise<AgentSession> {
     const resolved = resolveAgentExecution(agent, {
       model: this.deps.defaultModel,
       reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
     });
     const model = modelOverride && modelOverride !== 'inherit' ? modelOverride : resolved.model;
+    const reasoningEffort = reasoningEffortOverride ?? resolved.reasoningEffort;
     const existing = this.sessions.get(agent.name);
-    if (existing?.model === model && existing.reasoningEffort === resolved.reasoningEffort) {
+    if (existing?.model === model && existing.reasoningEffort === reasoningEffort) {
       return existing;
     }
     if (existing) {
@@ -1033,7 +1039,7 @@ export class Executor {
     const effectiveAgent = {
       ...agent,
       model,
-      reasoningEffort: resolved.reasoningEffort,
+      reasoningEffort,
     };
     // A killed phase's agent starts a new conversation: the persisted row is
     // kept as evidence, it is simply not reopened. Consumed here so the ban

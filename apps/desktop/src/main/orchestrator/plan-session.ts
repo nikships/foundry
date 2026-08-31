@@ -202,6 +202,7 @@ export class PlanSession {
             commandNames: this.deps.commands.map((c) => c.name),
             knownEnvelopes: this.deps.envelopeDefs.map((e) => e.name),
             allowedModelIds,
+            allowedModels: castModels,
             scaffold: this.deps.scaffold,
           })
         : null;

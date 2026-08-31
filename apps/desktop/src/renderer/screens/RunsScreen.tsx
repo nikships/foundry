@@ -293,7 +293,8 @@ function OrchestratedComposer({
           startBlocked={baseSyncing ? `Updating ${project?.baseRef ?? 'base branch'} first` : null}
           issues={startIssues}
           onPhaseModelChange={orchestrator.setPhaseModel}
-          onResetModels={orchestrator.resetModels}
+          onPhaseReasoningEffortChange={orchestrator.setPhaseReasoningEffort}
+          onResetPhaseOverrides={orchestrator.resetPhaseOverrides}
           onStart={() => void startFromPlan()}
           onRegenerate={submitPlan}
           onDiscard={() => {

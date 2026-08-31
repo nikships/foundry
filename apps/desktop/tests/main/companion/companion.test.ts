@@ -125,7 +125,11 @@ const generatedPlan = (
     ...pipeline(),
     id: 'generated-plan-companion-1',
     name: 'Generated companion plan',
-    phases: pipeline().phases.map((phase) => ({ ...phase, model: 'scripted/alpha' })),
+    phases: pipeline().phases.map((phase) => ({
+      ...phase,
+      model: 'scripted/alpha',
+      reasoningEffort: 'high',
+    })),
   },
   agents: [],
   warnings: [],
