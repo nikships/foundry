@@ -38,7 +38,7 @@ test.describe('smith / chat', () => {
       await window.getByTestId('smith-bubble-close').click();
       await expect(popover).toBeHidden();
 
-      await window.getByTestId('nav-smith').click();
+      await window.keyboard.press('Meta+5');
       await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'smith');
       await expect(window.getByTestId('smith-bubble')).toBeHidden();
       await expect(window.getByTestId('smith-input')).toBeVisible();

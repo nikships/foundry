@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { NAV_ITEMS, type NavView, type View } from '../../utils/navigation.js';
+import { NAV_ITEMS, SMITH_NAV_ITEM, type NavView, type View } from '../../utils/navigation.js';
 import { useApp } from '../../stores/app.js';
 import { useActivityRuns } from '../../stores/run.js';
 import { since, statusColor, statusWord } from '../../utils/format.js';
@@ -211,6 +211,7 @@ export default function Sidebar({
               onClick={() => onNavigate(item.id)}
               title={collapsed ? `${item.label} (⌘${item.key})` : undefined}
               aria-label={collapsed ? `${item.label} ⌘${item.key}` : undefined}
+              aria-keyshortcuts={`Meta+${item.key} Control+${item.key}`}
               aria-current={active ? 'page' : undefined}
               data-testid={`nav-${item.id}`}
             >
@@ -225,23 +226,23 @@ export default function Sidebar({
             </button>
           );
         })}
-        {/*
-         * Smith sits below the views and opens the native chat screen. It has
-         * no ⌘-digit chord, so it stays outside NAV_ITEMS with its own handler.
-         */}
         <button
           type="button"
           className={navItemClass(view === 'smith')}
           onClick={() => onOpenSmith?.()}
-          title={collapsed ? 'Smith' : undefined}
+          title={collapsed ? `${SMITH_NAV_ITEM.label} (⌘${SMITH_NAV_ITEM.key})` : undefined}
           aria-label="Smith"
+          aria-keyshortcuts={`Meta+${SMITH_NAV_ITEM.key} Control+${SMITH_NAV_ITEM.key}`}
           aria-current={view === 'smith' ? 'page' : undefined}
           data-testid="nav-smith"
         >
           {collapsed ? (
             <SmithEmblem className={styles.navEmblem} />
           ) : (
-            <span className={styles.navLabel}>Smith</span>
+            <>
+              <span className={styles.navLabel}>{SMITH_NAV_ITEM.label}</span>
+              <kbd>⌘{SMITH_NAV_ITEM.key}</kbd>
+            </>
           )}
         </button>
       </nav>
@@ -301,6 +302,7 @@ export default function Sidebar({
         onClick={() => onOpenSettings('general')}
         title={collapsed ? 'Settings (⌘,)' : undefined}
         aria-label={collapsed ? 'Settings ⌘,' : undefined}
+        aria-keyshortcuts="Meta+, Control+,"
         aria-current={view === 'settings' ? 'page' : undefined}
         data-testid="nav-settings"
       >

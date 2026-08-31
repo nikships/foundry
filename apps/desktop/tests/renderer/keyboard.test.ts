@@ -23,6 +23,7 @@ describe('viewShortcut', () => {
     expect(viewShortcut(chord('2', { metaKey: true }))).toBe('inspector');
     expect(viewShortcut(chord('3', { ctrlKey: true }))).toBe('design');
     expect(viewShortcut(chord('4', { ctrlKey: true }))).toBe('prs');
+    expect(viewShortcut(chord('5', { metaKey: true }))).toBe('smith');
     expect(viewShortcut(chord(',', { metaKey: true }))).toBe('settings');
   });
 
@@ -38,7 +39,7 @@ describe('viewShortcut', () => {
     expect(viewShortcut(chord('1'))).toBeNull();
     expect(viewShortcut(chord('1', { metaKey: true, shiftKey: true }))).toBeNull();
     expect(viewShortcut(chord('1', { metaKey: true, altKey: true }))).toBeNull();
-    expect(viewShortcut(chord('5', { metaKey: true }))).toBeNull();
+    expect(viewShortcut(chord('6', { metaKey: true }))).toBeNull();
   });
 
   it('no longer answers to the retired Pipelines and Roster entries', () => {

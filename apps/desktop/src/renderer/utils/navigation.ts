@@ -33,6 +33,9 @@ export const NAV_ITEMS: { id: NavView; label: string; key: string }[] = [
   { id: 'prs', label: 'Pull Requests', key: '4' },
 ];
 
+/** Smith is visually separate in the rail, but still has a direct view chord. */
+export const SMITH_NAV_ITEM = { id: 'smith', label: 'Smith', key: '5' } as const;
+
 export const DESIGN_TABS: { id: DesignTab; label: string; blurb: string; key: string }[] = [
   {
     id: 'pipelines',
@@ -63,6 +66,7 @@ export const MENU_VIEWS: Record<string, View> = {
   'menu:view-inspector': 'inspector',
   'menu:view-design': 'design',
   'menu:view-prs': 'prs',
+  'menu:view-smith': 'smith',
 };
 
 /** Native menu commands that open Design on a specific tab. */
