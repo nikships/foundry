@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
+import type { GeneratedRunPlan, ReasoningEffort, ValidationIssue } from '@shared/types.js';
 import {
   modelForEffortPicker,
   normalizeReasoningEffortForModelChoice,
 } from '@shared/reasoning-effort.js';
-import type { GeneratedRunPlan, ReasoningEffort, ValidationIssue } from '@shared/types.js';
 import { useApp } from '../../stores/app.js';
 import { useAgentModels } from '../../hooks/useAgentModels.js';
 import { phaseKindColor } from '../../utils/derive.js';
@@ -25,7 +25,7 @@ import styles from './PlanCard.module.css';
  * the ordered phases with the model each is appointed to, the agents it
  * synthesized, the acceptance rule, and why the pipeline has this shape.
  * Nothing here starts anything — the operator disposes, and may re-cast any
- * agent phase or change its reasoning effort before doing so.
+ * agent phase onto a different model before doing so.
  */
 export default function PlanCard({
   plan,
@@ -35,7 +35,7 @@ export default function PlanCard({
   issues,
   onPhaseModelChange,
   onPhaseReasoningEffortChange,
-  onResetPhaseSettings,
+  onResetPhaseOverrides,
   onStart,
   onRegenerate,
   onDiscard,
@@ -52,7 +52,7 @@ export default function PlanCard({
   issues: ValidationIssue[];
   onPhaseModelChange: (phaseName: string, model: string) => void;
   onPhaseReasoningEffortChange: (phaseName: string, effort: ReasoningEffort) => void;
-  onResetPhaseSettings: () => void;
+  onResetPhaseOverrides: () => void;
   onStart: () => void;
   onRegenerate: () => void;
   onDiscard: () => void;
@@ -114,8 +114,8 @@ export default function PlanCard({
               type="button"
               className={styles.resetModels}
               disabled={starting}
-              onClick={onResetPhaseSettings}
-              data-testid="plan-reset-models"
+              onClick={onResetPhaseOverrides}
+              data-testid="plan-reset-phase-overrides"
             >
               Restore proposed settings
             </button>
@@ -156,13 +156,13 @@ export default function PlanCard({
                         disabled={starting}
                         onChange={(model) => {
                           onPhaseModelChange(phase.name, model);
-                          const effort = normalizeReasoningEffortForModelChoice(
+                          const normalized = normalizeReasoningEffortForModelChoice(
                             phase.reasoningEffort ?? 'medium',
                             model,
                             models,
                           );
-                          if (effort !== phase.reasoningEffort) {
-                            onPhaseReasoningEffortChange(phase.name, effort);
+                          if (normalized !== phase.reasoningEffort) {
+                            onPhaseReasoningEffortChange(phase.name, normalized);
                           }
                         }}
                         onRefresh={() => void refresh()}
@@ -173,7 +173,7 @@ export default function PlanCard({
                         model={modelForEffortPicker(phase.model, models)}
                         disabled={starting}
                         ariaLabel={`Reasoning effort for ${phase.name}`}
-                        data-testid={`plan-effort-${phase.name}`}
+                        data-testid={`plan-reasoning-${phase.name}`}
                         onChange={(effort) => onPhaseReasoningEffortChange(phase.name, effort)}
                       />
                       {overridden.has(phase.name) && (
@@ -198,7 +198,7 @@ export default function PlanCard({
                 <span className={styles.agentName}>{agent.name}</span>
                 <span className={styles.agentPurpose}>{agent.purpose}</span>
                 <span className={`faint ${styles.agentMeta}`}>
-                  {agent.model} · {agent.reasoningEffort} · {agent.boundary}
+                  {agent.model} · {agent.boundary}
                 </span>
               </div>
             ))}

@@ -119,6 +119,7 @@ describe('plan-view', () => {
     expect(view.phases[2]).toMatchObject({
       synthesized: true,
       decides: true,
+      reasoningEffort: 'low',
       note: 'gates: verdict_consistent, disapproval_halts',
     });
 
@@ -148,12 +149,12 @@ describe('plan-view', () => {
     expect(proposed.pipeline.phases[2]?.model).toBe('anthropic/claude-haiku-4');
   });
 
-  it('overrides one phase reasoning effort and marks the appointment changed', () => {
+  it('overrides one phase reasoning level and reports it as an operator change', () => {
     const proposed = generatedPlan();
     const overridden = withPhaseReasoningEffort(proposed, 'review', 'high');
 
     expect(overridden.pipeline.phases[2]?.reasoningEffort).toBe('high');
-    expect(overridden.pipeline.phases[0]?.reasoningEffort).toBe('high');
+    expect(overridden.pipeline.phases[2]?.model).toBe('anthropic/claude-haiku-4');
     expect([...overriddenPhases(proposed, overridden)]).toEqual(['review']);
     expect(proposed.pipeline.phases[2]?.reasoningEffort).toBe('low');
   });

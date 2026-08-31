@@ -403,17 +403,7 @@ beforeEach(async () => {
       registry,
       appVersion: () => '0.0.0-test',
       notifyRuns: () => undefined,
-      enabledModels: async () => [
-        {
-          id: 'scripted/alpha',
-          displayName: 'Alpha',
-          provider: 'scripted',
-          supportedReasoningEfforts: ['off', 'medium', 'high'],
-          defaultReasoningEffort: 'medium',
-          isCustom: false,
-          deprecated: false,
-        },
-      ],
+      enabledModelIds: async () => ['scripted/alpha'],
       onStateChanged: () => changes.push('changed'),
       orchestrator: {
         options: async () => ({

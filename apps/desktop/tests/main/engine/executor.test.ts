@@ -1995,7 +1995,7 @@ describe('the trace record', () => {
       pipeline: pipe(
         [
           agentPhase('build', {
-            description: 'Use the reasoning effort selected for this phase.',
+            description: 'Use the reasoning level selected for this phase.',
             reasoningEffort: 'high',
           }),
         ],
@@ -2008,24 +2008,14 @@ describe('the trace record', () => {
     expect(h.tracer.agentSessions(outcome.runId)[0]!.reasoningEffort).toBe('high');
   });
 
-  it('opens a new session when consecutive phases use different reasoning efforts', async () => {
+  it('opens a new session when consecutive phases change only reasoning effort', async () => {
     const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()]);
     const outcome = await run({
       scripted,
-      agents: [buildAgent({ reasoningEffort: 'medium' })],
-      pipeline: pipe(
-        [
-          agentPhase('plan', {
-            description: 'Plan with low reasoning.',
-            reasoningEffort: 'low',
-          }),
-          agentPhase('build', {
-            description: 'Build with high reasoning.',
-            reasoningEffort: 'high',
-          }),
-        ],
-        { acceptance: { kind: 'all_phases_pass' } },
-      ),
+      pipeline: pipe([
+        agentPhase('plan', { reasoningEffort: 'low' }),
+        agentPhase('build', { reasoningEffort: 'high' }),
+      ]),
     });
     expect(outcome.status).toBe('accepted');
     expect(scripted.sessionOpens).toBe(2);

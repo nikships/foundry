@@ -52,7 +52,6 @@ test.describe('Runs / Orchestrator', () => {
                       description: 'Implement and verify the scoped renderer lifetime change.',
                       agent: 'builder',
                       model: 'fixture/model',
-                      reasoningEffort: 'low',
                     },
                   ],
                 },
@@ -78,12 +77,6 @@ test.describe('Runs / Orchestrator', () => {
       const planCard = window.getByTestId('plan-card');
       await expect(planCard).toContainText('Navigation-safe proposal');
       await expect(planCard).toContainText('Persist the live Runs proposal');
-      const effort = window.getByTestId('plan-effort-build');
-      await expect(effort).toContainText('Low');
-      await effort.click();
-      await window.getByRole('option', { name: 'High', exact: true }).click();
-      await expect(effort).toContainText('High');
-      await expect(planCard).toContainText('overridden');
 
       await window.getByTestId('nav-settings').click();
       await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'settings');
@@ -93,10 +86,6 @@ test.describe('Runs / Orchestrator', () => {
       await expect(window.getByTestId('run-request')).toHaveValue(REQUEST);
       await expect(planCard).toContainText('Navigation-safe proposal');
       await expect(planCard).toContainText('Persist the live Runs proposal');
-      await expect(effort).toContainText('High');
-
-      await window.getByTestId('plan-reset-models').click();
-      await expect(effort).toContainText('Low');
 
       const proofPath = testInfo.outputPath('FOU-207-plan-restored.png');
       await window.screenshot({ path: proofPath, fullPage: true, animations: 'disabled' });

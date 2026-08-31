@@ -19,8 +19,8 @@ export interface OrchestratorPlanController {
   cancel(): void;
   discard(): void;
   setPhaseModel(phaseName: string, model: string): void;
-  setPhaseReasoningEffort(phaseName: string, effort: ReasoningEffort): void;
-  resetPhaseSettings(): void;
+  setPhaseReasoningEffort(phaseName: string, reasoningEffort: ReasoningEffort): void;
+  resetPhaseOverrides(): void;
 }
 
 /** One independent Orchestrator planning session, reusable by any request source. */
@@ -64,19 +64,17 @@ export function useOrchestratorPlan(
   }, [projectId]);
 
   const original = planning?.status === 'done' ? planning.plan : null;
-  const plan = useMemo(
-    () =>
-      original
-        ? Object.entries(reasoningOverrides).reduce(
-            (next, [phaseName, effort]) => withPhaseReasoningEffort(next, phaseName, effort),
-            Object.entries(modelOverrides).reduce(
-              (next, [phaseName, model]) => withPhaseModel(next, phaseName, model),
-              original,
-            ),
-          )
-        : null,
-    [original, modelOverrides, reasoningOverrides],
-  );
+  const plan = useMemo(() => {
+    if (!original) return null;
+    const withModels = Object.entries(modelOverrides).reduce(
+      (next, [phaseName, model]) => withPhaseModel(next, phaseName, model),
+      original,
+    );
+    return Object.entries(reasoningOverrides).reduce(
+      (next, [phaseName, effort]) => withPhaseReasoningEffort(next, phaseName, effort),
+      withModels,
+    );
+  }, [original, modelOverrides, reasoningOverrides]);
   const stage: OrchestratorStage = plan
     ? 'ready'
     : requestingPlan || planning?.status === 'running' || planning?.status === 'failed'
@@ -171,9 +169,9 @@ export function useOrchestratorPlan(
     discard,
     setPhaseModel: (phaseName, model) =>
       setModelOverrides((current) => ({ ...current, [phaseName]: model })),
-    setPhaseReasoningEffort: (phaseName, effort) =>
-      setReasoningOverrides((current) => ({ ...current, [phaseName]: effort })),
-    resetPhaseSettings: () => {
+    setPhaseReasoningEffort: (phaseName, reasoningEffort) =>
+      setReasoningOverrides((current) => ({ ...current, [phaseName]: reasoningEffort })),
+    resetPhaseOverrides: () => {
       setModelOverrides({});
       setReasoningOverrides({});
     },

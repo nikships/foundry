@@ -22,7 +22,6 @@ import { defaultSettings } from '../../../src/main/store/settings.js';
 import type {
   AgentDef,
   GeneratedRunPlan,
-  ModelInfo,
   PipelineDef,
   ProjectDef,
   StartRunInput,
@@ -124,18 +123,6 @@ function plan(projectId: string): GeneratedRunPlan {
   };
 }
 
-function availableModel(id: string): ModelInfo {
-  return {
-    id,
-    displayName: id,
-    provider: 'scripted',
-    supportedReasoningEfforts: ['off', 'low', 'medium', 'high'],
-    defaultReasoningEffort: 'medium',
-    isCustom: false,
-    deprecated: false,
-  };
-}
-
 const buildEnvelope = (): string =>
   JSON.stringify({
     status: 'success',
@@ -197,10 +184,7 @@ function deps(scripted: ScriptedAgent): {
       envelopeDefs: () => [],
       settings: () => defaultSettings(),
       saveProject: (next) => next,
-      enabledModels: async () => [
-        availableModel('scripted/strong'),
-        availableModel('scripted/fast'),
-      ],
+      enabledModelIds: async () => ['scripted/strong', 'scripted/fast'],
       oneShot: () => {
         throw new Error('an inline plan never opens a detection one-shot');
       },
@@ -346,44 +330,6 @@ describe('starting a run from an inline plan', () => {
     await expect(settled[0]!).resolves.toBe('accepted');
   });
 
-  it('accepts an explicit operator reasoning override and runs the phase with it', async () => {
-    const scripted = new ScriptedAgent([buildEnvelope(), reviewEnvelope()], ['USAGE.md', null]);
-    const { deps: d, settled } = deps(scripted);
-    const overridden = plan(h.project.id);
-    overridden.pipeline.phases[1] = {
-      ...overridden.pipeline.phases[1]!,
-      reasoningEffort: 'high',
-    };
-
-    const outcome = await startRun(d, input({ plan: overridden }));
-    expect(outcome.ok).toBe(true);
-    await expect(settled[0]!).resolves.toBe('accepted');
-    expect(
-      h.tracer
-        .eventsAfter(outcome.runId!, 0, 100)
-        .filter((event) => event.type === 'agent_start')
-        .map((event) => event.payload.reasoningEffort),
-    ).toEqual(['high', 'high']);
-  });
-
-  it('refuses an operator reasoning override the appointed model does not support', async () => {
-    const scripted = new ScriptedAgent([], []);
-    const { deps: d, started } = deps(scripted);
-    const tampered = plan(h.project.id);
-    tampered.pipeline.phases[0] = {
-      ...tampered.pipeline.phases[0]!,
-      reasoningEffort: 'max',
-    };
-
-    const outcome = await startRun(d, input({ plan: tampered }));
-
-    expect(outcome.ok).toBe(false);
-    expect(outcome.issues).toContainEqual(
-      expect.objectContaining({ message: expect.stringContaining('not supported by model') }),
-    );
-    expect(started).toHaveLength(0);
-  });
-
   it('refuses an override naming a model this install does not enable', async () => {
     const scripted = new ScriptedAgent([], []);
     const { deps: d, started } = deps(scripted);
@@ -402,7 +348,7 @@ describe('starting a run from an inline plan', () => {
   it('fails closed when the live enabled-model catalog is unavailable at confirmation', async () => {
     const scripted = new ScriptedAgent([], []);
     const { deps: d, started } = deps(scripted);
-    d.enabledModels = async () => [];
+    d.enabledModelIds = async () => [];
 
     const outcome = await startRun(d, input());
 

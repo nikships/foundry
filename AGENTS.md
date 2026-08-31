@@ -69,7 +69,6 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ## Invariants (read before changing sequencing or persistence)
 
 - **Every phase starts `fail`** and becomes `success` only after clean exit, parsed envelope, and passing gates. Boundaries are enforced after the call by diffing git; protected paths always fail.
-- **Generated plans appoint both model and reasoning per agent phase.** The Orchestrator must choose a supported pair, the confirmation card may override either, and the privileged start boundary revalidates both against the live enabled catalog.
 - `**Tracer` is the sole SQLite writer.** See `apps/desktop/src/main/trace/AGENTS.md`. WAL lets renderer reads proceed while the writer commits. Polling uses `run_id = ? AND change_id > ? ORDER BY rowid`; `change_id` is the cursor (`MAX(change_id)`), `rowid` is display order. Every insert/update stamps a new `change_id`.
 - `**finish()` settles run status + operator-facing completion together** (notification, banner, `outcome_detail`). Do not update those independently. See `apps/desktop/src/main/AGENTS.md`.
 - **Electron single-instance lock** — a second writer would corrupt the per-project trace (`app.requestSingleInstanceLock()` in `apps/desktop/src/main/main.ts`).

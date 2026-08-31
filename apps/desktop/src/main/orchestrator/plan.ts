@@ -41,7 +41,7 @@ Composition rules (enforced by code where possible; follow all of them):
 - Always rewrite the operator's prompt into a full brief first. That brief is "refinedRequest" and becomes the run request; keep every constraint the operator stated.
 - Every implementation phase using a build envelope, and every write-capable review phase, is proven before any commit. When Project commands are listed, immediately follow the agent with a code phase using one {"ref": ...} and set "feedbackTo" to the phase that owns a failure. When no Project command exists, put a configured "command_passes" gate on the agent instead. A new scaffold with no command yet is the only exception.
 - Reviewer/verifier agent phases carry the "verdict_consistent" and "disapproval_halts" gates.
-- When the phase model cast pool is non-empty, **every agent phase names its own model and reasoning effort**. Copy one listed id verbatim into "model" and one effort that model supports into "reasoningEffort"; never write "inherit". Choose both for that phase's work using only the supplied context, reasoning support, and token prices. Do not infer quality, speed, or price from a model's name. When the pool is empty, omit both fields.
+- **Every agent phase names its own model and reasoning level.** Set "model" to one of the configured cast-pool ids you are shown and set "reasoningEffort" to one of that model's listed efforts. Choose both for that phase's work: give design, review, and hard implementation strong reasoning, and hand mechanical or narrowly scoped work a fast, cheap model and lower effort. Never omit "model", write "inherit", or leave the model choice to the agent, roster, or install default — a plan with an unnamed model is rejected.
 - A proof code phase's "feedbackTo" names the earlier agent phase that owns the fix.
 - Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.
 - Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile fit. Do not assume capabilities that are not in their summary.
@@ -119,11 +119,7 @@ function fewShotPipelines(models: readonly ModelInfo[]): string {
         if (phase.kind !== 'agent' || !models.length) return phase;
         const model = models[(pipelineIndex + agentIndex) % models.length]!;
         agentIndex += 1;
-        return {
-          ...phase,
-          model: model.id,
-          reasoningEffort: model.defaultReasoningEffort,
-        };
+        return { ...phase, model: model.id };
       }),
     });
   }).join('\n');
@@ -145,11 +141,11 @@ export function buildPlanPrompt(inputs: PlanPromptInputs): string {
     inputs.roster.length ? rosterLines(inputs.roster) : '(empty roster)',
     '',
     inputs.models.length
-      ? '## Phase model cast pool (every agent phase must name one id and one supported reasoning effort)'
-      : '## Phase model cast pool (empty; omit "model" and "reasoningEffort" on agent phases)',
+      ? '## Phase model cast pool (every agent phase must name one of these ids verbatim in "model")'
+      : '## Phase model cast pool (empty; omit "model" on agent phases)',
     inputs.models.length
       ? modelLines(inputs.models)
-      : '(this install reaches no model right now — omit both fields on agent phases)',
+      : '(this install reaches no model right now — omit "model" on agent phases)',
     '',
     '## Envelopes',
     Object.entries(BUILTIN_ENVELOPE_BLURBS)
@@ -307,14 +303,16 @@ export interface PlanRailsInputs {
   commandNames: string[];
   knownEnvelopes: string[];
   /**
-   * Models this boundary permits the plan to appoint. Planning and
-   * confirmation pass catalog entries so the model/reasoning pair can be
-   * checked. Mid-run amendments may pass ids when the live catalog is absent.
+   * Ids this boundary permits the plan to appoint. Planning passes the
+   * configured cast pool; confirmation passes the live enabled catalog so an
+   * explicit operator re-cast remains a deliberate override of that default.
    * An empty list means the catalog could not be read at all, which is not the
    * plan's fault: the per-phase rail stands down rather than refusing every
    * plan an unreachable catalog would produce.
    */
-  allowedModels?: readonly (ModelInfo | string)[];
+  allowedModelIds?: string[];
+  /** Capability details are available while planning, before the card renders. */
+  allowedModels?: ModelInfo[];
   scaffold?: boolean;
 }
 
@@ -493,15 +491,6 @@ function modelIsEnabled(wanted: string, enabled: readonly string[]): boolean {
   return enabled.some((id) => id === wanted || id.slice(id.indexOf('/') + 1) === wanted);
 }
 
-function matchingModel(wanted: string, allowed: readonly (ModelInfo | string)[]): ModelInfo | null {
-  return (
-    allowed.find(
-      (candidate): candidate is ModelInfo =>
-        typeof candidate !== 'string' && modelIsEnabled(wanted, [candidate.id]),
-    ) ?? null
-  );
-}
-
 /**
  * Automatic casting follows the two established phase-relevant pins: the
  * Agent Defaults model and the model appointed to plan this run. With neither
@@ -526,7 +515,7 @@ export function configuredCastModels(
 }
 
 /**
- * Every agent phase names its own model and reasoning effort, and uses a pair
+ * Every agent phase names its own model and reasoning effort, and names a model
  * this boundary permits.
  *
  * Inheritance is the thing being prevented: a phase that declines to choose
@@ -535,19 +524,17 @@ export function configuredCastModels(
  * rather than in the pipeline store because a hand-built pipeline may still
  * inherit — this rule belongs to generated plans.
  *
- * An empty `allowedModels` means the catalog could not be read at all, and
+ * An empty `allowedModelIds` means the catalog could not be read at all, and
  * the whole rail stands down: refusing every plan over an install-level
  * failure would leave the operator an error they cannot act on from the card.
  */
 export function phaseModelIssues(
   phases: readonly PhaseDef[],
-  allowedModels: readonly (ModelInfo | string)[],
+  allowedModelIds: readonly string[],
   indexOffset = 0,
+  allowedModels: readonly ModelInfo[] = [],
 ): ValidationIssue[] {
-  if (!allowedModels.length) return [];
-  const allowedModelIds = allowedModels.map((model) =>
-    typeof model === 'string' ? model : model.id,
-  );
+  if (!allowedModelIds.length) return [];
   const issues: ValidationIssue[] = [];
   phases.forEach((phase, index) => {
     if (phase.kind !== 'agent') return;
@@ -569,17 +556,19 @@ export function phaseModelIssues(
       issues.push({
         level: 'error',
         where,
-        message: 'an agent phase must name its own reasoning effort rather than inheriting one',
+        message: 'an agent phase must name its own reasoning effort',
       });
-      return;
-    }
-    const model = phase.model ? matchingModel(phase.model, allowedModels) : null;
-    if (model && !model.supportedReasoningEfforts.includes(phase.reasoningEffort)) {
-      issues.push({
-        level: 'error',
-        where,
-        message: `reasoning effort "${phase.reasoningEffort}" is not supported by model "${model.id}"`,
-      });
+    } else {
+      const model = allowedModels.find((candidate) =>
+        modelIsEnabled(phase.model ?? '', [candidate.id]),
+      );
+      if (model && !model.supportedReasoningEfforts.includes(phase.reasoningEffort)) {
+        issues.push({
+          level: 'error',
+          where,
+          message: `model "${phase.model}" does not support reasoning effort "${phase.reasoningEffort}"`,
+        });
+      }
     }
   });
   return issues;
@@ -619,7 +608,12 @@ export function checkPlanRails(reply: ParsedPlanReply, inputs: PlanRailsInputs):
     ...preflightForRun(reply.pipeline, union, inputs.commandNames, inputs.knownEnvelopes, {
       scaffold: inputs.scaffold,
     }),
-    ...phaseModelIssues(reply.pipeline.phases, inputs.allowedModels ?? []),
+    ...phaseModelIssues(
+      reply.pipeline.phases,
+      inputs.allowedModelIds ?? [],
+      0,
+      inputs.allowedModels,
+    ),
     ...generatedCompositionIssues(reply.pipeline, reply.agents, union, inputs.commandNames, {
       scaffold: inputs.scaffold,
     }),

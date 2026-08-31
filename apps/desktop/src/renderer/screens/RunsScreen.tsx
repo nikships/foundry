@@ -294,7 +294,7 @@ function OrchestratedComposer({
           issues={startIssues}
           onPhaseModelChange={orchestrator.setPhaseModel}
           onPhaseReasoningEffortChange={orchestrator.setPhaseReasoningEffort}
-          onResetPhaseSettings={orchestrator.resetPhaseSettings}
+          onResetPhaseOverrides={orchestrator.resetPhaseOverrides}
           onStart={() => void startFromPlan()}
           onRegenerate={submitPlan}
           onDiscard={() => {

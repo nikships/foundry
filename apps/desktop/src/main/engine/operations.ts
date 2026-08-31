@@ -12,7 +12,6 @@ import type {
   AppSettings,
   EnvelopeDef,
   GeneratedRunPlan,
-  ModelInfo,
   PipelineDef,
   ProjectDef,
   RunSource,
@@ -44,13 +43,13 @@ export interface StartRunDeps {
   /** Persists the project and returns the row as it now reads. */
   saveProject(next: ProjectDef): ProjectDef;
   /**
-   * Models this install can reach, minus the hidden ones. Only an
+   * Ids of the models this install can reach, minus the hidden ones. Only an
    * inline plan uses it: the operator may re-cast a phase between the card and
    * this call, and main re-checks that choice rather than trusting the
    * round-tripped value. Omitted stands the rail down; an authoritative empty
    * result fails closed because no final appointment can be verified.
    */
-  enabledModels?(): Promise<ModelInfo[]>;
+  enabledModelIds?(): Promise<string[]>;
   oneShot: OneShotFactory;
   registry: {
     start(input: {
@@ -71,13 +70,13 @@ function startError(where: string, message: string): StartRunOutcome {
   return { ok: false, issues: [{ level: 'error', where, message }] };
 }
 
-async function modelsForPlan(
+async function modelIdsForPlan(
   deps: StartRunDeps,
   plan: GeneratedRunPlan | null,
-): Promise<ModelInfo[] | null> {
-  if (!plan || !deps.enabledModels) return [];
-  const models = await deps.enabledModels();
-  return models.length ? models : null;
+): Promise<string[] | null> {
+  if (!plan || !deps.enabledModelIds) return [];
+  const ids = await deps.enabledModelIds();
+  return ids.length ? ids : null;
 }
 
 export async function startRun(
@@ -145,8 +144,8 @@ export async function startRun(
 
   const knownEnvelopes = deps.envelopeDefs().map((e) => e.name);
   const commandNames = project.commands.map((c) => c.name);
-  const allowedModels = await modelsForPlan(deps, plan);
-  if (allowedModels === null) {
+  const allowedModelIds = await modelIdsForPlan(deps, plan);
+  if (allowedModelIds === null) {
     return startError(
       'plan',
       'the enabled model catalog is unavailable; refresh providers before starting this plan',
@@ -160,7 +159,7 @@ export async function startRun(
         roster,
         commandNames,
         knownEnvelopes,
-        allowedModels,
+        allowedModelIds,
         scaffold: project.scaffold === true,
       })
     : null;

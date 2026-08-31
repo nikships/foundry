@@ -166,6 +166,7 @@ export class PlanSession {
     if (this.panel.cancelled) return;
 
     const castModels = castModelsForPlanning(enabledModels, this.deps.defaultModel, model);
+    const allowedModelIds = castModels.map((candidate) => candidate.id);
     const promptInputs: PlanPromptInputs = {
       request: this.deps.prompt,
       contextSummary: this.deps.contextSummary,
@@ -212,6 +213,7 @@ export class PlanSession {
             roster: this.deps.roster,
             commandNames: this.deps.commands.map((c) => c.name),
             knownEnvelopes: this.deps.envelopeDefs.map((e) => e.name),
+            allowedModelIds,
             allowedModels: castModels,
             scaffold: this.deps.scaffold,
           })

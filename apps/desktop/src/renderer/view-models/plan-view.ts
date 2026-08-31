@@ -44,7 +44,7 @@ export interface PlanPhaseView {
    * generated before that rule existed.
    */
   model: string | null;
-  /** Agent phases only: the reasoning effort paired with `model`. */
+  /** Agent phases only: the reasoning level appointed for this phase. */
   reasoningEffort: ReasoningEffort | null;
 }
 
@@ -53,7 +53,6 @@ export interface PlanAgentView {
   name: string;
   purpose: string;
   model: string;
-  reasoningEffort: string;
   boundary: string;
   readOnly: boolean;
   color: string;
@@ -113,7 +112,7 @@ export function withPhaseModel(
   return { ...plan, pipeline: { ...plan.pipeline, phases } };
 }
 
-/** Set one agent phase's reasoning appointment without changing its model. */
+/** Re-appoint one agent phase's reasoning level without changing its model. */
 export function withPhaseReasoningEffort(
   plan: GeneratedRunPlan,
   phaseName: string,
@@ -193,7 +192,7 @@ export function groupPlanWarnings(warnings: ValidationIssue[]): PlanWarningGroup
 /** Everything the Plan card renders, shaped once. */
 export function planCardView(plan: GeneratedRunPlan): PlanCardView {
   const synthesized = new Set(plan.agents.map((a) => a.name));
-  const agents = new Map(plan.agents.map((agent) => [agent.name, agent]));
+  const agentEfforts = new Map(plan.agents.map((agent) => [agent.name, agent.reasoningEffort]));
   const marks = new Set(outcomeMarks(plan.pipeline.acceptance, plan.pipeline.phases));
   const phases: PlanPhaseView[] = plan.pipeline.phases.map((phase, index) => ({
     index,
@@ -207,7 +206,7 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
     model: phase.kind === 'agent' ? (phase.model ?? 'inherit') : null,
     reasoningEffort:
       phase.kind === 'agent'
-        ? (phase.reasoningEffort ?? agents.get(phase.agent ?? '')?.reasoningEffort ?? 'medium')
+        ? (phase.reasoningEffort ?? agentEfforts.get(phase.agent ?? '') ?? 'medium')
         : null,
   }));
 
@@ -227,7 +226,6 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
       // A synthesized agent no longer picks a model: the phase it runs in
       // names one, and the card lets the operator re-cast that appointment.
       model: agent.model === 'inherit' ? 'model set per phase' : modelLabel(agent.model),
-      reasoningEffort: 'reasoning set per phase',
       boundary: boundaryLabel(agent.writes),
       readOnly: agent.toolProfile === 'read-only' || agent.writes?.length === 0,
       color: agent.color,

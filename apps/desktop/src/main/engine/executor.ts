@@ -208,7 +208,8 @@ export class Executor {
         envelopeDefs: deps.envelopeDefs,
         envelopeRetries: deps.envelopeRetries,
         rewindAfterCorrections: deps.rewindAfterCorrections,
-        sessionFor: (agent, overrides) => this.sessionFor(agent, overrides),
+        sessionFor: (agent, modelOverride, reasoningEffortOverride) =>
+          this.sessionFor(agent, modelOverride, reasoningEffortOverride),
         setupExecution: () => this.currentSetupExecution(),
         prompts: this.prompts,
         onLiveText: deps.onLiveText,
@@ -1033,15 +1034,15 @@ export class Executor {
 
   private async sessionFor(
     agent: AgentDef,
-    overrides: { model?: string; reasoningEffort?: ReasoningEffort },
+    modelOverride?: string,
+    reasoningEffortOverride?: AgentDef['reasoningEffort'],
   ): Promise<AgentSession> {
     const resolved = resolveAgentExecution(agent, {
       model: this.deps.defaultModel,
       reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
     });
-    const model =
-      overrides.model && overrides.model !== 'inherit' ? overrides.model : resolved.model;
-    const reasoningEffort = overrides.reasoningEffort ?? resolved.reasoningEffort;
+    const model = modelOverride && modelOverride !== 'inherit' ? modelOverride : resolved.model;
+    const reasoningEffort = reasoningEffortOverride ?? resolved.reasoningEffort;
     const existing = this.sessions.get(agent.name);
     if (existing?.model === model && existing.reasoningEffort === reasoningEffort) {
       return existing;

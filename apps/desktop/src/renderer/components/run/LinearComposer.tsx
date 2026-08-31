@@ -771,7 +771,7 @@ export default function LinearComposer({
             sourceDetail={lifecycle}
             onPhaseModelChange={orchestrator.setPhaseModel}
             onPhaseReasoningEffortChange={orchestrator.setPhaseReasoningEffort}
-            onResetPhaseSettings={orchestrator.resetPhaseSettings}
+            onResetPhaseOverrides={orchestrator.resetPhaseOverrides}
             onStart={() => void start(orchestrator.plan)}
             onRegenerate={submitPlan}
             onDiscard={() => {

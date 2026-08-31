@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
+import { REASONING_EFFORTS } from '@shared/reasoning-effort.js';
 import {
   BUILTIN_ENVELOPE_KINDS,
   effectivePhaseEnvelope,
@@ -16,7 +17,6 @@ import {
   type PipelineDef,
   type ValidationIssue,
 } from '@shared/types.js';
-import { REASONING_EFFORTS } from '@shared/reasoning-effort.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_PIPELINES } from '@shared/builtin-pipelines.js';
 import { uniqueCopyName, upsertBy } from './collections.js';
@@ -38,7 +38,7 @@ const phaseSchema = z.object({
   agent: z.string().optional(),
   // Opaque provider/model id. Absence means inherit the selected agent's model.
   model: z.string().min(1).optional(),
-  // Reasoning used with the phase model. Absence means inherit from the agent.
+  // Absent means inherit the selected agent's reasoning effort.
   reasoningEffort: z.enum(REASONING_EFFORTS).optional(),
   // Built-in kind or a custom envelope library name.
   envelope: z.string().min(1).optional(),

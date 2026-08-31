@@ -27,7 +27,7 @@ import { listRestorableCheckpoints, restoreRun } from '../engine/restore.js';
 import { landRun } from '../engine/settle.js';
 import * as worktreeLib from '../engine/worktree.js';
 import { exportRunPlan } from '../store/export-plan.js';
-import { enabledModels } from '../pi/enabled-models.js';
+import { enabledModelIds } from '../pi/enabled-models.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifyRuns, notifySettings, restoreScope, settleHooks } from './shared.js';
@@ -77,7 +77,7 @@ export function runStartDeps(ctx: RunStartContext): StartRunDeps {
       notifySettings(ctx);
       return ctx.projects.get(next.id) ?? next;
     },
-    enabledModels: () => enabledModels(ctx.supportDir, ctx.settings.get().hiddenModelIds),
+    enabledModelIds: () => enabledModelIds(ctx.supportDir, ctx.settings.get().hiddenModelIds),
     oneShot: ctx.oneShot,
     registry: ctx.registry,
   };

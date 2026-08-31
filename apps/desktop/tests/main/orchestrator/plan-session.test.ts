@@ -150,6 +150,7 @@ describe('PlanSession', () => {
     expect(plan.pipeline.builtin).toBe(false);
     expect(plan.model).toBe('inherit');
     expect(plan.reasoningEffort).toBe('high');
+    expect(plan.pipeline.phases[0]?.reasoningEffort).toBe('high');
   });
 
   it('opens read-only at the project checkout on the chosen model', async () => {
@@ -211,9 +212,9 @@ describe('PlanSession', () => {
     expect(ask).toContain('## Phase model cast pool');
     expect(ask).toContain('- anthropic/claude-opus-4 — Claude Opus 4');
     expect(ask).toContain('- anthropic/claude-haiku-4 — Claude Haiku 4');
+    expect(ask).toContain('efforts off/low/medium/high');
     expect(ask).toContain('$3/M input');
     expect(ask).toContain('"model":"anthropic/claude-opus-4"');
-    expect(ask).toContain('"reasoningEffort":"medium"');
     expect(ask).toContain('"model":"anthropic/claude-haiku-4"');
     // Builtin pipelines ride along as few-shot examples of valid shapes.
     expect(ask).toContain('## Builtin pipelines');
@@ -272,14 +273,9 @@ describe('PlanSession', () => {
     expect(state.entries.some((e) => e.text.includes('must name its own model'))).toBe(true);
   });
 
-  it('refuses a plan whose agent phase inherits reasoning instead of naming it', async () => {
-    const value = JSON.parse(validReply()) as {
-      pipeline: { phases: Record<string, unknown>[] };
-    };
-    delete value.pipeline.phases[0]!.reasoningEffort;
-    const { state } = await run({
-      turns: [{ structuredOutput: value }, submitted(validReply())],
-    });
+  it('refuses a plan whose agent phase omits its reasoning effort', async () => {
+    const inheriting = validReply().replace('"reasoningEffort":"high",', '');
+    const { state } = await run({ turns: [submitted(inheriting), submitted(validReply())] });
 
     expect(state.status).toBe('done');
     expect(state.entries.some((e) => e.text.includes('must name its own reasoning effort'))).toBe(
@@ -287,17 +283,14 @@ describe('PlanSession', () => {
     );
   });
 
-  it('refuses reasoning the appointed model does not support', async () => {
-    const value = JSON.parse(validReply()) as {
-      pipeline: { phases: Record<string, unknown>[] };
-    };
-    value.pipeline.phases[0]!.reasoningEffort = 'max';
-    const { state } = await run({
-      turns: [{ structuredOutput: value }, submitted(validReply())],
-    });
+  it('refuses a reasoning effort the appointed model does not support', async () => {
+    const unsupported = validReply().replace('"reasoningEffort":"high"', '"reasoningEffort":"max"');
+    const { state } = await run({ turns: [submitted(unsupported), submitted(validReply())] });
 
     expect(state.status).toBe('done');
-    expect(state.entries.some((e) => e.text.includes('not supported by model'))).toBe(true);
+    expect(state.entries.some((e) => e.text.includes('does not support reasoning effort'))).toBe(
+      true,
+    );
   });
 
   it('refuses a phase model this install does not enable', async () => {
@@ -422,7 +415,6 @@ describe('PlanSession', () => {
             kind: 'agent',
             agent: 'builder',
             model: 'anthropic/claude-opus-4',
-            reasoningEffort: 'high',
             description: 'Make the requested change inside the worktree.',
             envelope: 'build',
             prompt: { inputs: ['request'] },
@@ -464,7 +456,6 @@ describe('PlanSession', () => {
             kind: 'agent',
             agent: 'builder',
             model: 'anthropic/claude-opus-4',
-            reasoningEffort: 'high',
             description: 'Review and repair the requested change.',
             envelope: 'review',
             prompt: { inputs: ['request'] },
@@ -500,7 +491,6 @@ describe('PlanSession', () => {
             kind: 'agent',
             agent: 'plan_reviewer',
             model: 'anthropic/claude-opus-4',
-            reasoningEffort: 'high',
             description: 'Judge the result against the request.',
             envelope: 'review',
             prompt: { inputs: ['request'] },
