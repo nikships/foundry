@@ -854,6 +854,7 @@ export default function SettingsScreen({
                 value={searchQ}
                 placeholder="Search settings"
                 aria-label="Search settings"
+                aria-keyshortcuts="Meta+K Control+K"
                 spellCheck={false}
                 data-testid="settings-search"
                 onChange={(e) => setSearchQ(e.target.value)}

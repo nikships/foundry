@@ -33,6 +33,7 @@ const MENU_CHANNELS = [
   'menu:view-inspector',
   'menu:view-design',
   'menu:view-prs',
+  'menu:view-smith',
   'menu:design-pipelines',
   'menu:design-agents',
   'menu:design-envelopes',

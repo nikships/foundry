@@ -14,6 +14,7 @@ import {
   MENU_DESIGN_TABS,
   MENU_VIEWS,
   NAV_ITEMS,
+  SMITH_NAV_ITEM,
   designTabForEntity,
 } from '@renderer/utils/navigation.js';
 
@@ -51,6 +52,7 @@ describe('the sidebar', () => {
 
   it('numbers the digits contiguously from 1, so no chord is dead', () => {
     expect(NAV_ITEMS.map((i) => i.key)).toEqual(['1', '2', '3', '4']);
+    expect(SMITH_NAV_ITEM).toEqual({ id: 'smith', label: 'Smith', key: '5' });
   });
 
   it('reaches Settings without spending a nav digit on it', () => {
@@ -172,11 +174,13 @@ describe('the envelope editor', () => {
 });
 
 describe('the native menu', () => {
-  it('offers the four views on Cmd+1..4', () => {
+  it('offers every direct view chord in the native menu', () => {
     for (const [index, item] of NAV_ITEMS.entries()) {
       expect(mainSrc).toContain(`accelerator: 'Cmd+${index + 1}'`);
       expect(mainSrc).toContain(`menu:view-${item.id}`);
     }
+    expect(mainSrc).toContain("accelerator: 'Cmd+5'");
+    expect(mainSrc).toContain('menu:view-smith');
   });
 
   it('offers each Design tab on Cmd+Shift+1..3', () => {
@@ -223,6 +227,8 @@ describe('CDP automation hooks', () => {
     expect(appSrc).toContain("data-settings-pane={view === 'settings' ? settingsPane : undefined}");
     expect(appSrc).toContain('onPaneChange={setSettingsPane}');
     expect(settingsSrc).toContain('onPaneChange?.(next)');
+    expect(runsSrc).toContain('data-testid="runs-screen"');
+    expect(runsSrc).toContain('data-runs-source={mode}');
   });
 
   it('keeps run history in sidebar activity rather than below the composer', () => {
@@ -294,6 +300,16 @@ describe('CDP automation hooks', () => {
     expect(onboardingSharedSrc).toContain('data-testid={`onboarding-step-${s.id}`}');
     expect(settingsSrc).toContain('data-testid="settings-search"');
     expect(settingsSrc).toContain('data-testid="settings-palette-input"');
+  });
+
+  it('advertises direct key commands to assistive and automation clients', () => {
+    expect(sidebarSrc).toContain('aria-keyshortcuts={`Meta+${item.key} Control+${item.key}`}');
+    expect(sidebarSrc).toContain(
+      'aria-keyshortcuts={`Meta+${SMITH_NAV_ITEM.key} Control+${SMITH_NAV_ITEM.key}`}',
+    );
+    expect(sidebarSrc).toContain('aria-keyshortcuts="Meta+, Control+,"');
+    expect(designSrc).toContain('aria-keyshortcuts={`Meta+Shift+${t.key} Control+Shift+${t.key}`}');
+    expect(settingsSrc).toContain('aria-keyshortcuts="Meta+K Control+K"');
   });
 });
 

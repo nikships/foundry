@@ -222,6 +222,7 @@ function OrchestratedComposer({
           placeholder="Describe the change. The Orchestrator rewrites it into a full brief and composes the pipeline."
           onKeyDown={onRequestKeyDown}
           aria-label="Run request"
+          aria-keyshortcuts="Meta+Enter Control+Enter"
           data-testid="run-request"
         />
         <div className={styles.composerControls}>
@@ -365,7 +366,7 @@ export default function RunsScreen({
   const tabs = <SourceTabs mode={mode} linearConnection={linearConnection} onChange={switchMode} />;
 
   return (
-    <div className={styles.screen}>
+    <div className={styles.screen} data-testid="runs-screen" data-runs-source={mode}>
       <RunsHeader companion={companion} onOpenSettings={onOpenSettings} />
       {project && banner && showReadinessOnRuns(banner) && (
         <div
