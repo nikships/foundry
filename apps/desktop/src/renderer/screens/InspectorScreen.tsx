@@ -114,8 +114,10 @@ function InspectorFooter({
 
 export default function InspectorScreen({
   pinnedRunId,
+  onOpenRun,
 }: {
   pinnedRunId: string;
+  onOpenRun: (runId: string) => void;
 }): React.JSX.Element {
   const { projectId, project } = useApp();
   const {
@@ -255,6 +257,20 @@ export default function InspectorScreen({
             </>
           )}
           <div className={styles.inspectorControls}>
+            {view.run && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenRun(runId)}
+                title="Open this run’s waterfall and phase detail"
+                data-testid="inspector-open-run"
+              >
+                Run detail{' '}
+                <span className={styles.inspectorExt} aria-hidden>
+                  ↗
+                </span>
+              </Button>
+            )}
             <div className={styles.inspectorFilter}>
               {FILTERS.map((f) => (
                 <button

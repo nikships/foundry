@@ -114,18 +114,11 @@
   text-transform: uppercase;
   color: var(--text-faint);
 }
-.request {
-  margin-top: var(--s2);
-  font-size: var(--text-sm);
-  color: var(--text-dim);
-  line-height: var(--leading);
-  max-width: 90ch;
-}
 .facts {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  margin-top: var(--s3);
+  margin-top: var(--s2);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;

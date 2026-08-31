@@ -1,0 +1,51 @@
+.frame {
+  max-width: 90ch;
+  margin-top: var(--s2);
+}
+
+.request {
+  min-height: 42px;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: var(--s2);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  line-height: var(--leading);
+}
+
+.resize-handle {
+  position: relative;
+  height: 10px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 32px;
+  height: 1px;
+  border-radius: 1px;
+  background: var(--line-strong);
+  opacity: 0.45;
+  transform: translateX(-50%);
+  transition:
+    width var(--fast) var(--ease),
+    opacity var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.resize-handle:hover::before,
+.resize-handle:focus-visible::before {
+  width: 48px;
+  background: var(--accent);
+  opacity: 0.9;
+}
+
+.resize-handle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: -2px;
+}

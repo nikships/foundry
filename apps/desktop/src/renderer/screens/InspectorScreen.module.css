@@ -54,6 +54,12 @@
   flex: none;
 }
 
+.inspectorExt {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.65;
+}
+
 .inspectorFilter {
   display: flex;
   border: 1px solid var(--line);

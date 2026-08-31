@@ -308,7 +308,7 @@ function AppInner(): React.JSX.Element {
           />
         );
       case 'inspector':
-        return <InspectorScreen pinnedRunId={inspectorRunId} />;
+        return <InspectorScreen pinnedRunId={inspectorRunId} onOpenRun={openRun} />;
       case 'design':
         return (
           <DesignScreen
