@@ -21,9 +21,6 @@
   border-color: color-mix(in srgb, var(--red) 22%, var(--line));
 }
 
-/* The positioning context for the context-breakdown panel: the lane clips
- * overflow, so a panel anchored to its own toggle hangs off the lane's left
- * edge and loses part of itself. */
 .laneHead {
   position: relative;
   display: flex;
@@ -112,7 +109,6 @@
   min-width: 0;
 }
 
-.laneCtx,
 .laneStatus {
   display: inline-flex;
   align-items: center;
@@ -120,7 +116,6 @@
   flex: none;
 }
 
-.laneTokens,
 .laneElapsed {
   flex: none;
   font-family: var(--font-mono);
@@ -147,7 +142,7 @@
 }
 
 .laneContextBar {
-  width: 44px;
+  width: 52px;
   height: 4px;
   border-radius: var(--r-sm);
   background: var(--line);
@@ -163,8 +158,9 @@
 .laneContextLabel {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .laneFocus {
@@ -190,7 +186,6 @@
 /* Secondary metadata hides as whole units. Identity (phase, owner) and
  * status stay; the CLI pill is never clipped mid-glyph. */
 @container lane (max-width: 340px) {
-  .laneTokens,
   .laneContext,
   .laneModel {
     display: none;

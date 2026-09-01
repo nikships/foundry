@@ -1,7 +1,7 @@
 /**
  * One lane of the Inspector: a phase's full transcript, headered with who is
  * doing the work (agent, transport, model) and how it is going (status, elapsed,
- * tokens, context used). The lane follows the tail of the transcript while
+ * context used). The lane follows the tail of the transcript while
  * the user is at the bottom and stops following the moment they scroll up,
  * because yanking the scroll position away from a reader is worse than a
  * stale view.
@@ -13,12 +13,11 @@ import { modelLabel } from '@shared/model-label.js';
 import AgentAvatar from '../media/AgentAvatar.js';
 import StatusBadge from '../common/StatusBadge.js';
 import { duration, tokens } from '../../utils/format.js';
-import { isAutoAllowPolicy, usageFor, phaseDuration } from '../../utils/derive.js';
+import { isAutoAllowPolicy, phaseDuration } from '../../utils/derive.js';
 import { TranscriptEntry, transcriptStyles } from './entries.js';
-import ContextBreakdownDisclosure from './ContextBreakdown.js';
 import styles from './TranscriptLane.module.css';
 
-function ContextBar({
+function ContextMeter({
   session,
 }: {
   session: AgentSessionRow | undefined;
@@ -26,16 +25,25 @@ function ContextBar({
   if (!session || !session.contextWindow) return null;
   const used = session.contextTokens ?? 0;
   const pct = Math.min(100, Math.round((used / session.contextWindow) * 100));
+  const exactUsage = `${used.toLocaleString()} tokens in context of ${session.contextWindow.toLocaleString()}`;
   return (
     <span
       className={styles.laneContext}
-      title={`Tokens used so far in this step: ${used.toLocaleString()} of ${session.contextWindow.toLocaleString()}`}
+      role="meter"
+      aria-label="Context occupancy"
+      aria-valuemin={0}
+      aria-valuemax={session.contextWindow}
+      aria-valuenow={used}
+      aria-valuetext={`${exactUsage}, ${pct}% used`}
+      title={`${exactUsage} (${pct}% used). This is the conversation retained for the next turn.`}
     >
       <span className={styles.laneContextName}>Context</span>
       <span className={styles.laneContextBar} aria-hidden>
         <span className={styles.laneContextFill} style={{ width: `${pct}%` }} />
       </span>
-      <span className={styles.laneContextLabel}>{pct}% used</span>
+      <span className={styles.laneContextLabel}>
+        {tokens(used)} / {tokens(session.contextWindow)}
+      </span>
     </span>
   );
 }
@@ -85,8 +93,6 @@ export default function TranscriptLane({
   const transport = session?.mode ?? 'pi';
   const model = modelLabel(session?.model);
   const elapsed = phaseDuration(phase, now);
-  const usage = usageFor(events);
-  const tokenCount = usage.reported ? usage.totalTokens : null;
 
   const onScroll = (): void => {
     const el = scrollRef.current;
@@ -132,15 +138,7 @@ export default function TranscriptLane({
           </span>
         </div>
         <div className={styles.laneStats}>
-          {tokenCount != null && tokenCount > 0 && (
-            <span className={styles.laneTokens}>{tokens(tokenCount)} tok</span>
-          )}
-          <ContextBar session={session} />
-          {session && (
-            <span className={styles.laneCtx}>
-              <ContextBreakdownDisclosure runId={session.runId} agent={session.agent} />
-            </span>
-          )}
+          <ContextMeter session={session} />
           {elapsed != null && <span className={styles.laneElapsed}>{duration(elapsed)}</span>}
           <span className={styles.laneStatus}>
             <StatusBadge status={phase.status} />

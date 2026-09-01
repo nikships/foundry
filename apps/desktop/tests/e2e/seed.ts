@@ -25,6 +25,8 @@ export const E2E_TRANSCRIPT = 'FOUNDRY_E2E_TRANSCRIPT_MARKER';
 export const E2E_SMITH_MESSAGE = 'FOUNDRY_E2E_SMITH_TRANSCRIPT';
 export const E2E_SMITH_PROPOSAL_NAME = 'e2e_planner';
 export const E2E_SMITH_ARTIFACT_PIPELINE = 'e2e-designed-pipeline';
+export const E2E_CONTEXT_USED = 41_391;
+export const E2E_CONTEXT_WINDOW = 500_000;
 
 const FINAL_FIXTURE_PIPELINE: PipelineDef = {
   id: 'generated-plan-e2e-inspector',
@@ -168,6 +170,16 @@ export function seedOnboardedFixture(
     const phaseId = amended.get('build');
     if (!phaseId) throw new Error('seeded amendment did not queue build');
     tracer.beginQueuedPhase(phaseId);
+    tracer.upsertAgentSession({
+      runId: E2E_RUN_ID,
+      agent: 'builder',
+      model: 'fixture/model',
+      reasoningEffort: 'medium',
+      agentSessionId: null,
+      mode: 'pi',
+      color: 'var(--accent)',
+    });
+    tracer.setAgentContext(E2E_RUN_ID, 'builder', E2E_CONTEXT_USED, E2E_CONTEXT_WINDOW);
     tracer.event({
       runId: E2E_RUN_ID,
       phaseId,

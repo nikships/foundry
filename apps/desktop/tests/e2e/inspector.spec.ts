@@ -21,6 +21,10 @@ test.describe('run / Inspector', () => {
       await expect(window.getByText(/seeded verifier failure/).first()).toBeVisible();
       await expect(window.getByText('build').first()).toBeVisible();
       await expect(window.getByText('report').first()).toBeVisible();
+      await expect(
+        window.getByRole('meter', { name: 'Context occupancy' }).first(),
+      ).toHaveAttribute('aria-valuetext', '41,391 tokens in context of 500,000, 8% used');
+      await expect(window.getByText('41k / 500k').first()).toBeVisible();
 
       await window.getByTestId('inspector-open-run').click();
       await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'run-detail');
