@@ -67,11 +67,13 @@ describe('inspector lane header overflow', () => {
     expect(tsx).toMatch(/title=\{phase\.name\}/);
   });
 
-  it('labels the context meter as tokens used, not remaining', () => {
-    expect(tsx).toMatch(/Tokens used so far in this step/);
-    expect(tsx).toMatch(/\{pct\}% used/);
+  it('shows current context occupancy as one exact metric', () => {
+    expect(tsx).toMatch(/role="meter"/);
     expect(tsx).toMatch(/styles\.laneContextName\}>Context/);
-    expect(tsx).not.toMatch(/remaining/);
+    expect(tsx).toMatch(/\{tokens\(used\)\} \/ \{tokens\(session\.contextWindow\)\}/);
+    expect(tsx).toMatch(/conversation retained for the next turn/);
+    expect(tsx).not.toMatch(/laneTokens/);
+    expect(tsx).not.toMatch(/ContextBreakdownDisclosure/);
   });
 
   it('names the transport that answered', () => {
@@ -92,7 +94,6 @@ describe('inspector lane header overflow', () => {
 
   it('hides secondary metadata as whole items at 3–5-lane widths', () => {
     const at340 = containerQuery(340);
-    expect(at340).toMatch(/\.laneTokens/);
     expect(at340).toMatch(/\.laneContext/);
     expect(at340).toMatch(/\.laneModel/);
     expect(at340).toMatch(/display:\s*none/);
@@ -106,11 +107,8 @@ describe('inspector lane header overflow', () => {
     expect(at240).toMatch(/display:\s*none/);
   });
 
-  it('keeps the CTX disclosure and status cluster from shrinking', () => {
-    expect(css).toMatch(/\.laneCtx,\s*\n\.laneStatus/);
+  it('keeps the status cluster from shrinking', () => {
     expect(rule('.laneStatus')).toMatch(/flex:\s*none/);
-    expect(tsx).toMatch(/styles\.laneCtx/);
-    expect(tsx).toMatch(/ContextBreakdownDisclosure/);
     expect(tsx).toMatch(/styles\.laneStatus/);
   });
 

@@ -10,6 +10,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openDb, projectDbPath } from '../../src/main/trace/db.js';
 import {
+  E2E_CONTEXT_USED,
+  E2E_CONTEXT_WINDOW,
   E2E_REQUEST,
   E2E_RUN_ID,
   E2E_SMITH_MESSAGE,
@@ -76,6 +78,16 @@ describe('e2e fixture seed', () => {
         .all(E2E_RUN_ID) as { payload_json: string }[];
       expect(replans).toHaveLength(1);
       expect(replans[0]!.payload_json).toContain('seeded verifier failure');
+      const session = db
+        .prepare(
+          'SELECT context_tokens, context_window FROM agent_sessions WHERE run_id = ? AND agent = ?',
+        )
+        .get(E2E_RUN_ID, 'builder') as
+        { context_tokens: number; context_window: number } | undefined;
+      expect(session).toEqual({
+        context_tokens: E2E_CONTEXT_USED,
+        context_window: E2E_CONTEXT_WINDOW,
+      });
     } finally {
       db.close();
     }
