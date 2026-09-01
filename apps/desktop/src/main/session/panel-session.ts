@@ -20,7 +20,7 @@ import { randomBytes } from 'node:crypto';
 import type { PanelEntry, PanelStateCore, ReasoningEffort } from '@shared/types.js';
 import type { OneShotFactory, OneShotResult, OneShotSession } from '../pi/oneshot.js';
 import { foldTranscript } from '../pi/transcript.js';
-import type { TransportEvent } from '../pi/transport.js';
+import type { OutputFormat, TransportEvent } from '../pi/transport.js';
 
 /** A long turn must not grow without bound; the tail is what the panel shows. */
 export const PANEL_MAX_ENTRIES = 300;
@@ -51,6 +51,8 @@ export interface AskTurn {
   prompt: string;
   /** Standing rules, installed as the system prompt. */
   systemPrompt?: string;
+  /** Optional schema-bound `submit_result` answer channel. */
+  outputFormat?: OutputFormat;
   textCap?: number;
 }
 
@@ -164,6 +166,7 @@ export class PanelSession<TState extends PanelStateCore> {
         this.push({ kind: 'note', text: warning.slice(0, 500) });
       },
       ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
+      ...(input.outputFormat ? { outputFormat: input.outputFormat } : {}),
     });
     this.bind(session);
     const turn = await session.send(input.prompt);

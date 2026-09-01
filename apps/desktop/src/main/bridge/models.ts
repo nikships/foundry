@@ -29,6 +29,7 @@ import {
   piProviderId,
   type BridgeProviderId,
 } from './providers.js';
+import type { ModelCost } from '@shared/types.js';
 
 /** A provider entry in pi's models.json, as this module writes one. */
 export interface GeneratedProvider {
@@ -51,7 +52,7 @@ export interface GeneratedModel {
   input: ('text' | 'image')[];
   contextWindow: number;
   maxTokens: number;
-  cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  cost: ModelCost;
   thinkingLevelMap?: Record<string, string | null>;
   compat?: Record<string, unknown>;
 }
@@ -64,7 +65,7 @@ export type ModelsJson = { providers?: Record<string, unknown> } & Record<string
  * These run against a subscription the operator already pays for. Pi's
  * models.json still requires a rate card; zeros are the honest one.
  */
-const SUBSCRIPTION_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;
+const SUBSCRIPTION_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 /** The `bridge-*` provider entries for the given authenticated providers. */
 export function generateProviders(

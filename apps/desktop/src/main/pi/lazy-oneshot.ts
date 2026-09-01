@@ -32,7 +32,13 @@ export function lazyOneShots(load: () => Promise<OneShotFactory>): OneShotFactor
         const session = (inner ??= (await ready())(opts));
         if (aborted) {
           session.abort();
-          return { text: '', usage: null, reason: 'aborted', interrupted: true };
+          return {
+            text: '',
+            usage: null,
+            reason: 'aborted',
+            interrupted: true,
+            structuredOutput: null,
+          };
         }
         return session.send(prompt);
       },

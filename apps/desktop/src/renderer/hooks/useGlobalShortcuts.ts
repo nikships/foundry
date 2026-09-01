@@ -8,7 +8,7 @@ import {
 } from '../utils/keyboard.js';
 
 /**
- * App-wide keyboard navigation. View chords (⌘/Ctrl+1–4, ⌘/Ctrl+,) switch
+ * App-wide keyboard navigation. View chords (⌘/Ctrl+1–5, ⌘/Ctrl+,) switch
  * screens, ⌘/Ctrl+⇧+1–3 select a Design tab, and ⌘/Ctrl+K opens the settings
  * search palette; a bare Escape blurs an editable field, or calls `onEscape`
  * when nothing more specific wants it. Any open dialog owns Escape outright —

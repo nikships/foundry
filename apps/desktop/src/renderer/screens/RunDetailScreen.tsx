@@ -17,6 +17,7 @@ import StatusBadge from '../components/common/StatusBadge.js';
 import OutcomeBanner from '../components/run/OutcomeBanner.js';
 import ExportPlanSheet from '../components/run/ExportPlanSheet.js';
 import RestoreSheet from '../components/run/RestoreSheet.js';
+import ResizableRunRequest from '../components/run/ResizableRunRequest.js';
 import { Button } from '../components/ui/Button.js';
 import { planHasActiveFailure } from '../view-models/plan-view.js';
 import { canResumeRun } from '../view-models/outcome-view.js';
@@ -355,7 +356,7 @@ export default function RunDetailScreen({
             )}
             <span className={`faint mono ${styles.when}`}>{clockTime(view.run.startedAt)}</span>
           </div>
-          <p className={`${styles.request} selectable`}>{view.run.request}</p>
+          <ResizableRunRequest request={view.run.request} />
           <div className={`${styles.facts} mono faint`}>
             <span>{duration(runDuration(view.run, now))}</span>
             {view.run.totalTokens ? <span>{tokens(view.run.totalTokens)} tokens</span> : null}

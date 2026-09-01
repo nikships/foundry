@@ -15,6 +15,8 @@ export const FOUNDRY_TOOL_NAMES = [
   'submit_envelope',
 ] as const;
 export type FoundryToolName = (typeof FOUNDRY_TOOL_NAMES)[number];
+/** Schema-bound answer channel for one-shot helpers such as the Orchestrator. */
+export const ONESHOT_OUTPUT_TOOL_NAME = 'submit_result';
 
 /** Pi's built-ins. A phase runs all of them; none of them prompts a human. */
 export const BUILTIN_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const;

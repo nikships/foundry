@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { NAV_ITEMS, type NavView, type View } from '../../utils/navigation.js';
+import { NAV_ITEMS, SMITH_NAV_ITEM, type NavView, type View } from '../../utils/navigation.js';
 import { useApp } from '../../stores/app.js';
-import { useAllProjectRuns } from '../../stores/run.js';
+import { useActivityRuns } from '../../stores/run.js';
 import { since, statusColor, statusWord } from '../../utils/format.js';
 import { safeGetItem, safeSetItem } from '../../utils/local-store.js';
 import {
@@ -122,15 +122,15 @@ export default function Sidebar({
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
   onOpenSettings: (pane: string) => void;
-  /** Pin the Inspector to a run; the run may live in any project. */
+  /** Pin the Inspector to a run from the selected project. */
   onOpenInspector?: (runId: string) => void;
   /** Opens the Smith chat screen. Not a numbered nav item, so it takes its own handler. */
   onOpenSmith?: () => void;
   /** The run the Inspector is pinned to, so its activity row reads as selected. */
   inspectorRunId?: string;
 }): React.JSX.Element {
-  const { projects, project, selectProject } = useApp();
-  const { runs: pipelineRuns } = useAllProjectRuns();
+  const { projects, project, projectId, selectProject } = useApp();
+  const { runs: pipelineRuns } = useActivityRuns(projectId);
 
   const [collapsed, setCollapsed] = useState<boolean>(
     () => safeGetItem(SIDEBAR_COLLAPSED_KEY) === '1',
@@ -211,6 +211,7 @@ export default function Sidebar({
               onClick={() => onNavigate(item.id)}
               title={collapsed ? `${item.label} (⌘${item.key})` : undefined}
               aria-label={collapsed ? `${item.label} ⌘${item.key}` : undefined}
+              aria-keyshortcuts={`Meta+${item.key} Control+${item.key}`}
               aria-current={active ? 'page' : undefined}
               data-testid={`nav-${item.id}`}
             >
@@ -225,23 +226,23 @@ export default function Sidebar({
             </button>
           );
         })}
-        {/*
-         * Smith sits below the views and opens the native chat screen. It has
-         * no ⌘-digit chord, so it stays outside NAV_ITEMS with its own handler.
-         */}
         <button
           type="button"
           className={navItemClass(view === 'smith')}
           onClick={() => onOpenSmith?.()}
-          title={collapsed ? 'Smith' : undefined}
+          title={collapsed ? `${SMITH_NAV_ITEM.label} (⌘${SMITH_NAV_ITEM.key})` : undefined}
           aria-label="Smith"
+          aria-keyshortcuts={`Meta+${SMITH_NAV_ITEM.key} Control+${SMITH_NAV_ITEM.key}`}
           aria-current={view === 'smith' ? 'page' : undefined}
           data-testid="nav-smith"
         >
           {collapsed ? (
             <SmithEmblem className={styles.navEmblem} />
           ) : (
-            <span className={styles.navLabel}>Smith</span>
+            <>
+              <span className={styles.navLabel}>{SMITH_NAV_ITEM.label}</span>
+              <kbd>⌘{SMITH_NAV_ITEM.key}</kbd>
+            </>
           )}
         </button>
       </nav>
@@ -250,7 +251,6 @@ export default function Sidebar({
           <label className="faint">Activity</label>
           <div className={styles.runsList}>
             {pipelineRuns.map((run) => {
-              const projectName = projects.find((p) => p.id === run.projectId)?.name ?? '';
               const running = run.status === 'running';
               const pinned = view === 'inspector' && inspectorRunId === run.runId;
               return (
@@ -259,10 +259,9 @@ export default function Sidebar({
                   type="button"
                   className={cx(styles.runItem, pinned && styles.active)}
                   aria-current={pinned || undefined}
-                  title={`${run.request}\n${run.pipelineName} · ${projectName} · ${statusWord(run.status)}`}
+                  title={`${run.request}\n${run.pipelineName} · ${statusWord(run.status)}`}
                   data-testid={`sidebar-run-${run.runId}`}
                   onClick={() => {
-                    if (run.projectId !== project?.id) selectProject(run.projectId);
                     onOpenInspector?.(run.runId);
                   }}
                 >
@@ -273,7 +272,7 @@ export default function Sidebar({
                   <span className={styles.runBody}>
                     <span className={styles.runName}>{run.request}</span>
                     <span className={`${styles.runMeta} faint`}>
-                      {projectName} ·{' '}
+                      {run.pipelineName} ·{' '}
                       {running ? statusWord(run.status) : since(run.endedAt ?? run.startedAt)}
                     </span>
                   </span>
@@ -303,6 +302,7 @@ export default function Sidebar({
         onClick={() => onOpenSettings('general')}
         title={collapsed ? 'Settings (⌘,)' : undefined}
         aria-label={collapsed ? 'Settings ⌘,' : undefined}
+        aria-keyshortcuts="Meta+, Control+,"
         aria-current={view === 'settings' ? 'page' : undefined}
         data-testid="nav-settings"
       >

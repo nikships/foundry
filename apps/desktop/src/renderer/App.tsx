@@ -207,6 +207,17 @@ function AppInner(): React.JSX.Element {
     go('smith');
   }, [view, liveScreenContext, go]);
 
+  const navigateView = useCallback(
+    (next: View): void => {
+      if (next === 'smith') {
+        openSmith();
+        return;
+      }
+      go(next);
+    },
+    [go, openSmith],
+  );
+
   /** Open Design on a specific tab — used by the menu and by cross-links. */
   const goDesign = useCallback(
     (tab: DesignTab): void => {
@@ -265,7 +276,7 @@ function AppInner(): React.JSX.Element {
   }, [go]);
 
   useGlobalShortcuts({
-    onNavigate: go,
+    onNavigate: navigateView,
     onDesignTab: goDesign,
     onEscape: escapeBack,
     onSettingsSearch: openSettingsSearch,
@@ -281,7 +292,7 @@ function AppInner(): React.JSX.Element {
       }
       const nextView = MENU_VIEWS[command];
       if (nextView) {
-        go(nextView);
+        navigateView(nextView);
         return;
       }
       if (command === 'menu:new-run') {
@@ -291,7 +302,7 @@ function AppInner(): React.JSX.Element {
         void addProject();
       }
     });
-  }, [go, goDesign, addProject]);
+  }, [navigateView, goDesign, addProject]);
 
   function renderMain(): React.JSX.Element | null {
     switch (view) {
@@ -317,7 +328,7 @@ function AppInner(): React.JSX.Element {
           />
         );
       case 'inspector':
-        return <InspectorScreen pinnedRunId={inspectorRunId} />;
+        return <InspectorScreen pinnedRunId={inspectorRunId} onOpenRun={openRun} />;
       case 'design':
         return (
           <DesignScreen

@@ -23,7 +23,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
-import type { TransportEvent } from '../../../src/main/pi/transport.js';
+import type { OutputFormat, TransportEvent } from '../../../src/main/pi/transport.js';
 
 interface CreateCall {
   cwd: string;
@@ -55,6 +55,11 @@ const spy = {
   order: [] as string[],
   session: null as ScriptedPiSession | null,
   models: [] as { provider: string; id: string; name: string; contextWindow: number }[],
+  registeredTools: [] as {
+    name: string;
+    parameters: unknown;
+    execute: (...args: unknown[]) => Promise<unknown>;
+  }[],
 };
 
 /** A stand-in for Pi's `AgentSession`, scripted per test. */
@@ -181,6 +186,23 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
   DefaultResourceLoader: class {
     constructor(opts: LoaderCall) {
       spy.loaders.push(opts);
+      for (const entry of opts.extensionFactories) {
+        (
+          entry as unknown as {
+            factory: (api: {
+              registerTool: (tool: (typeof spy.registeredTools)[number]) => void;
+              on: () => void;
+            }) => void;
+          }
+        ).factory({
+          registerTool: (tool) => {
+            const at = spy.registeredTools.findIndex((candidate) => candidate.name === tool.name);
+            if (at >= 0) spy.registeredTools[at] = tool;
+            else spy.registeredTools.push(tool);
+          },
+          on: () => {},
+        });
+      }
     }
     reload(): Promise<void> {
       return Promise.resolve();
@@ -215,6 +237,7 @@ interface Harness {
   supportDir: string;
   cwd: string;
   open: (access?: 'read' | 'write') => ReturnType<ReturnType<typeof piOneShots>>;
+  openWithOutput: (outputFormat: OutputFormat) => ReturnType<ReturnType<typeof piOneShots>>;
 }
 
 function harness(opts: { model?: string; hiddenModelIds?: () => readonly string[] } = {}): Harness {
@@ -241,6 +264,16 @@ function harness(opts: { model?: string; hiddenModelIds?: () => readonly string[
         onEvent: (e) => events.push(e),
         onWarning: (w) => warnings.push(w),
       }),
+    openWithOutput: (outputFormat) =>
+      factory({
+        cwd,
+        model: opts.model ?? 'anthropic/claude-sonnet-4',
+        reasoningEffort: 'off',
+        access: 'read',
+        outputFormat,
+        onEvent: (e) => events.push(e),
+        onWarning: (w) => warnings.push(w),
+      }),
   };
 }
 
@@ -250,6 +283,7 @@ beforeEach(() => {
   spy.settings = [];
   spy.sessionManagers = [];
   spy.order = [];
+  spy.registeredTools = [];
   spy.models = [
     {
       provider: 'anthropic',
@@ -363,6 +397,33 @@ describe('running one turn', () => {
     expect(result.text).toBe('the answer');
     expect(result.reason).toBe('stop');
     expect(result.interrupted).toBe(false);
+    expect(result.structuredOutput).toBeNull();
+  });
+
+  it('captures a schema-bound submit_result separately from assistant prose', async () => {
+    const h = harness();
+    const schema = {
+      type: 'object',
+      properties: { answer: { type: 'string' } },
+      required: ['answer'],
+      additionalProperties: false,
+    };
+    h.session.turn = async (session) => {
+      const tool = spy.registeredTools.find((candidate) => candidate.name === 'submit_result')!;
+      await tool.execute('call-1', { answer: 'structured' });
+      session.say('prose that the caller must not parse');
+    };
+
+    const result = await h
+      .openWithOutput({ type: 'json_schema', schema })
+      .send('return the answer');
+
+    expect(spy.creates[0]!.tools).toEqual(['read', 'grep', 'find', 'ls', 'submit_result']);
+    expect(
+      spy.registeredTools.find((candidate) => candidate.name === 'submit_result')?.parameters,
+    ).toBe(schema);
+    expect(result.structuredOutput).toEqual({ answer: 'structured' });
+    expect(result.text).toBe('prose that the caller must not parse');
   });
 
   it('disposes the session as soon as the answer arrives', async () => {

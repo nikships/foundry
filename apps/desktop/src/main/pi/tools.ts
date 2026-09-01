@@ -5,12 +5,15 @@
  * wire-prefixed ids (`foundry___report_progress`), and no second schema dialect
  * to keep in sync. A tool is a plain object with a JSON Schema and a function.
  *
- * Four tools, and none of them writes the worktree:
+ * Four run tools, and none of them writes the worktree:
  * - `report_progress` traces a line for the Inspector timeline.
  * - `read_phase_context` reads back the validated envelope chain.
  * - `git_diff` returns the run's accumulated patch, bounded.
  * - `submit_envelope` is how a phase answers. Its schema is the phase's own
  *   envelope schema, so a conforming call always parses.
+ *
+ * A one-shot may additionally receive `submit_result`, whose caller supplies
+ * the schema. It captures arguments in memory and has no run or trace.
  *
  * `submit_envelope` accepts the answer but does not decide anything: the phase
  * still fails until code validates the envelope and the gates pass. Agents
@@ -18,14 +21,16 @@
  */
 
 import { isAbsolute } from 'node:path';
-import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { boundPatch, diffPatch } from '../engine/git.js';
 import type { Envelope } from '../engine/envelopes.js';
+import { defineTool, type ToolDefinition } from './tool-definition.js';
+import { ONESHOT_OUTPUT_TOOL_NAME } from './tool-names.js';
 import type { FoundryToolContext } from './transport.js';
 
 export {
   BUILTIN_TOOLS,
   FOUNDRY_TOOL_NAMES,
+  ONESHOT_OUTPUT_TOOL_NAME,
   READ_ONLY_TOOLS,
   runToolsFor,
   type FoundryToolName,
@@ -67,7 +72,7 @@ export function reportProgressTool(ctx: FoundryToolContext): ToolDefinition {
       required: ['summary'],
       additionalProperties: false,
     },
-    execute: (_id, params) => {
+    execute: (_id: string, params: unknown) => {
       const raw = field(params, 'summary');
       const summary = typeof raw === 'string' ? raw : String(raw ?? '');
       ctx.tracer.event({
@@ -207,11 +212,32 @@ export function gitDiffTool(ctx: FoundryToolContext): ToolDefinition {
   });
 }
 
-/** The tool plus the arguments the agent last submitted through it. */
-export interface EnvelopeTool {
+/** A schema-bound submission tool plus the arguments last accepted through it. */
+export interface SubmissionTool {
   definition: ToolDefinition;
   /** The most recent submission, or null when the turn never called the tool. */
   submitted(): Record<string, unknown> | null;
+}
+
+function submissionTool(input: {
+  name: string;
+  label: string;
+  description: string;
+  schema: Record<string, unknown>;
+  confirmation: string;
+}): SubmissionTool {
+  let captured: Record<string, unknown> | null = null;
+  const definition = defineTool({
+    name: input.name,
+    label: input.label,
+    description: input.description,
+    parameters: input.schema,
+    execute: (_id: string, params: unknown) => {
+      captured = params && typeof params === 'object' ? (params as Record<string, unknown>) : null;
+      return Promise.resolve(text(input.confirmation));
+    },
+  });
+  return { definition, submitted: () => captured };
 }
 
 /**
@@ -227,19 +253,23 @@ export interface EnvelopeTool {
  * to arrive as a new definition object; mutating `parameters` in place would
  * keep the previous phase's validator.
  */
-export function submitEnvelopeTool(schema: Record<string, unknown>): EnvelopeTool {
-  let captured: Record<string, unknown> | null = null;
-
-  const definition = defineTool({
+export function submitEnvelopeTool(schema: Record<string, unknown>): SubmissionTool {
+  return submissionTool({
     name: 'submit_envelope',
     label: 'Submit envelope',
     description: "Submit this phase's result envelope.",
-    parameters: schema,
-    execute: (_id, params) => {
-      captured = params && typeof params === 'object' ? (params as Record<string, unknown>) : null;
-      return Promise.resolve(text('envelope received'));
-    },
+    schema,
+    confirmation: 'envelope received',
   });
+}
 
-  return { definition, submitted: () => captured };
+/** Schema-bound answer channel for a one-shot that must not rely on prose JSON. */
+export function submitResultTool(schema: Record<string, unknown>): SubmissionTool {
+  return submissionTool({
+    name: ONESHOT_OUTPUT_TOOL_NAME,
+    label: 'Submit result',
+    description: 'Submit the complete structured result for this one-shot task.',
+    schema,
+    confirmation: 'structured result received',
+  });
 }

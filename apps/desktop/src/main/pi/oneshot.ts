@@ -1,11 +1,11 @@
 /**
  * The one-shot seam: a whole agent turn that belongs to no run.
  *
- * Six things in this app ask an agent one question and act on the answer —
- * repository context, command detection, setup-script generation, the run-start
- * command fill, rebase repair, and the readiness fix. None is a pipeline: there is no
- * worktree to merge, no phase to fail, no envelope, no trace row. What they
- * need is a turn, a live transcript, and explicit operator cancellation.
+ * Helpers in this app ask an agent one question and act on the answer —
+ * repository context, command detection, setup-script generation, planning,
+ * run-start command fill, rebase repair, and readiness. None is a pipeline:
+ * there is no worktree to merge, no phase to fail, no envelope, no trace row.
+ * What they need is a turn, a live transcript, and explicit cancellation.
  *
  * This file is the contract for that, and it names no vendor. `pi-oneshot.ts`
  * is the implementation; a test implements `OneShotFactory` directly and drives
@@ -13,7 +13,13 @@
  */
 
 import type { ReasoningEffort } from '@shared/types.js';
-import type { PermissionAsk, PermissionDecision, TransportEvent, TurnUsage } from './transport.js';
+import type {
+  OutputFormat,
+  PermissionAsk,
+  PermissionDecision,
+  TransportEvent,
+  TurnUsage,
+} from './transport.js';
 
 export interface OneShotOptions {
   /** Where the agent runs. Read-only callers pass the operator's checkout. */
@@ -41,15 +47,26 @@ export interface OneShotOptions {
    * string passed to `send()` is the user ask only.
    */
   systemPrompt?: string;
+  /**
+   * Optional schema-bound answer channel. When present, the session exposes
+   * `submit_result` with this schema and returns the captured arguments
+   * separately from assistant prose.
+   */
+  outputFormat?: OutputFormat;
 }
 
 export interface OneShotResult {
-  /** Final assistant text — what the caller parses its answer from. */
+  /** Final assistant text, used by callers that did not request structured output. */
   text: string;
   usage: TurnUsage | null;
   /** The runtime's own word for how the turn ended, kept for the detail line. */
   reason: string;
   interrupted: boolean;
+  /**
+   * The arguments accepted by `submit_result`, or null when the caller did not
+   * request structured output or the model never submitted it.
+   */
+  structuredOutput: Record<string, unknown> | null;
 }
 
 /**

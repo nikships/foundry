@@ -68,6 +68,7 @@ const synthesizedReviewer = (): AgentDef => ({
   systemPrompt: 'You review.',
   userPrompt: 'Review: {{request}}',
   writes: [],
+  toolProfile: 'read-only',
   envelope: 'review',
   color: '#d2a05a',
 });
@@ -84,15 +85,18 @@ function generatedPipeline(planId: string): PipelineDef {
         kind: 'agent',
         agent: 'builder',
         model: 'scripted/strong',
+        reasoningEffort: 'high',
         description: 'Make the requested change inside the worktree.',
         envelope: 'build',
         prompt: { inputs: ['request'] },
+        gates: [{ gate: 'command_passes', config: { argv: ['test', '-f', 'README.md'] } }],
       },
       {
         name: 'review',
         kind: 'agent',
         agent: 'plan_reviewer',
         model: 'scripted/fast',
+        reasoningEffort: 'low',
         description: 'Verify the change meets the refined request.',
         envelope: 'review',
         prompt: { inputs: ['request'] },
@@ -292,6 +296,21 @@ describe('starting a run from an inline plan', () => {
         where: 'agents.builder',
         message: expect.stringContaining('shadow nothing'),
       }),
+    );
+    expect(started).toHaveLength(0);
+  });
+
+  it('refuses an unproven generated implementation when no project command exists', async () => {
+    const scripted = new ScriptedAgent([], []);
+    const { deps: d, started } = deps(scripted);
+    const unproven = plan(h.project.id);
+    delete unproven.pipeline.phases[0]!.gates;
+
+    const outcome = await startRun(d, input({ plan: unproven }));
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining('command_passes gate') }),
     );
     expect(started).toHaveLength(0);
   });

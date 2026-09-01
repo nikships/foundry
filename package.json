@@ -38,16 +38,16 @@
   },
   "config": {
     "bridge": {
-      "version": "7.2.142",
+      "version": "7.2.147",
       "releaseBaseUrl": "https://github.com/router-for-me/CLIProxyAPI/releases/download",
       "dir": "resources/bridge",
       "binary": "cli-proxy-api",
-      "archiveSha256": "dcf5786d6c55301ac3bb26dc3bed0fec2a71e568aecee6ce0c3c5aa4d1397bcd",
-      "binarySha256": "07c6c1476e643d9648db63444b88a7bcf0523a87d75824727378e01fa4383a07"
+      "archiveSha256": "4ac1db83b00591265ebb93a3277d812aaf6e45e8b21bb3b4786598520afdf4be",
+      "binarySha256": "770617018940c09acf871e93de019a7fff83cae3293a01cb34543e4ffc7aecfc"
     }
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@earendil-works/pi-coding-agent": "0.84.4",
     "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.8.9",
     "lucide-react": "^1.33.0",
@@ -60,10 +60,10 @@
     "@lobehub/icons": "^5.16.0",
     "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.1.0",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "^4.1.11",
     "ajv": "8.20.0",
     "electron": "^43.4.1",
@@ -77,11 +77,11 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.11.0",
     "jscpd": "^5.0.16",
-    "knip": "^6.32.2",
+    "knip": "^6.33.0",
     "prettier": "^3.9.6",
     "tsx": "^4.23.12",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.67.0",
+    "typescript-eslint": "^8.68.0",
     "vite": "^8.2.2",
     "vitest": "^4.1.10"
   }

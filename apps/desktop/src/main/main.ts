@@ -111,6 +111,7 @@ function buildMenu(): void {
         { label: 'Inspector', accelerator: 'Cmd+2', click: menuClick('menu:view-inspector') },
         { label: 'Design', accelerator: 'Cmd+3', click: menuClick('menu:view-design') },
         { label: 'Pull Requests', accelerator: 'Cmd+4', click: menuClick('menu:view-prs') },
+        { label: 'Smith', accelerator: 'Cmd+5', click: menuClick('menu:view-smith') },
         { type: 'separator' },
         {
           label: 'Design',

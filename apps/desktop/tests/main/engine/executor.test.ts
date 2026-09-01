@@ -1987,6 +1987,45 @@ describe('the trace record', () => {
     expect(h.tracer.agentSessions(outcome.runId)[0]!.model).toBe('bridge-claude/claude-opus-5');
   });
 
+  it('uses a phase reasoning override ahead of the selected agent effort', async () => {
+    const scripted = scriptedAgent([buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ reasoningEffort: 'low' })],
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'Use the reasoning level selected for this phase.',
+            reasoningEffort: 'high',
+          }),
+        ],
+        { acceptance: { kind: 'envelope_status', phase: 'build' } },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    const start = events(outcome.runId).find((e) => e.type === 'agent_start');
+    expect(start!.payload.reasoningEffort).toBe('high');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.reasoningEffort).toBe('high');
+  });
+
+  it('opens a new session when consecutive phases change only reasoning effort', async () => {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      pipeline: pipe([
+        agentPhase('plan', { reasoningEffort: 'low' }),
+        agentPhase('build', { reasoningEffort: 'high' }),
+      ]),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(scripted.sessionOpens).toBe(2);
+    expect(
+      events(outcome.runId)
+        .filter((event) => event.type === 'agent_start')
+        .map((event) => event.payload.reasoningEffort),
+    ).toEqual(['low', 'high']);
+  });
+
   it('opens a new session when consecutive phases override one agent with different models', async () => {
     const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()]);
     const outcome = await run({

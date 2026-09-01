@@ -89,6 +89,7 @@ export default function DesignScreen({
               className={`${styles.designTab} ${on ? styles.on : ''}`}
               onClick={() => selectTab(t.id)}
               title={`${t.label} (⌘⇧${t.key})`}
+              aria-keyshortcuts={`Meta+Shift+${t.key} Control+Shift+${t.key}`}
               data-testid={`tab-${t.id}`}
             >
               <Emblem size={15} className={styles.designTabEmblem} />

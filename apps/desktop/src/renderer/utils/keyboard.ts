@@ -1,4 +1,4 @@
-import type { DesignTab, View } from './navigation.js';
+import { NAV_ITEMS, SMITH_NAV_ITEM, type DesignTab, type View } from './navigation.js';
 
 /** The subset of KeyboardEvent the shortcut helpers read; keeps them testable. */
 export interface ShortcutKey {
@@ -9,13 +9,10 @@ export interface ShortcutKey {
   shiftKey: boolean;
 }
 
-const VIEW_KEYS: Record<string, View> = {
-  '1': 'runs',
-  '2': 'inspector',
-  '3': 'design',
-  '4': 'prs',
-  ',': 'settings',
-};
+const VIEW_KEYS: Record<string, View> = Object.fromEntries(
+  [...NAV_ITEMS, SMITH_NAV_ITEM].map((item) => [item.key, item.id]),
+) as Record<string, View>;
+VIEW_KEYS[','] = 'settings';
 
 const DESIGN_TAB_KEYS: Record<string, DesignTab> = {
   '1': 'pipelines',
@@ -36,7 +33,7 @@ function hasModifier(e: ShortcutKey): boolean {
 }
 
 /**
- * Mirrors the native menu accelerators (⌘1–⌘4, ⌘,) so the same chords work
+ * Mirrors the native menu accelerators (⌘1–⌘5, ⌘,) so the same chords work
  * when the menu cannot intercept them — synthetic input (CDP automation) and
  * non-mac platforms via Ctrl. On macOS the menu consumes the real keypress
  * first, so this only ever sees events the menu did not handle.

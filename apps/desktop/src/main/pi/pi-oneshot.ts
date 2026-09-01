@@ -7,10 +7,10 @@
  * the operator the same thing a run does.
  *
  * The two access modes differ by tool list rather than by setting. A read-only
- * session is handed the four read tools and nothing else, so there is no write
- * for a policy to have to refuse. A write-capable one gets the built-ins behind
- * a policy scoped to its own directory; what the agent then *claims* is still
- * not believed, because `engine/repair.ts` re-derives its verdict from git.
+ * session is handed the four read tools and, when requested, the in-memory
+ * `submit_result` answer channel, so there is no filesystem write for policy
+ * to refuse. A write-capable one gets the built-ins behind a policy scoped to
+ * its own directory; claims are still independently validated by the caller.
  */
 
 import {
@@ -25,7 +25,8 @@ import { evaluate } from './policy.js';
 import { policyOnlyExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { FOUNDRY_ONESHOT_HARNESS } from './system-prompt.js';
-import { BUILTIN_TOOLS, READ_ONLY_TOOLS } from './tool-names.js';
+import { BUILTIN_TOOLS, ONESHOT_OUTPUT_TOOL_NAME, READ_ONLY_TOOLS } from './tool-names.js';
+import { submitResultTool, type SubmissionTool } from './tools.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
 import type { OneShotFactory, OneShotOptions, OneShotResult, OneShotSession } from './oneshot.js';
 import type { PermissionAsk, PermissionDecision } from './transport.js';
@@ -42,18 +43,30 @@ class PiOneShot implements OneShotSession {
   private session: PiAgentSession | null = null;
   private unsubscribe: (() => void) | null = null;
   private readonly events = new VendorEventReader();
-  private readonly extension = policyOnlyExtension((ask) => this.decide(ask));
+  private readonly outputTool: SubmissionTool | null;
+  private readonly extension: ReturnType<typeof policyOnlyExtension>;
   private aborted = false;
   private availableModelCount = 0;
 
-  constructor(private readonly opts: PiOneShotOptions) {}
+  constructor(private readonly opts: PiOneShotOptions) {
+    this.outputTool = opts.outputFormat ? submitResultTool(opts.outputFormat.schema) : null;
+    this.extension = policyOnlyExtension((ask) => this.decide(ask), this.outputTool ?? undefined);
+  }
 
   async send(prompt: string): Promise<OneShotResult> {
     const session = await this.open();
     try {
       // An abort that landed while the session was still opening must not be
       // answered with a turn nobody is waiting for.
-      if (this.aborted) return { text: '', usage: null, reason: 'aborted', interrupted: true };
+      if (this.aborted) {
+        return {
+          text: '',
+          usage: null,
+          reason: 'aborted',
+          interrupted: true,
+          structuredOutput: null,
+        };
+      }
 
       this.extension.useSystemPrompt(this.opts.systemPrompt ?? null);
       this.events.startTurn();
@@ -78,6 +91,7 @@ class PiOneShot implements OneShotSession {
         usage: this.events.turnUsage,
         reason: last?.stopReason ?? 'stop',
         interrupted: last?.stopReason === 'aborted' || this.aborted,
+        structuredOutput: this.outputTool?.submitted() ?? null,
       };
     } finally {
       // A one-shot owns its session for exactly one turn. Leaving one open
@@ -115,7 +129,10 @@ class PiOneShot implements OneShotSession {
       thinkingLevel: thinkingLevelFor(this.opts.reasoningEffort),
       // The list is the allowlist: a read-only session physically has no tool
       // that could write, rather than one the policy happens to refuse.
-      tools: [...(this.opts.access === 'read' ? READ_ONLY_TOOLS : BUILTIN_TOOLS)],
+      tools: [
+        ...(this.opts.access === 'read' ? READ_ONLY_TOOLS : BUILTIN_TOOLS),
+        ...(this.outputTool ? [ONESHOT_OUTPUT_TOOL_NAME] : []),
+      ],
       resourceLoader,
       settingsManager,
       // No file: this session is answered and thrown away.
@@ -139,11 +156,15 @@ class PiOneShot implements OneShotSession {
    * tool list's braces.
    */
   private decide(ask: PermissionAsk): PermissionDecision {
-    const outcome = evaluate(ask, {
-      worktree: this.opts.cwd,
-      writes: this.opts.access === 'read' ? [] : null,
-      protectedPaths: [],
-    });
+    const outcome = evaluate(
+      ask,
+      {
+        worktree: this.opts.cwd,
+        writes: this.opts.access === 'read' ? [] : null,
+        protectedPaths: [],
+      },
+      this.outputTool ? [ONESHOT_OUTPUT_TOOL_NAME] : [],
+    );
     this.opts.onDecision?.(ask, outcome.decision, outcome.reason);
     return outcome.decision;
   }

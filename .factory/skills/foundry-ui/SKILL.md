@@ -147,8 +147,8 @@ agent-browser eval 'document.querySelector("[data-testid=\"agent-tab-builder\"]"
 # Confirm where you landed (no snapshot needed):
 agent-browser eval 'document.querySelector("[data-testid=\"app-view\"]")?.dataset.view'
 
-# Open a past run by id (do not match concatenated snapshot text):
-agent-browser eval 'document.querySelector("[data-testid=\"run-row-run_260808_475d93\"]")?.click()'
+# Open a past run in Inspector by id (do not match concatenated snapshot text):
+agent-browser eval 'document.querySelector("[data-testid=\"sidebar-run-run_260808_475d93\"]")?.click()'
 
 # By role + text (when no data-testid):
 agent-browser eval '(() => { const t = [...document.querySelectorAll("[role=tab]")].find(el => (el.textContent||"").includes("builder")); t?.click(); return !!t; })()'
@@ -157,7 +157,7 @@ agent-browser eval '(() => { const t = [...document.querySelectorAll("[role=tab]
 `button.textContent` concatenates every descendant with no spaces
 (`AcceptedFull SDLC4d ago…`). Snapshot labels insert spaces. Never search
 `textContent` for a `run_*` id that only appears as a visual child — use
-`data-testid="run-row-{runId}"` or `data-run-id`.
+`data-testid="sidebar-run-{runId}"`.
 
 ### Fast navigation cheat sheet
 
@@ -170,6 +170,7 @@ agent-browser press Meta+1        # Runs          → data-view="runs"
 agent-browser press Meta+2        # Inspector     → data-view="inspector"
 agent-browser press Meta+3        # Design        → data-view="design"
 agent-browser press Meta+4        # Pull Requests → data-view="prs"
+agent-browser press Meta+5        # Smith         → data-view="smith"
 agent-browser press "Meta+,"      # Settings      → data-view="settings"
 
 # Design sub-tabs (must be on Design first, or they switch you there):
@@ -181,11 +182,12 @@ agent-browser press 'Meta+Shift+3'  # Design → Envelopes/Reports (+ data-desig
 agent-browser press Meta+k          # → [role=dialog] data-testid="settings-palette"
 
 # Confirm where you are without a snapshot:
-agent-browser eval 'const el = document.querySelector("[data-testid=\"app-view\"]"); el && {view: el.dataset.view, run: el.dataset.openRun, design: el.dataset.designTab, settings: el.dataset.settingsPane}'
+agent-browser eval '(() => { const app = document.querySelector("[data-testid=\"app-view\"]"); const runs = document.querySelector("[data-testid=\"runs-screen\"]"); return app && {view: app.dataset.view, run: app.dataset.openRun, design: app.dataset.designTab, settings: app.dataset.settingsPane, runsSource: runs?.dataset.runsSource}; })()'
 ```
 
 Settings panes have no chord. Once on Settings, eval the tab — do not walk
-ArrowDown from a guessed selected tab. Pane ids are `models`, `project`, `app`:
+ArrowDown from a guessed selected tab. Pane ids are `models`, `integrations`,
+`project`, `app`:
 
 ```bash
 agent-browser eval 'document.querySelector("[data-testid=\"settings-tab-project\"]")?.click()'
@@ -210,7 +212,7 @@ Shell and sidebar:
 | `nav-inspector`       | Sidebar → Inspector button                   |
 | `nav-design`          | Sidebar → Design button                      |
 | `nav-prs`             | Sidebar → Pull Requests button               |
-| `nav-smith`           | Sidebar → Smith chat (safe to open)          |
+| `nav-smith`           | Sidebar → Smith chat (⌘5; safe to open)      |
 | `nav-settings`        | Sidebar → Settings button                    |
 | `sidebar-run-{runId}` | Activity row → opens run pinned in Inspector |
 | `project-selector`    | Project dropdown trigger                     |
@@ -219,17 +221,28 @@ Shell and sidebar:
 
 Runs:
 
-| `data-testid`      | Element                                   |
-| ------------------ | ----------------------------------------- |
-| `run-request`      | Run composer request textarea (⌘↵ starts) |
-| `run-pipeline`     | Run composer pipeline dropdown            |
-| `run-start`        | "Start run" button                        |
-| `runs-archived`    | "Show archived" checkbox                  |
-| `readiness-banner` | Readiness strip (`data-ready` yes/no)     |
-| `base-sync`        | Local base-ref vs remote status bar       |
-| `base-sync-update` | Fast-forward the local base ref           |
-| `base-sync-check`  | Re-fetch and compare the remote base ref  |
-| `run-row-{runId}`  | One past-run row on Runs                  |
+| `data-testid`                | Element                                      |
+| ---------------------------- | -------------------------------------------- |
+| `runs-screen`                | Runs root (`data-runs-source`)                |
+| `runs-source-orchestrator`   | Composer mode → Orchestrator                  |
+| `runs-source-manual`         | Composer mode → Manual pipeline               |
+| `runs-source-linear`         | Composer mode → Linear issue                  |
+| `run-composer`               | Active composer card                          |
+| `run-request`                | Request textarea (⌘↵ plans/submits)           |
+| `run-plan`                   | Ask the Orchestrator to produce a plan        |
+| `orchestrator-picker`        | Orchestrator selection controls               |
+| `orchestrator-model`         | Orchestrator model picker                     |
+| `orchestrator-effort`        | Orchestrator reasoning picker                 |
+| `plan-card` / `plan-start`   | Reviewed plan / start its real run            |
+| `plan-regenerate`            | Regenerate the current plan                   |
+| `plan-discard`               | Discard the current plan                      |
+| `run-pipeline` / `run-start` | Manual mode pipeline / start button           |
+| `linear-composer`            | Linear mode composer                          |
+| `linear-primary`             | Linear mode plan/start action                 |
+| `readiness-banner`           | Readiness strip (`data-ready` no when shown)  |
+| `base-sync`                  | Local base-ref vs remote status bar           |
+| `base-sync-update`           | Fast-forward the local base ref               |
+| `base-sync-check`            | Re-fetch and compare the remote base ref      |
 
 Run detail:
 
@@ -237,6 +250,7 @@ Run detail:
 | ---------------------- | ------------------------------------------- |
 | `run-back`             | ← Runs button                               |
 | `run-open-inspector`   | Deep-link this run into the Inspector       |
+| `run-prompt-resize`    | Drag/keyboard handle for prompt height      |
 | `run-kill`             | Kill run (live runs only; in-app confirm)   |
 | `phase-lane-{phaseId}` | Waterfall phase lane (`data-phase-name`)    |
 | `outcome-resume`       | Outcome banner → Continue run               |
@@ -256,6 +270,7 @@ Inspector:
 | `data-testid`              | Element                                    |
 | -------------------------- | ------------------------------------------ |
 | `inspector-run`            | Run picker (bare nav follows what is live) |
+| `inspector-open-run`       | Open selected run’s detail view            |
 | `inspector-filter-all`     | Filter: All                                |
 | `inspector-filter-running` | Filter: Running                            |
 | `inspector-filter-failed`  | Filter: Failed                             |
@@ -319,6 +334,7 @@ Settings:
 | `data-testid`            | Element                                |
 | ------------------------ | -------------------------------------- |
 | `settings-tab-models`    | Settings → Models & Providers          |
+| `settings-tab-integrations` | Settings → Integrations              |
 | `settings-tab-project`   | Settings → Project                     |
 | `settings-tab-app`       | Settings → App                         |
 | `settings-search`        | Rail search input                      |
@@ -349,7 +365,7 @@ Overlays and decisions:
 | `data-view`          | always          | `runs` `run-detail` `inspector` `design` `prs` `smith` `settings` |
 | `data-open-run`      | run detail only | the full `run_*` id                                               |
 | `data-design-tab`    | Design only     | `pipelines` `agents` `envelopes`                                  |
-| `data-settings-pane` | Settings only   | `models` `project` `app`                                          |
+| `data-settings-pane` | Settings only   | `models` `integrations` `project` `app`                           |
 
 ### Other driving notes
 
@@ -366,6 +382,9 @@ Overlays and decisions:
 - Tab strips (Design / Agents / Settings) are roving-tabindex tablists:
   focus the selected tab and use ArrowLeft/ArrowRight (wrap), Home/End;
   selection follows focus. Prefer the `settings-tab-*` / `tab-*` testids.
+- Direct view and Design-tab controls publish `aria-keyshortcuts`, so a DOM
+  audit can discover the chord map without parsing visible `<kbd>` text.
+  Foundry advertises both `Meta` and cross-platform `Control` variants.
 - Two kinds of confirm exist. The **in-app ConfirmModal** (`confirm-accept` /
   `confirm-cancel`) backs kill run, merge/discard worktree, deletes — drive it
   by testid. A **native `window.confirm`** (PR merge on the PRs screen)
@@ -389,7 +408,7 @@ present (except during Onboarding):
 | `button "Inspector ⌘2"`     | Live trace viewer              | `press Meta+2`          |
 | `button "Design ⌘3"`        | Pipeline/agent/envelope editor | `press Meta+3`          |
 | `button "Pull Requests ⌘4"` | PR list                        | `press Meta+4`          |
-| `button "Smith"`            | In-app Smith chat              | none — eval `nav-smith` |
+| `button "Smith ⌘5"`         | In-app Smith chat              | `press Meta+5`          |
 | `button "Settings ⌘,"`      | Settings panes                 | `press "Meta+,"`        |
 
 Design has three sub-tabs, each with its own shortcut:
@@ -407,9 +426,10 @@ The sidebar also carries:
   automation**: it opens a native folder picker CDP cannot drive (if stuck,
   `press Escape` won't help; you must dismiss it manually or kill the app);
   the Create-New half opens the in-app `NewProjectWizard`, which _is_ drivable;
-- the Activity list while runs exist: one row per recent run across projects,
-  `data-testid="sidebar-run-{runId}"`, each opening that run pinned in the
-  Inspector.
+- the Activity list while runs exist: one row per live + recent run of the
+  currently selected project (hidden when the rail is collapsed or there are
+  no rows), `data-testid="sidebar-run-{runId}"`. Click pins Inspector and does
+  not change the project picker.
 
 **Smith (`nav-smith`) is safe to open** — it is a native chat view
 (`data-view="smith"`), not a terminal handoff. What costs tokens is _sending_
@@ -423,32 +443,37 @@ was driven.
 
 ### Runs (home, default view)
 
-- Heading "Runs", `checkbox "Show archived"` (`runs-archived`), companion
-  phone pill (`companion-pill`, `data-running`).
-- Composer: `data-testid="run-request"` textarea (⌘↵ submits — do not type a
-  request and press Enter blindly), pipeline dropdown (`run-pipeline`),
-  `run-start` button (disabled while the textarea is empty).
+- Heading "Runs" and companion phone pill (`companion-pill`,
+  `data-running`).
+- Composer source tabs are `runs-source-orchestrator`, `runs-source-manual`,
+  and `runs-source-linear`; `runs-screen[data-runs-source]` exposes the current
+  mode without a snapshot. Orchestrator mode uses `run-plan`, then a reviewed
+  `plan-card` with `plan-start` / `plan-regenerate` / `plan-discard`. Manual
+  mode uses `run-pipeline` and `run-start`. Linear mode uses
+  `linear-composer` and `linear-primary`.
+- The shared `run-request` textarea supports ⌘↵, whose effect depends on the
+  current mode. Do not type a request and press it blindly.
 - Base-ref bar (`data-testid="base-sync"`, `data-state` is `checking` /
   `syncing` / `current` / `behind` / `ahead` / `diverged` / `error`):
   fetches the remote base on mount. When behind, `base-sync-update`
   fast-forwards local `main`; otherwise `base-sync-check` re-fetches.
   Hidden when the repo has no remote. Does not block Start except while
   an update is in flight.
-- One button per past run (`data-testid="run-row-{runId}"`); the visible
-  label packs status, pipeline, age, prompt excerpt, `run_*` id, duration,
-  tokens. Open it with eval on that testid, not by matching the packed label.
+- Past runs live in sidebar Activity as `sidebar-run-{runId}`. Open by testid,
+  not by matching the packed visible label.
 
-**Warning:** filling the composer and clicking "Start run" (or ⌘↵) executes a
-real pipeline on real models and spends real tokens. Never start a run unless
-explicitly asked.
+**Warning:** `run-plan`, `plan-regenerate`, and Linear orchestration call a real
+model. `plan-start`, `run-start`, and Linear's start action execute a real
+pipeline. All spend real tokens; never trigger them unless explicitly asked.
 
 ### Run detail
 
-Open via `run-row-{runId}`. `data-view` becomes `run-detail` and
+Open a sidebar Activity row, then use `inspector-open-run`. `data-view` becomes `run-detail` and
 `data-open-run` is the full id. Contains:
 
 - `data-testid="run-back"` (← Runs), `run-open-inspector` (deep-link this run
-  into the Inspector), and `run-kill` on live runs only.
+  into the Inspector), `run-prompt-resize` (drag or use ArrowUp/ArrowDown to
+  resize the prompt), and `run-kill` on live runs only.
 - Outcome banner for finished runs: status headline, and when the worktree
   still exists, action buttons — `outcome-resume`, `outcome-fix-merge`,
   `outcome-open-pr` (opens an inline form: `pr-title`, `pr-body`,
@@ -468,6 +493,8 @@ Live trace viewer, cards per phase in a two-column masonry. Top bar:
 
 - `data-testid="inspector-run"` — bare navigation follows whatever is live;
   options list past runs (`Full SDLC · accepted · 04:51:20 · 12h ago`).
+- `inspector-open-run` opens the selected run’s waterfall and phase detail;
+  `run-open-inspector` returns to this Inspector view with that run pinned.
 - Filters `inspector-filter-all` / `running` / `failed`, toggle
   `inspector-raw-files` (shows a flat chronological list of every file
   READ/EDIT/CREATE/SEARCH and `$` command across the run; toggle again to
@@ -548,8 +575,9 @@ project.
 
 ### Settings
 
-Three panes on a left rail (`settings-tab-{id}`, mirrored by
-`data-settings-pane`): `models` (Models & Providers), `project`, `app`.
+Four panes on a left rail (`settings-tab-{id}`, mirrored by
+`data-settings-pane`): `models` (Models & Providers), `integrations`,
+`project`, `app`.
 
 - Models & Providers: Bridge status pill (`bridge-status`), subscription
   provider cards (`provider-card-{id}`) with Connect/Disconnect (connect
@@ -559,6 +587,8 @@ Three panes on a left rail (`settings-tab-{id}`, mirrored by
   count line `providers-model-count`). Agent defaults (model, reasoning,
   helper model, Smith model, PR writer) and Advanced limits sit below on
   the same pane.
+- Integrations: external work-source connections, including Linear
+  (`linear-integration`).
 - Project: name, path + `Reveal in Finder`, readiness note, repository
   checks + re-check, base ref, merge policy, base-ref sync bar (`base-sync`
   — same control as Runs), project commands, worktree setup script,

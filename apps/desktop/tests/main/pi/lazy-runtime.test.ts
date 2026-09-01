@@ -84,7 +84,13 @@ describe('lazyOneShots', () => {
       return () => ({
         abort() {},
         async send(): Promise<OneShotResult> {
-          return { text: 'done', usage: null, reason: 'stop', interrupted: false };
+          return {
+            text: 'done',
+            usage: null,
+            reason: 'stop',
+            interrupted: false,
+            structuredOutput: null,
+          };
         },
       });
     };
@@ -107,7 +113,13 @@ describe('lazyOneShots', () => {
       abort() {},
       async send(): Promise<OneShotResult> {
         sent += 1;
-        return { text: 'should-not', usage: null, reason: 'stop', interrupted: false };
+        return {
+          text: 'should-not',
+          usage: null,
+          reason: 'stop',
+          interrupted: false,
+          structuredOutput: null,
+        };
       },
     }));
     const session = factory({

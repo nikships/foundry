@@ -141,6 +141,15 @@ describe('the agent model catalog', () => {
   it('carries the context window through, which the gauge needs', () => {
     expect(toModelInfo(model()).contextWindow).toBe(1_000_000);
   });
+
+  it('carries catalog pricing through for evidence-based model casting', () => {
+    const cost = { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 };
+    expect(toModelInfo(model({ cost })).cost).toEqual(cost);
+  });
+
+  it('leaves pricing absent when the runtime model does not report it', () => {
+    expect(toModelInfo(model({ cost: undefined })).cost).toBeUndefined();
+  });
 });
 
 describe('providerOf', () => {

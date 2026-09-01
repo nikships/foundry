@@ -890,6 +890,7 @@ class FakeCompanionRepository(
                     put("kind", "agent")
                     put("agent", "planner")
                     put("model", request.model)
+                    put("reasoningEffort", request.reasoningEffort)
                     put("description", "Inspect the parity gap and define the implementation.")
                     put("prompt", buildJsonObject { put("inputs", buildJsonArray { add("request") }) })
                 }
@@ -900,6 +901,7 @@ class FakeCompanionRepository(
                     put("kind", "agent")
                     put("agent", "builder")
                     put("model", request.model)
+                    put("reasoningEffort", request.reasoningEffort)
                     put("description", "Implement the Android and host changes.")
                     put("prompt", buildJsonObject { put("inputs", buildJsonArray { add("request") }) })
                 }
@@ -910,6 +912,7 @@ class FakeCompanionRepository(
                     put("kind", "agent")
                     put("agent", "reviewer")
                     put("model", request.model)
+                    put("reasoningEffort", request.reasoningEffort)
                     put("description", "Run focused tests and review the result.")
                     put("prompt", buildJsonObject { put("inputs", buildJsonArray { add("request") }) })
                 }

@@ -29,6 +29,8 @@ export interface ScriptedTurn {
   work?: (opts: OneShotOptions) => void;
   /** The final assistant text the caller parses. */
   text?: string;
+  /** Captured schema-bound submission, when the caller requested one. */
+  structuredOutput?: Record<string, unknown>;
   /** Thrown instead of answering, for failure paths. */
   throws?: string;
   /** Ends the turn as interrupted rather than complete. */
@@ -46,6 +48,8 @@ export interface ScriptedTurn {
 export interface ScriptedOneShots {
   /** What every call site was handed, in call order. Asserted on. */
   readonly calls: OneShotOptions[];
+  /** User prompts sent through each opened one-shot, in call order. */
+  readonly prompts: string[];
   /** The factory to inject. */
   readonly factory: (opts: OneShotOptions) => OneShotSession;
 }
@@ -57,6 +61,7 @@ export interface ScriptedOneShots {
  */
 export function scriptedOneShots(turns: ScriptedTurn[]): ScriptedOneShots {
   const calls: OneShotOptions[] = [];
+  const prompts: string[] = [];
   let index = 0;
 
   const factory = (opts: OneShotOptions): OneShotSession => {
@@ -68,7 +73,8 @@ export function scriptedOneShots(turns: ScriptedTurn[]): ScriptedOneShots {
       abort(): void {
         aborted = true;
       },
-      async send(_prompt: string): Promise<OneShotResult> {
+      async send(prompt: string): Promise<OneShotResult> {
+        prompts.push(prompt);
         if (script.warning) opts.onWarning?.(script.warning);
         for (const event of script.events ?? []) opts.onEvent?.(event);
         script.work?.(opts);
@@ -77,7 +83,13 @@ export function scriptedOneShots(turns: ScriptedTurn[]): ScriptedOneShots {
           while (!aborted) {
             await new Promise((resolve) => setTimeout(resolve, 5));
           }
-          return { text: '', usage: null, reason: 'aborted', interrupted: true };
+          return {
+            text: '',
+            usage: null,
+            reason: 'aborted',
+            interrupted: true,
+            structuredOutput: null,
+          };
         }
 
         if (script.throws) throw new Error(script.throws);
@@ -86,12 +98,13 @@ export function scriptedOneShots(turns: ScriptedTurn[]): ScriptedOneShots {
           usage: null,
           reason: script.reason ?? (script.interrupted ? 'aborted' : 'stop'),
           interrupted: !!script.interrupted || aborted,
+          structuredOutput: script.structuredOutput ?? null,
         };
       },
     };
   };
 
-  return { calls, factory };
+  return { calls, prompts, factory };
 }
 
 /** The event pair one completed tool call produces, which is what a panel folds. */

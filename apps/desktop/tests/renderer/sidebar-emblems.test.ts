@@ -102,6 +102,12 @@ describe('Sidebar wiring', () => {
     expect(sidebarSrc).toMatch(/!collapsed && pipelineRuns\.length > 0/);
   });
 
+  it('scopes Activity to the selected project and never switches projects on click', () => {
+    expect(sidebarSrc).not.toContain('useAllProjectRuns');
+    expect(sidebarSrc).toContain('useActivityRuns(projectId)');
+    expect(sidebarSrc).not.toContain('selectProject(run.projectId)');
+  });
+
   it('still names every collapsed control', () => {
     expect(sidebarSrc).toContain(
       'aria-label={collapsed ? `${item.label} ⌘${item.key}` : undefined}',
