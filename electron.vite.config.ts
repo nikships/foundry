@@ -61,7 +61,9 @@ export default defineConfig({
             if (!id.includes('node_modules')) return;
             if (id.includes('react-dom') || id.includes('/scheduler/')) return 'react-vendor';
             if (id.includes('/react/')) return 'react-vendor';
-            if (id.includes('lucide-react') || id.includes('@lobehub/icons')) return 'icons';
+            // Lucide / lobehub stay with the screens that import them. Putting
+            // them in a shared vendor chunk made Vite preload 240 kB of icons
+            // on first paint even though the shell never draws one.
           },
         },
       },

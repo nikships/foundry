@@ -14,7 +14,7 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { categorize, evaluate, type PolicyContext } from '../../../src/main/pi/policy.js';
-import { FOUNDRY_TOOL_NAMES, ONESHOT_OUTPUT_TOOL_NAME } from '../../../src/main/pi/tools.js';
+import { FOUNDRY_TOOL_NAMES, ONESHOT_OUTPUT_TOOL_NAME } from '../../../src/main/pi/tool-names.js';
 import type { PermissionAsk } from '../../../src/main/pi/transport.js';
 
 const WORKTREE = '/tmp/foundry-worktree';

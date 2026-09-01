@@ -36,9 +36,9 @@ import { createPlans, type PlanStart } from './orchestrator/plan-session.js';
 import { runDetail } from './engine/operations.js';
 import { ReadinessSessions } from './readiness/sessions.js';
 import type { PanelRegistry } from './session/index.js';
-import { piOneShots } from './pi/pi-oneshot.js';
+import { lazyOneShots } from './pi/lazy-oneshot.js';
+import { lazyTransport } from './pi/lazy-transport.js';
 import type { OneShotFactory } from './pi/oneshot.js';
-import { SmithPiTransport } from './pi/smith-transport.js';
 import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
 import { SmithChatSession, type SmithToolFactory } from './smith/chat-session.js';
@@ -135,7 +135,10 @@ export class AppContext {
       trace: () => this.registry.bridgeTrace(),
     });
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
-    this.oneShot = piOneShots(supportDir, () => this.settings.get().hiddenModelIds);
+    this.oneShot = lazyOneShots(async () => {
+      const { piOneShots } = await import('./pi/pi-oneshot.js');
+      return piOneShots(supportDir, () => this.settings.get().hiddenModelIds);
+    });
     this.detections = createDetections(this.oneShot, (state) =>
       this.broadcast(IPC.eventDetectionProgress, state),
     );
@@ -347,17 +350,20 @@ export class AppContext {
           smithReasoningEffort: () => this.settings.get().smithReasoningEffort,
           toolFactories,
           transport: (request) =>
-            new SmithPiTransport({
-              cwd: request.cwd,
-              supportDir,
-              sessionDir: join(chatRoot, 'sessions'),
-              model: request.model,
-              reasoningEffort: request.reasoningEffort,
-              harness: request.harness,
-              customTools: request.customTools,
-              onPermission: request.onPermission,
-              onEvent: request.onEvent,
-              onModelWarning: request.onModelWarning,
+            lazyTransport(async () => {
+              const { SmithPiTransport } = await import('./pi/smith-transport.js');
+              return new SmithPiTransport({
+                cwd: request.cwd,
+                supportDir,
+                sessionDir: join(chatRoot, 'sessions'),
+                model: request.model,
+                reasoningEffort: request.reasoningEffort,
+                harness: request.harness,
+                customTools: request.customTools,
+                onPermission: request.onPermission,
+                onEvent: request.onEvent,
+                onModelWarning: request.onModelWarning,
+              });
             }),
           onChange: (state) => this.broadcast(IPC.eventSmithProgress, state),
         });

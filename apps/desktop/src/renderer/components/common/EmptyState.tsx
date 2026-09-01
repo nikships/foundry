@@ -1,5 +1,5 @@
 import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
-import { FoundryGlyph } from '../media/BrandIcon.js';
+import { FoundryGlyph } from '../media/FoundryGlyph.js';
 import styles from './EmptyState.module.css';
 
 export default function EmptyState({

@@ -15,11 +15,9 @@
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { piStateDir } from './pi-paths.js';
 
-/** Where pi's auth and model files live, given Foundry's support directory. */
-export function piStateDir(supportDir: string): string {
-  return join(supportDir, 'pi');
-}
+export { piStateDir } from './pi-paths.js';
 
 const runtimes = new Map<string, Promise<ModelRuntime>>();
 

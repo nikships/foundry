@@ -1,5 +1,5 @@
 import { CircleDot, Sparkles, Workflow } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ReadinessInspectResult, ValidationIssue } from '@shared/types.js';
 import type { CompanionHostState } from '@shared/companion.js';
 import type { LinearConnectionState } from '@shared/ipc-contract.js';
@@ -10,7 +10,6 @@ import { safeGetItem, safeSetItem } from '../utils/local-store.js';
 import EmptyState from '../components/common/EmptyState.js';
 import BaseSyncBar from '../components/project/BaseSyncBar.js';
 import PanelTranscript from '../components/readiness/PanelTranscript.js';
-import LinearComposer from '../components/run/LinearComposer.js';
 import ManualComposer from '../components/run/ManualComposer.js';
 import OrchestratorPicker, {
   type OrchestratorChoice,
@@ -19,6 +18,8 @@ import PlanCard from '../components/run/PlanCard.js';
 import { Button } from '../components/ui/Button.js';
 import { readinessBanner, showReadinessOnRuns } from '../view-models/readiness-view.js';
 import styles from './RunsScreen.module.css';
+
+const LinearComposer = lazy(() => import('../components/run/LinearComposer.js'));
 
 const MODE_KEY = 'foundry.runs.mode';
 type RunsMode = 'orchestrator' | 'manual' | 'linear';
@@ -432,18 +433,22 @@ export default function RunsScreen({
             </div>
           )}
 
-          <div className={styles.modePanel} hidden={mode !== 'linear'}>
-            <LinearComposer
-              active={mode === 'linear'}
-              header={mode === 'linear' ? tabs : null}
-              choice={orchestratorChoice}
-              onChoiceChange={onOrchestratorChoiceChange}
-              onOpen={onOpen}
-              onOpenSettings={onOpenSettings}
-              onConnectionChange={setLinearConnection}
-              baseSyncing={baseSyncing}
-            />
-          </div>
+          {mode === 'linear' && (
+            <div className={styles.modePanel}>
+              <Suspense fallback={null}>
+                <LinearComposer
+                  active
+                  header={tabs}
+                  choice={orchestratorChoice}
+                  onChoiceChange={onOrchestratorChoiceChange}
+                  onOpen={onOpen}
+                  onOpenSettings={onOpenSettings}
+                  onConnectionChange={setLinearConnection}
+                  baseSyncing={baseSyncing}
+                />
+              </Suspense>
+            </div>
+          )}
         </div>
       )}
     </div>

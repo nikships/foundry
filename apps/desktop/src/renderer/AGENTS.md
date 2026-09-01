@@ -8,11 +8,11 @@ React 19 renderer. Unprivileged: no `fs`, `child_process`, `electron`, or `apps/
 - App shell: `App.tsx` + screens (`screens/`), domain-scoped components (`components/{common,inspector,layout,media,pipeline,project,readiness,run,smith,ui}`), view-models (`view-models/`), utils (`utils/`), design tokens (`design/tokens.css`, `tokens-base.css`), hooks, stores, and `view-models/pipeline-view.ts`. The Runs composer and Settings → Project → Git share `BaseSyncBar` (`view-models/base-sync-view.ts` owns the copy) so the operator can see whether local `main` matches the remote and fast-forward it before a run.
 - Bridge: `api.ts` wraps `window.foundry` and eagerly `plain()`-clones args so structured‑clone errors are visible before IPC.
 - Trace consumption: `stores/run.tsx` polls `runs:events` with a `change_id` cursor and merges by `eventId`; `utils/derive.ts` derives usage/duration/model from events (no denormalized columns). `components/inspector/entries.tsx` renders `TranscriptEntry` per event — new events need a switch case or the default silently drops them.
-- Mock: `mockFoundry.ts` backs `window.foundry` when `window.foundry` is absent (vite web preview). Keep it in sync with `FoundryApi`; do not import Node/main behavior into it.
+- Mock: `mockFoundry.ts` backs `window.foundry` when `window.foundry` is absent (vite web preview). `api.ts` loads it with a dynamic import, so the Electron app never pays for the fixture. Keep it in sync with `FoundryApi`; do not import Node/main behavior into it.
 - Smith's screen and bubble share `smithProjectId`; null means “All projects.”
   Its proposal card narrows entity/action proposals. Masked secret input and
   Companion private displays stay component-local and never enter chat state.
-- Factory tokens imported statically in `main.tsx`; keep provider icon + CSS imports narrow.
+- Factory tokens imported statically in `main.tsx`; keep provider icon + CSS imports narrow. Screens (and Smith) load through `React.lazy` in `App.tsx`; `FoundryGlyph` is a standalone module so the titlebar does not pull `@lobehub/icons`.
 
 ## Setup Commands
 
@@ -65,12 +65,12 @@ Exactly ten main→renderer channels (subscribed via `window.foundry.on`):
 ## Build and Deployment
 
 ```bash
-npm run build         # includes renderer build (chunked: react-vendor, icons)
+npm run build         # includes renderer build (chunked: react-vendor; screens lazy)
 npm run check:css     # CSS collision gate (real failure, not advisory)
 npm run build:web     # web-only bundle (out/web)
 ```
 
-- `electron.vite.config.ts` chunks `node_modules` (`react-vendor`, `icons`) and enforces CSS-module conventions.
+- `electron.vite.config.ts` chunks React into `react-vendor`. Icon libraries stay with the screens that import them so first paint does not preload them.
 - Factory design tokens in `design/tokens*.css` are statically imported.
 
 ## Additional Notes

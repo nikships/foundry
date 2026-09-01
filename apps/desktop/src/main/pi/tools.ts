@@ -21,49 +21,20 @@
  */
 
 import { isAbsolute } from 'node:path';
-import type { ToolProfile } from '@shared/types.js';
 import { boundPatch, diffPatch } from '../engine/git.js';
 import type { Envelope } from '../engine/envelopes.js';
 import { defineTool, type ToolDefinition } from './tool-definition.js';
+import { ONESHOT_OUTPUT_TOOL_NAME } from './tool-names.js';
 import type { FoundryToolContext } from './transport.js';
 
-export const FOUNDRY_TOOL_NAMES = [
-  'report_progress',
-  'read_phase_context',
-  'git_diff',
-  'submit_envelope',
-] as const;
-export type FoundryToolName = (typeof FOUNDRY_TOOL_NAMES)[number];
-/** Schema-bound answer channel for one-shot helpers such as the Orchestrator. */
-export const ONESHOT_OUTPUT_TOOL_NAME = 'submit_result';
-
-/** Pi's built-ins. A phase runs all of them; none of them prompts a human. */
-export const BUILTIN_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const;
-
-/**
- * The read-only subset, and the whole of what a detection or a setup session
- * gets. The tool list is the allowlist: an editing or shell tool is not merely
- * denied by policy, it is absent from the registry, so a session that runs
- * against the operator's own checkout has nothing that could write to it.
- */
-export const READ_ONLY_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
-
-/**
- * The whole allowlist a run session is opened with, for one agent's profile.
- *
- * Foundry's own tools are named alongside the built-ins because the list given
- * to `createAgentSession` *is* the registry. A `read-only` agent gets the read
- * subset: `edit`, `write`, and `bash` do not exist for it, which is the only
- * form of read-only this directory recognises.
- *
- * Foundry's tools are in both profiles, `git_diff` included. It reads history
- * the agent could already read through `read`, cannot run anything else, and is
- * strictly narrower than the `bash` a full-surface agent already has.
- */
-export function runToolsFor(profile: ToolProfile | undefined): string[] {
-  const builtins = profile === 'read-only' ? READ_ONLY_TOOLS : BUILTIN_TOOLS;
-  return [...builtins, ...FOUNDRY_TOOL_NAMES];
-}
+export {
+  BUILTIN_TOOLS,
+  FOUNDRY_TOOL_NAMES,
+  ONESHOT_OUTPUT_TOOL_NAME,
+  READ_ONLY_TOOLS,
+  runToolsFor,
+  type FoundryToolName,
+} from './tool-names.js';
 
 /** One entry of the chain `read_phase_context` returns. */
 export interface PhaseContextEntry {
@@ -101,7 +72,7 @@ export function reportProgressTool(ctx: FoundryToolContext): ToolDefinition {
       required: ['summary'],
       additionalProperties: false,
     },
-    execute: (_id, params) => {
+    execute: (_id: string, params: unknown) => {
       const raw = field(params, 'summary');
       const summary = typeof raw === 'string' ? raw : String(raw ?? '');
       ctx.tracer.event({
@@ -261,7 +232,7 @@ function submissionTool(input: {
     label: input.label,
     description: input.description,
     parameters: input.schema,
-    execute: (_id, params) => {
+    execute: (_id: string, params: unknown) => {
       captured = params && typeof params === 'object' ? (params as Record<string, unknown>) : null;
       return Promise.resolve(text(input.confirmation));
     },

@@ -1,26 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SmithScreenContext } from '@shared/ipc-contract.js';
+import type { ProjectDef, SmithReceiptLink, UpdateStatus } from '@shared/types.js';
 import { api, menu } from './api.js';
+import ConfirmModal from './components/common/ConfirmModal.js';
+import Sidebar from './components/layout/Sidebar.js';
+import UpdateBanner from './components/layout/UpdateBanner.js';
+import { FoundryGlyph } from './components/media/FoundryGlyph.js';
+import type { SmithNavTarget } from './components/smith/SmithProposalCard.js';
+import { cx } from './components/ui/cx.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
 import { useOrchestratorPlan } from './hooks/useOrchestratorPlan.js';
 import { AppProvider, useApp } from './stores/app.js';
-import Sidebar from './components/layout/Sidebar.js';
-import { FoundryGlyph } from './components/media/BrandIcon.js';
-import { loadOrchestratorChoice } from './components/run/OrchestratorPicker.js';
-import RunsScreen from './screens/RunsScreen.js';
-import RunDetailScreen from './screens/RunDetailScreen.js';
-import InspectorScreen from './screens/InspectorScreen.js';
-import DesignScreen from './screens/DesignScreen.js';
-import PullRequestsScreen from './screens/PullRequestsScreen.js';
-import SettingsScreen from './screens/SettingsScreen.js';
-import OnboardingShell from './screens/onboarding/OnboardingShell.js';
-import NewProjectWizard from './components/project/NewProjectWizard.js';
-import ConfirmModal from './components/common/ConfirmModal.js';
-import UpdateBanner from './components/layout/UpdateBanner.js';
-import SmithScreen from './screens/SmithScreen.js';
-import SmithBubble from './components/smith/SmithBubble.js';
-import { type SmithNavTarget } from './components/smith/SmithProposalCard.js';
-import type { ProjectDef, SmithReceiptLink, UpdateStatus } from '@shared/types.js';
-import type { SmithScreenContext } from '@shared/ipc-contract.js';
 import {
   MENU_DESIGN_TABS,
   MENU_VIEWS,
@@ -28,9 +18,20 @@ import {
   type DesignTab,
   type View,
 } from './utils/navigation.js';
+import { loadOrchestratorChoice } from './utils/orchestrator-choice.js';
 import { describeScreen } from './view-models/smith-chat-view.js';
-import { cx } from './components/ui/cx.js';
 import styles from './App.module.css';
+
+const RunsScreen = lazy(() => import('./screens/RunsScreen.js'));
+const RunDetailScreen = lazy(() => import('./screens/RunDetailScreen.js'));
+const InspectorScreen = lazy(() => import('./screens/InspectorScreen.js'));
+const DesignScreen = lazy(() => import('./screens/DesignScreen.js'));
+const PullRequestsScreen = lazy(() => import('./screens/PullRequestsScreen.js'));
+const SettingsScreen = lazy(() => import('./screens/SettingsScreen.js'));
+const OnboardingShell = lazy(() => import('./screens/onboarding/OnboardingShell.js'));
+const NewProjectWizard = lazy(() => import('./components/project/NewProjectWizard.js'));
+const SmithScreen = lazy(() => import('./screens/SmithScreen.js'));
+const SmithBubble = lazy(() => import('./components/smith/SmithBubble.js'));
 
 /**
  * The line a finished check should show. An unpackaged build and a real
@@ -40,6 +41,14 @@ import styles from './App.module.css';
 function checkCompleteToast(message: string | undefined): string {
   if (!message || message === 'No update available') return "You're up to date";
   return message;
+}
+
+function ScreenFallback(): React.JSX.Element {
+  return (
+    <div className={styles.loading}>
+      <span className={styles.spinner} />
+    </div>
+  );
 }
 
 function AppInner(): React.JSX.Element {
@@ -364,7 +373,9 @@ function AppInner(): React.JSX.Element {
       </div>
 
       {needsOnboarding ? (
-        <OnboardingShell onDone={finishOnboarding} />
+        <Suspense fallback={<ScreenFallback />}>
+          <OnboardingShell onDone={finishOnboarding} />
+        </Suspense>
       ) : ready ? (
         <>
           <Sidebar
@@ -388,14 +399,12 @@ function AppInner(): React.JSX.Element {
             data-settings-pane={view === 'settings' ? settingsPane : undefined}
           >
             <div key={`${view}:${openRunId}`} className={styles.screenHost}>
-              {renderMain()}
+              <Suspense fallback={<ScreenFallback />}>{renderMain()}</Suspense>
             </div>
           </main>
         </>
       ) : (
-        <div className={styles.loading}>
-          <span className={styles.spinner} />
-        </div>
+        <ScreenFallback />
       )}
 
       {/*
@@ -403,16 +412,20 @@ function AppInner(): React.JSX.Element {
        * screens, hidden when already viewing the dedicated Smith screen.
        */}
       {ready && !needsOnboarding && view !== 'smith' && (
-        <SmithBubble
-          screenContext={liveScreenContext}
-          onExpand={openSmith}
-          onCompleted={(target) => void onSmithCompleted(target)}
-          onOpenInspector={openInspector}
-          onOpenReceiptLink={openReceiptLink}
-        />
+        <Suspense fallback={null}>
+          <SmithBubble
+            screenContext={liveScreenContext}
+            onExpand={openSmith}
+            onCompleted={(target) => void onSmithCompleted(target)}
+            onOpenInspector={openInspector}
+            onOpenReceiptLink={openReceiptLink}
+          />
+        </Suspense>
       )}
       {creatingProject && (
-        <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />
+        <Suspense fallback={null}>
+          <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />
+        </Suspense>
       )}
       <ConfirmModal />
       {showBanner && (

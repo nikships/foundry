@@ -21,9 +21,10 @@ describe('onboarding', () => {
       "{ id: 'doctor', label: 'Ready' }",
       "{ id: 'project', label: 'Project' }",
     ]);
-    expect(shell).toContain('providers: ProvidersScreen');
-    expect(shell).toContain('doctor: DoctorScreen');
-    expect(shell).toContain('project: ProjectScreen');
+    expect(shell).toContain("welcome: React.lazy(() => import('./WelcomeScreen.js'))");
+    expect(shell).toContain("providers: React.lazy(() => import('./ProvidersScreen.js'))");
+    expect(shell).toContain("doctor: React.lazy(() => import('./DoctorScreen.js'))");
+    expect(shell).toContain("project: React.lazy(() => import('./ProjectScreen.js'))");
   });
 
   it('uses one concept diagram and gives the exact accepted-run landing guidance', () => {
