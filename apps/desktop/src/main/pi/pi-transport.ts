@@ -25,7 +25,7 @@ import { foundryResourceLoader, foundrySettings, openFoundrySession } from './op
 import { foundryExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { FOUNDRY_RUN_HARNESS } from './system-prompt.js';
-import { runToolsFor, submitEnvelopeTool, type EnvelopeTool } from './tools.js';
+import { runToolsFor, submitEnvelopeTool, type SubmissionTool } from './tools.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
 import type {
   AgentTransport,
@@ -58,7 +58,7 @@ export class PiTransport implements AgentTransport {
   private session: PiAgentSession | null = null;
   private unsubscribe: (() => void) | null = null;
   private readonly extension: ReturnType<typeof foundryExtension>;
-  private envelopeTool: EnvelopeTool | null = null;
+  private envelopeTool: SubmissionTool | null = null;
   private envelopeSchemaKey = '';
   private models: TransportModel[] = [];
   private resolvedModel: PiModel | null = null;

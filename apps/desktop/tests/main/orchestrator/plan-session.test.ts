@@ -40,6 +40,7 @@ const model = (id: string, displayName: string): ModelInfo => ({
   isCustom: false,
   deprecated: false,
   contextWindow: 200_000,
+  cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
 });
 
 /** What the fixture install can reach; the Orchestrator must appoint from it. */
@@ -73,12 +74,17 @@ function validReply(over: Record<string, unknown> = {}): string {
           kind: 'code',
           description: 'Run the project test command as proof of the change.',
           command: { ref: 'test' },
+          feedbackTo: 'build',
         },
       ],
     },
     agents: [],
     ...over,
   });
+}
+
+function submitted(text: string): ScriptedTurn {
+  return { structuredOutput: JSON.parse(text) as Record<string, unknown> };
 }
 
 async function run(opts: {
@@ -130,7 +136,7 @@ async function run(opts: {
 
 describe('PlanSession', () => {
   it('produces a validated plan with Foundry-owned ids from a good reply', async () => {
-    const { session, state } = await run({ turns: [{ text: validReply() }] });
+    const { session, state } = await run({ turns: [submitted(validReply())] });
 
     expect(state.status).toBe('done');
     const plan = state.plan!;
@@ -148,7 +154,7 @@ describe('PlanSession', () => {
   });
 
   it('opens read-only at the project checkout on the chosen model', async () => {
-    const { oneShots } = await run({ turns: [{ text: validReply() }] });
+    const { oneShots } = await run({ turns: [submitted(validReply())] });
 
     // Planning has no worktree and no boundary diff, so a write here would be
     // permanent: the session has no tool that could make one.
@@ -156,14 +162,16 @@ describe('PlanSession', () => {
     expect(oneShots.calls[0]!.access).toBe('read');
     expect(oneShots.calls[0]!.cwd).toBe('/tmp/somewhere');
     expect(oneShots.calls[0]!.reasoningEffort).toBe('high');
+    expect(oneShots.calls[0]!.outputFormat?.type).toBe('json_schema');
+    expect(oneShots.calls[0]!.outputFormat?.schema).toMatchObject({ type: 'object' });
+    expect(oneShots.calls[0]!.outputFormat?.schema).not.toHaveProperty('$schema');
+    expect(oneShots.calls[0]!.outputFormat?.schema).toHaveProperty(
+      'properties.pipeline.properties.phases',
+    );
   });
 
   it('gives the Orchestrator the commands, roster, and few-shot pipelines', async () => {
-    const oneShots = scriptedOneShots([
-      {
-        text: validReply(),
-      },
-    ]);
+    const oneShots = scriptedOneShots([submitted(validReply())]);
     const prompts: string[] = [];
     const factory: typeof oneShots.factory = (opts) => {
       const session = oneShots.factory(opts);
@@ -205,14 +213,19 @@ describe('PlanSession', () => {
     expect(ask).toContain('- anthropic/claude-opus-4 — Claude Opus 4');
     expect(ask).toContain('- anthropic/claude-haiku-4 — Claude Haiku 4');
     expect(ask).toContain('efforts off/low/medium/high');
+    expect(ask).toContain('$3/M input');
+    expect(ask).toContain('"model":"anthropic/claude-opus-4"');
+    expect(ask).toContain('"model":"anthropic/claude-haiku-4"');
     // Builtin pipelines ride along as few-shot examples of valid shapes.
     expect(ask).toContain('## Builtin pipelines');
+    expect(oneShots.calls[0]!.systemPrompt).toContain('untrusted task data');
+    expect(oneShots.calls[0]!.systemPrompt).toContain('Call submit_result exactly once');
   });
 
   it('uses the Agent Defaults pin as the cast pool when the Orchestrator inherits', async () => {
     const extra = model('openai/gpt-5', 'GPT 5');
     const { state, prompts } = await run({
-      turns: [{ text: validReply() }],
+      turns: [submitted(validReply())],
       models: [...enabled, extra],
       defaultModel: 'anthropic/claude-opus-4',
     });
@@ -226,7 +239,7 @@ describe('PlanSession', () => {
   it('unions distinct default and Orchestrator pins and rejects an off-pool cast', async () => {
     const offPolicy = validReply().replace('anthropic/claude-opus-4', 'openai/gpt-5');
     const { state, oneShots, prompts } = await run({
-      turns: [{ text: offPolicy }, { text: validReply() }],
+      turns: [submitted(offPolicy), submitted(validReply())],
       models: [...enabled, model('openai/gpt-5', 'GPT 5')],
       defaultModel: 'anthropic/claude-opus-4',
       orchestratorModel: 'anthropic/claude-haiku-4',
@@ -254,7 +267,7 @@ describe('PlanSession', () => {
 
   it('refuses a plan whose agent phase inherits a model instead of naming one', async () => {
     const inheriting = validReply().replace('"model":"anthropic/claude-opus-4",', '');
-    const { state } = await run({ turns: [{ text: inheriting }, { text: validReply() }] });
+    const { state } = await run({ turns: [submitted(inheriting), submitted(validReply())] });
 
     expect(state.status).toBe('done');
     expect(state.entries.some((e) => e.text.includes('must name its own model'))).toBe(true);
@@ -262,7 +275,7 @@ describe('PlanSession', () => {
 
   it('refuses a plan whose agent phase omits its reasoning effort', async () => {
     const inheriting = validReply().replace('"reasoningEffort":"high",', '');
-    const { state } = await run({ turns: [{ text: inheriting }, { text: validReply() }] });
+    const { state } = await run({ turns: [submitted(inheriting), submitted(validReply())] });
 
     expect(state.status).toBe('done');
     expect(state.entries.some((e) => e.text.includes('must name its own reasoning effort'))).toBe(
@@ -272,7 +285,7 @@ describe('PlanSession', () => {
 
   it('refuses a reasoning effort the appointed model does not support', async () => {
     const unsupported = validReply().replace('"reasoningEffort":"high"', '"reasoningEffort":"max"');
-    const { state } = await run({ turns: [{ text: unsupported }, { text: validReply() }] });
+    const { state } = await run({ turns: [submitted(unsupported), submitted(validReply())] });
 
     expect(state.status).toBe('done');
     expect(state.entries.some((e) => e.text.includes('does not support reasoning effort'))).toBe(
@@ -282,7 +295,7 @@ describe('PlanSession', () => {
 
   it('refuses a phase model this install does not enable', async () => {
     const unreachable = validReply().replace('anthropic/claude-opus-4', 'openai/gpt-9');
-    const { state } = await run({ turns: [{ text: unreachable }, { text: validReply() }] });
+    const { state } = await run({ turns: [submitted(unreachable), submitted(validReply())] });
 
     expect(state.status).toBe('done');
     expect(state.entries.some((e) => e.text.includes('not allowed'))).toBe(true);
@@ -290,7 +303,7 @@ describe('PlanSession', () => {
 
   it('stands down the per-phase rail when the catalog cannot be read at all', async () => {
     const inheriting = validReply().replace('"model":"anthropic/claude-opus-4",', '');
-    const { state } = await run({ turns: [{ text: inheriting }], models: [] });
+    const { state } = await run({ turns: [submitted(inheriting)], models: [] });
 
     // An unreachable catalog is the install's problem, not the plan's: every
     // plan would otherwise be refused with an error no operator could act on.
@@ -300,7 +313,7 @@ describe('PlanSession', () => {
 
   it('checks GitHub in the background and rules out a PR phase when unavailable', async () => {
     const { prompts } = await run({
-      turns: [{ text: validReply() }],
+      turns: [submitted(validReply())],
       ghAvailable: async () => false,
     });
 
@@ -308,10 +321,51 @@ describe('PlanSession', () => {
     expect(prompts[0]).toContain('do not compose a PR phase');
   });
 
-  it('sends parse errors back as a correction and accepts the fixed reply', async () => {
-    const rejected = 'Here is my thinking, no JSON though.';
+  it('reads GitHub availability and the model catalog concurrently', async () => {
+    let ghStarted = false;
+    let modelsStarted = false;
+    let release!: () => void;
+    const bothMayFinish = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const oneShots = scriptedOneShots([submitted(validReply())]);
+    const session = new PlanSession({
+      projectId: 'p1',
+      projectPath: '/tmp/somewhere',
+      prompt: 'add a changes file',
+      model: 'inherit',
+      defaultModel: 'inherit',
+      reasoningEffort: 'medium',
+      contextSummary: '',
+      commands,
+      roster: [builder()],
+      envelopeDefs: [],
+      ghAvailable: async () => {
+        ghStarted = true;
+        await bothMayFinish;
+        return false;
+      },
+      enabledModels: async () => {
+        modelsStarted = true;
+        await bothMayFinish;
+        return enabled;
+      },
+      oneShot: oneShots.factory,
+      onChange: () => {},
+    });
+
+    const running = session.run();
+    await until(() => ghStarted && modelsStarted);
+    release();
+    await running;
+
+    expect(session.snapshot().status).toBe('done');
+  });
+
+  it('requires submit_result even when assistant prose contains valid JSON', async () => {
+    const rejected = validReply();
     const { state, oneShots, prompts } = await run({
-      turns: [{ text: rejected }, { text: validReply() }],
+      turns: [{ text: rejected }, submitted(validReply())],
     });
 
     expect(state.status).toBe('done');
@@ -322,17 +376,145 @@ describe('PlanSession', () => {
     // repair the previous attempt rather than seeing orphaned validation text.
     expect(prompts[1]).toContain('add a changes file');
     expect(prompts[1]).toContain(rejected);
-    expect(prompts[1]).toContain('the reply contained no JSON object');
-    expect(state.entries.some((e) => e.text.includes('no JSON object'))).toBe(true);
+    expect(prompts[1]).toContain('submit_result was not called');
+    expect(prompts[1]).toContain('did not call submit_result');
+    expect(state.entries.some((e) => e.text.includes('did not call submit_result'))).toBe(true);
+    expect(oneShots.calls[1]!.outputFormat).toBe(oneShots.calls[0]!.outputFormat);
   });
 
   it('sends rail failures back as a correction, so only a valid plan renders', async () => {
     const unknownAgent = validReply();
     const broken = unknownAgent.replace('"agent":"builder"', '"agent":"nobody"');
-    const { state } = await run({ turns: [{ text: broken }, { text: validReply() }] });
+    const { state } = await run({ turns: [submitted(broken), submitted(validReply())] });
 
     expect(state.status).toBe('done');
     expect(state.entries.some((e) => e.text.includes('no agent named "nobody"'))).toBe(true);
+  });
+
+  it('rejects engine-owned fields in the submitted object', async () => {
+    const withId = JSON.parse(validReply()) as Record<string, unknown>;
+    (withId.pipeline as Record<string, unknown>).id = 'model-owned-id';
+    const { state } = await run({
+      turns: [{ structuredOutput: withId }, submitted(validReply())],
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((entry) => entry.text.includes('Unrecognized key: "id"'))).toBe(true);
+    expect(state.plan!.pipeline.id).not.toBe('model-owned-id');
+  });
+
+  it('requires configured proof immediately after an implementation phase', async () => {
+    const missingProof = validReply({
+      pipeline: {
+        name: 'Unproven build',
+        description: 'Build the change without proving it.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'build',
+            kind: 'agent',
+            agent: 'builder',
+            model: 'anthropic/claude-opus-4',
+            description: 'Make the requested change inside the worktree.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+        ],
+      },
+    });
+    const { state } = await run({
+      turns: [submitted(missingProof), submitted(validReply())],
+    });
+
+    expect(state.status).toBe('done');
+    expect(
+      state.entries.some((entry) =>
+        entry.text.includes('immediately followed by a configured proof'),
+      ),
+    ).toBe(true);
+  });
+
+  it('requires proof failures to return to the implementation owner', async () => {
+    const detachedProof = validReply().replace(',"feedbackTo":"build"', '');
+    const { state } = await run({
+      turns: [submitted(detachedProof), submitted(validReply())],
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((entry) => entry.text.includes('must set feedbackTo'))).toBe(true);
+  });
+
+  it('requires both consistency gates on every review phase', async () => {
+    const unguardedReview = validReply({
+      pipeline: {
+        name: 'Unguarded review',
+        description: 'Review the work and then prove any edits.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'review',
+            kind: 'agent',
+            agent: 'builder',
+            model: 'anthropic/claude-opus-4',
+            description: 'Review and repair the requested change.',
+            envelope: 'review',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test',
+            kind: 'code',
+            description: 'Prove any repairs made by the review.',
+            command: { ref: 'test' },
+            feedbackTo: 'review',
+          },
+        ],
+      },
+    });
+    const { state } = await run({
+      turns: [submitted(unguardedReview), submitted(validReply())],
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((entry) => entry.text.includes('verdict_consistent'))).toBe(true);
+    expect(state.entries.some((entry) => entry.text.includes('disapproval_halts'))).toBe(true);
+  });
+
+  it('requires synthesized judge-only reviewers to have no write tools', async () => {
+    const writableReviewer = validReply({
+      pipeline: {
+        name: 'Review',
+        description: 'Use a synthesized reviewer to judge the request.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'review',
+            kind: 'agent',
+            agent: 'plan_reviewer',
+            model: 'anthropic/claude-opus-4',
+            description: 'Judge the result against the request.',
+            envelope: 'review',
+            prompt: { inputs: ['request'] },
+            gates: ['verdict_consistent', 'disapproval_halts'],
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'plan_reviewer',
+          purpose: 'judge the result without editing it',
+          systemPrompt: 'Review the result.',
+          userPrompt: 'Review: {{request}}',
+          writes: [],
+          envelope: 'review',
+        },
+      ],
+    });
+    const { state } = await run({
+      turns: [submitted(writableReviewer), submitted(validReply())],
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((entry) => entry.text.includes('read-only tool profile'))).toBe(true);
   });
 
   it('refuses a synthesized agent that shadows a roster name', async () => {
@@ -348,7 +530,9 @@ describe('PlanSession', () => {
         },
       ],
     });
-    const { state } = await run({ turns: [{ text: shadowing }, { text: validReply() }] });
+    const { state } = await run({
+      turns: [submitted(shadowing), submitted(validReply())],
+    });
 
     expect(state.status).toBe('done');
     expect(state.entries.some((e) => e.text.includes('shadow'))).toBe(true);
@@ -364,7 +548,9 @@ describe('PlanSession', () => {
       envelope: 'build',
     };
     const duplicated = validReply({ agents: [duplicate, duplicate] });
-    const { state } = await run({ turns: [{ text: duplicated }, { text: validReply() }] });
+    const { state } = await run({
+      turns: [submitted(duplicated), submitted(validReply())],
+    });
 
     expect(state.status).toBe('done');
     expect(state.entries.some((entry) => entry.text.includes('doc_writer'))).toBe(true);
@@ -393,6 +579,7 @@ describe('PlanSession', () => {
             kind: 'code',
             description: 'Run the project test command as proof of the change.',
             command: { ref: 'test' },
+            feedbackTo: 'write_doc',
           },
         ],
       },
@@ -404,11 +591,11 @@ describe('PlanSession', () => {
           userPrompt: 'Write: {{request}}',
           writes: ['docs/**'],
           envelope: 'build',
-          toolProfile: 'read-only',
+          toolProfile: 'full',
         },
       ],
     });
-    const { state } = await run({ turns: [{ text: synth }] });
+    const { state } = await run({ turns: [submitted(synth)] });
 
     expect(state.status).toBe('done');
     const agent = state.plan!.agents[0]!;
@@ -416,7 +603,7 @@ describe('PlanSession', () => {
     expect(agent.model).toBe('inherit');
     expect(agent.reasoningEffort).toBe('medium');
     expect(agent.writes).toEqual(['docs/**']);
-    expect(agent.toolProfile).toBe('read-only');
+    expect(agent.toolProfile).toBe('full');
     expect(agent.color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 

@@ -108,6 +108,7 @@ const pipeline = (): PipelineDef => ({
       description: 'build it',
       envelope: 'build',
       prompt: { inputs: ['request'] },
+      gates: [{ gate: 'command_passes', config: { argv: ['test', '-f', 'README.md'] } }],
     },
   ],
 });

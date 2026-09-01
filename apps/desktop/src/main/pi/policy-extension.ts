@@ -23,7 +23,7 @@ import {
   gitDiffTool,
   readPhaseContextTool,
   reportProgressTool,
-  type EnvelopeTool,
+  type SubmissionTool,
 } from './tools.js';
 import type { FoundryToolContext, PermissionAsk, PermissionDecision } from './transport.js';
 
@@ -66,7 +66,7 @@ export interface FoundryExtensionHandle {
    * Install this phase's `submit_envelope`. A no-op until the extension has
    * bound, which is when `pi` exists to register against.
    */
-  useEnvelopeTool(tool: EnvelopeTool | null): void;
+  useEnvelopeTool(tool: SubmissionTool | null): void;
   /**
    * Standing role for the next turn. Applied in `before_agent_start` so it
    * stays in the system role instead of being stuffed into the user message.
@@ -76,10 +76,10 @@ export interface FoundryExtensionHandle {
 
 export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensionHandle {
   let api: ExtensionAPI | null = null;
-  let pending: EnvelopeTool | null = null;
+  let pending: SubmissionTool | null = null;
   const system = systemPromptSlot();
 
-  const install = (tool: EnvelopeTool | null): void => {
+  const install = (tool: SubmissionTool | null): void => {
     if (!api || !tool) return;
     api.registerTool(tool.definition);
   };
@@ -107,17 +107,20 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
 }
 
 /**
- * The policy without Foundry's tools, for a session that has no phase to
- * answer for: a repair rebase or a readiness fix runs in its own worktree and
- * has no envelope to submit, but its writes are still ruled on.
+ * The policy without Foundry's run tools, for a session that has no phase.
+ * A caller may supply one schema-bound result tool; writes are still ruled on.
  */
-export function policyOnlyExtension(decide: FoundryExtensionOptions['decide']): {
+export function policyOnlyExtension(
+  decide: FoundryExtensionOptions['decide'],
+  outputTool?: SubmissionTool,
+): {
   factory: ExtensionFactory;
   useSystemPrompt(text: string | null): void;
 } {
   const system = systemPromptSlot();
   return {
     factory: (pi) => {
+      if (outputTool) pi.registerTool(outputTool.definition);
       installPolicy(pi, decide);
       system.apply(pi);
     },

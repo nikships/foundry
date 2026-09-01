@@ -20,6 +20,7 @@ import {
   type EnvelopeDef,
   type EnvelopeKind,
 } from '@shared/types.js';
+import { jsonSchemaWithoutDialect } from '@shared/zod-json-schema.js';
 
 const base = {
   status: z.enum(['success', 'fail']),
@@ -223,9 +224,7 @@ export function jsonSchemaFor(
   custom?: CustomEnvelopeField[],
   defs?: EnvelopeDef[],
 ): z.core.JSONSchema.BaseSchema {
-  const schema = z.toJSONSchema(schemaFor(kind, custom, defs));
-  delete schema.$schema;
-  return schema;
+  return jsonSchemaWithoutDialect(schemaFor(kind, custom, defs));
 }
 
 /**

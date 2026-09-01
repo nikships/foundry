@@ -90,6 +90,16 @@ export function toModelInfo(model: PiModel): ModelInfo {
     isCustom: !BUILTIN_PI_PROVIDERS.has(model.provider),
     deprecated: false,
     contextWindow: model.contextWindow,
+    ...(model.cost
+      ? {
+          cost: {
+            input: model.cost.input,
+            output: model.cost.output,
+            cacheRead: model.cost.cacheRead,
+            cacheWrite: model.cost.cacheWrite,
+          },
+        }
+      : {}),
   };
 }
 
