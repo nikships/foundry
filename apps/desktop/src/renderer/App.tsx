@@ -63,7 +63,7 @@ function AppInner(): React.JSX.Element {
   const [creatingProject, setCreatingProject] = useState(false);
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
-  const [settingsPane, setSettingsPane] = useState('general');
+  const [settingsPane, setSettingsPane] = useState('app');
   /** ⌘K opens Settings' search palette; the nonce re-raises it on every press. */
   const [settingsPaletteNonce, setSettingsPaletteNonce] = useState(0);
   const [designTab, setDesignTab] = useState<DesignTab>('pipelines');
@@ -264,7 +264,9 @@ function AppInner(): React.JSX.Element {
 
   const openSettingsPane = useCallback(
     (pane: string): void => {
-      setSettingsPane(pane);
+      // `general` remains an inbound alias for old deep links, but the shell
+      // only publishes current pane ids to automation and screen context.
+      setSettingsPane(pane === 'general' ? 'app' : pane);
       go('settings');
     },
     [go],

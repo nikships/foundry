@@ -99,7 +99,11 @@ export default function DoctorList({
           const fix = check.ok ? undefined : check.fix;
           const showFix = fix && (fix.kind === 'open-url' || Boolean(onOpenSettings));
           return (
-            <li key={check.id} className={check.ok ? '' : styles.bad}>
+            <li
+              key={check.id}
+              className={check.ok ? '' : styles.bad}
+              data-testid={`doctor-check-${check.id}`}
+            >
               <DoctorCheckbox ok={check.ok} index={idx} animate={animate} checking={checking} />
               <span className={styles.text}>
                 <strong>{check.label}</strong>

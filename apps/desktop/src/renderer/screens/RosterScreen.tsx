@@ -697,6 +697,7 @@ export default function RosterScreen({
                       type="checkbox"
                       checked={!!draft.inheritDefaults}
                       onChange={(e) => setDraft({ ...draft, inheritDefaults: e.target.checked })}
+                      data-testid="roster-inherit-defaults"
                     />
                     Inherit model and reasoning from Agent defaults
                   </label>

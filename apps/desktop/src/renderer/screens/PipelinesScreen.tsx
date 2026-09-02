@@ -166,7 +166,7 @@ export default function PipelinesScreen({
             Settings
           </button>
           <details className={styles.moreActions}>
-            <summary>More</summary>
+            <summary data-testid="pipeline-more">More</summary>
             <div>
               <button type="button" onClick={() => void duplicate()}>
                 Duplicate pipeline
