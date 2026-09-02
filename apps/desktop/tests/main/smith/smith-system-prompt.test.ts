@@ -5,7 +5,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import {
+  compositionRuleBullets,
+  isPhaseKind,
+  PHASE_KINDS,
+} from '../../../src/main/orchestrator/composition-rules.js';
+import { ORCHESTRATOR_PROMPT } from '../../../src/main/orchestrator/plan.js';
 import { SMITH_CHAT_HARNESS, screenContextBlock } from '../../../src/main/smith/system-prompt.js';
+import { pipelineSchema } from '../../../src/main/store/pipelines.js';
+import type { PhaseKind } from '../../../src/shared/types.js';
 
 describe('SMITH_CHAT_HARNESS', () => {
   it('states the Smith identity and its place inside the app', () => {
@@ -18,6 +26,55 @@ describe('SMITH_CHAT_HARNESS', () => {
     for (const term of ['pipeline', 'agent', 'envelope', 'Gates', 'acceptance', 'worktree']) {
       expect(SMITH_CHAT_HARNESS).toContain(term);
     }
+  });
+
+  it('teaches Orchestrator as the default and Manual as opt-in', () => {
+    expect(SMITH_CHAT_HARNESS).toContain('The Orchestrator is the default');
+    expect(SMITH_CHAT_HARNESS).toContain('Manual pipelines are opt-in');
+    expect(SMITH_CHAT_HARNESS).not.toContain('picks a pipeline');
+    expect(SMITH_CHAT_HARNESS).toContain('smith_present');
+    expect(SMITH_CHAT_HARNESS).toContain('sdlc-pr');
+    const what = SMITH_CHAT_HARNESS.split('## How you work')[0]!;
+    expect(what.toLowerCase().indexOf('orchestrator')).toBeGreaterThan(-1);
+    expect(what.toLowerCase().indexOf('orchestrator')).toBeLessThan(
+      what.toLowerCase().indexOf('manual'),
+    );
+  });
+
+  it('does not teach engineer as a phase kind', () => {
+    expect(SMITH_CHAT_HARNESS).not.toMatch(/`agent` \| `code` \| `engineer`/);
+    expect(SMITH_CHAT_HARNESS).not.toContain('three kinds');
+    expect(SMITH_CHAT_HARNESS).not.toContain('set `question`');
+    expect(SMITH_CHAT_HARNESS).toContain('(`agent` | `code`)');
+    expect(PHASE_KINDS).toEqual(['agent', 'code']);
+    expect(isPhaseKind('engineer')).toBe(false);
+    expect(isPhaseKind('question')).toBe(false);
+    expect(isPhaseKind('agent')).toBe(true);
+    // Compile-time: assigning 'engineer' to PhaseKind must be an error.
+    // If this @ts-expect-error goes unused, engineer was restored as a kind.
+    // @ts-expect-error engineer is not a PhaseKind
+    const restored: PhaseKind = 'engineer';
+    expect(restored).toBe('engineer');
+    const parsed = pipelineSchema.safeParse({
+      id: 'test-pipe',
+      name: 'Test',
+      description: 'A pipeline that must not accept engineer phases.',
+      acceptance: { kind: 'all_phases_pass' },
+      phases: [{ name: 'ask', kind: 'engineer', description: 'ask the human' }],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('includes disapproval_halts and every agent phase names model + reasoningEffort', () => {
+    expect(SMITH_CHAT_HARNESS).toContain('disapproval_halts');
+    expect(SMITH_CHAT_HARNESS).toContain('verdict_consistent');
+    expect(SMITH_CHAT_HARNESS).toContain('proven before any commit');
+    expect(SMITH_CHAT_HARNESS).toContain(
+      '**Every agent phase names its own model and reasoning level.**',
+    );
+    expect(SMITH_CHAT_HARNESS).toContain('reasoningEffort');
+    expect(SMITH_CHAT_HARNESS).toContain(compositionRuleBullets());
+    expect(ORCHESTRATOR_PROMPT).toContain(compositionRuleBullets());
   });
 
   it('carries the entity schemas: fields, enums, and reserved names', () => {
