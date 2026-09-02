@@ -31,7 +31,7 @@ Read the subsystem guide before changing one of these contracts.
 
 ## Model casting
 
-Generated plans explicitly appoint every agent phase’s model. Planning uses configured pins when present, otherwise the enabled catalog. Unavailable or hidden configured pins fail closed rather than broadening the pool. A confirmed plan may be recast by the operator before start; mid-run amendments may only use models already named by that plan.
+Generated plans explicitly appoint every agent phase’s model. The cast pool is the enabled catalog minus hidden models; Agent Defaults and Orchestrator pins are preferred for expensive phases when they sit in that pool, not a shrink-wrap around two ids. Unnamed or `inherit` phase models are rejected. When the pool spans two or more provider prefixes, a review that uses the same prefix as the last build is a warning, not a hard error. A confirmed plan may be recast by the operator before start; mid-run amendments may only use models already named by that plan.
 
 The cast pool describes effort levels and vendored Artificial Analysis intelligence, not price or context size. Unknown scores render as unrated, never zero.
 
