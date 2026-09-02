@@ -195,10 +195,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
 
   useEffect(() => {
     void refreshAll();
-    const offSettings = api.on('settings-changed', () => void refreshAll());
-    return () => {
-      offSettings();
-    };
+    return api.on('settings-changed', () => void refreshAll());
   }, [refreshAll]);
 
   const value = useMemo<AppContextValue>(

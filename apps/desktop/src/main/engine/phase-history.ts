@@ -11,6 +11,11 @@ export function activeRowsForPipeline(
 ): PhaseRow[] | null {
   const latestByName = new Map<string, PhaseRow>();
   for (const row of history) latestByName.set(row.name, row);
-  const active = pipeline.phases.map((phase) => latestByName.get(phase.name));
-  return active.some((row) => !row) ? null : active.filter((row) => row !== undefined);
+  const active: PhaseRow[] = [];
+  for (const phase of pipeline.phases) {
+    const row = latestByName.get(phase.name);
+    if (!row) return null;
+    active.push(row);
+  }
+  return active;
 }

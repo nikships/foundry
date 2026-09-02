@@ -49,11 +49,13 @@ export function useGlobalShortcuts({
         onSettingsSearch();
         return;
       }
-      const tab = onDesignTab ? designTabShortcut(e) : null;
-      if (tab) {
-        e.preventDefault();
-        onDesignTab?.(tab);
-        return;
+      if (onDesignTab) {
+        const tab = designTabShortcut(e);
+        if (tab) {
+          e.preventDefault();
+          onDesignTab(tab);
+          return;
+        }
       }
       if (e.key !== 'Escape' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       if (document.querySelector('[role="dialog"]')) return;

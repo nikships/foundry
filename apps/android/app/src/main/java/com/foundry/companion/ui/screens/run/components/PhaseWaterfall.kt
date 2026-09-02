@@ -1,6 +1,5 @@
 package com.foundry.companion.ui.screens.run.components
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,7 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -24,7 +22,7 @@ import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.data.model.TranscriptEvents
 import com.foundry.companion.data.model.WaterfallTickKind
 import com.foundry.companion.ui.theme.FoundryTheme
-import com.foundry.companion.ui.theme.foundryPulseEnabled
+import com.foundry.companion.ui.theme.foundryPulseAlpha
 import com.foundry.companion.util.RunFormatters
 import java.util.Locale
 
@@ -46,21 +44,7 @@ fun PhaseWaterfall(
     val allQueued = phases.isNotEmpty() && phases.all { it.status.equals("queued", ignoreCase = true) }
 
     val anyRunning = phases.any { it.status.equals("running", ignoreCase = true) }
-    val pulseAlpha = if (foundryPulseEnabled(anyRunning)) {
-        val infiniteTransition = rememberInfiniteTransition(label = "waterfallPulse")
-        val alpha by infiniteTransition.animateFloat(
-            initialValue = 0.35f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 750, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "alpha"
-        )
-        alpha
-    } else {
-        1f
-    }
+    val pulseAlpha = foundryPulseAlpha(anyRunning)
 
     Column(
         modifier = modifier
@@ -116,7 +100,7 @@ fun PhaseWaterfall(
                     .clickable { onSelectPhase(phase.resolvedId) }
                     .semantics {
                         selected = isSelected
-                        contentDescription = waterfallPhaseDescription(phase)
+                        contentDescription = phase.accessibilityLabel
                     }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -187,7 +171,3 @@ fun PhaseWaterfall(
     }
 }
 
-internal fun waterfallPhaseDescription(phase: PhaseRunSummary): String {
-    val attempt = if (phase.attempt > 1) ", attempt ${phase.attempt}" else ""
-    return "Phase ${phase.name}, ${phase.status}$attempt"
-}

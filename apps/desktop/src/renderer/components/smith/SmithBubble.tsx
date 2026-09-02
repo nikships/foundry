@@ -214,16 +214,16 @@ export default function SmithBubble({
             running={running}
             compact
             onOpenInspector={onOpenInspector}
-            {...(onOpenReceiptLink
-              ? {
-                  // Following a link navigates the app behind the popover, so
-                  // leaving it open would hide the screen it just opened.
-                  onOpenReceiptLink: (link: SmithReceiptLink) => {
+            onOpenReceiptLink={
+              onOpenReceiptLink
+                ? (link: SmithReceiptLink) => {
+                    // Following a link navigates the app behind the popover, so
+                    // leaving it open would hide the screen it just opened.
                     close();
                     onOpenReceiptLink(link);
-                  },
-                }
-              : {})}
+                  }
+                : undefined
+            }
             emptyState={
               <div className={styles.empty}>
                 {smithProject ? (

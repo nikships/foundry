@@ -226,5 +226,3 @@ export function ReadinessJourneyDesign({
     </div>
   );
 }
-
-export default ReadinessJourneyDesign;

@@ -13,16 +13,13 @@ import { landRun, repairBranch } from '../engine/settle.js';
 import * as ghLib from '../system/gh.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
-import { notifyRuns, settleHooks } from './shared.js';
+import { notifyRuns, projectTracer, settleHooks } from './shared.js';
 
 type Ctx = Pick<AppContext, 'projects' | 'registry' | 'settings' | 'broadcast' | 'oneShot'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
-  const tracerOf = (projectId: string) => {
-    const project = projectOf(projectId);
-    return project ? { project, tracer: ctx.registry.tracerFor(project) } : null;
-  };
+  const tracerOf = (projectId: string) => projectTracer(ctx, projectId);
 
   handle(IPC.prsStatus, async (projectId: string): Promise<GhStatus> => {
     const project = projectOf(projectId);

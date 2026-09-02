@@ -73,7 +73,7 @@ export default function CustomFieldsEditor({
               <Dropdown
                 value={field.type}
                 disabled={disabled}
-                options={FIELD_TYPE_OPTIONS.map((t) => ({ value: t.value, label: t.label }))}
+                options={FIELD_TYPE_OPTIONS}
                 onChange={(next) => patch(index, { type: next as CustomEnvelopeField['type'] })}
               />
             </label>

@@ -13,13 +13,18 @@ interface DragState {
   startY: number;
 }
 
+function maxRequestHeight(viewportHeight: number): number {
+  return Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, viewportHeight * MAX_VIEWPORT_RATIO));
+}
+
 export function runRequestHeight(
   startHeight: number,
   deltaY: number,
   viewportHeight: number,
 ): number {
-  const maxHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, viewportHeight * MAX_VIEWPORT_RATIO));
-  return Math.round(Math.min(maxHeight, Math.max(MIN_HEIGHT, startHeight + deltaY)));
+  return Math.round(
+    Math.min(maxRequestHeight(viewportHeight), Math.max(MIN_HEIGHT, startHeight + deltaY)),
+  );
 }
 
 export default function ResizableRunRequest({ request }: { request: string }): React.JSX.Element {
@@ -80,9 +85,7 @@ export default function ResizableRunRequest({ request }: { request: string }): R
         aria-label="Resize run prompt"
         aria-orientation="horizontal"
         aria-valuemin={MIN_HEIGHT}
-        aria-valuemax={Math.round(
-          Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, window.innerHeight * MAX_VIEWPORT_RATIO)),
-        )}
+        aria-valuemax={Math.round(maxRequestHeight(window.innerHeight))}
         aria-valuenow={renderedHeight}
         tabIndex={0}
         title="Drag to resize the prompt. Double-click to reset."

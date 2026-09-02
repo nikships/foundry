@@ -144,6 +144,46 @@ const MAX_STATUS_DEVICES = 40;
  * refused outright rather than redacted.
  */
 const SECRET_KEY = /^(api[_-]?key|private[_-]?key|token|secret|password|credential)$/i;
+const PROVIDER_FORBIDDEN_FIELD = /(key|token|secret|credential|password|pairing|qr)/i;
+const PROVIDER_ALLOWED_FIELD = /^keyPresent$/;
+const VALID_MARKER_SOURCES = new Set(['base-ref', 'worktree']);
+const VALID_WORK_TOOL_KINDS = new Set(['command', 'read', 'edit', 'search', 'other']);
+const VALID_DIAGNOSTIC_CATEGORIES = new Set([
+  'doctor',
+  'orphans',
+  'maintenance',
+  'update',
+  'lifecycle',
+  'general',
+]);
+const VALID_UPDATE_STAGES = new Set([
+  'idle',
+  'checking',
+  'available',
+  'downloading',
+  'ready',
+  'error',
+]);
+const VALID_CATALOG_KINDS = new Set([
+  'runs',
+  'projects',
+  'agents',
+  'pipelines',
+  'envelopes',
+  'prs',
+  'doctor',
+  'models',
+  'custom',
+]);
+const VALID_EVIDENCE_ITEM_KINDS = new Set([
+  'prompt',
+  'command_output',
+  'event_tail',
+  'excerpt',
+  'diff',
+  'json',
+  'log',
+]);
 
 export interface SmithPresentToolDeps {
   stores: SmithEntityStores;
@@ -175,23 +215,27 @@ function inferEntityComparisonKind(spec: Record<string, unknown>): EntityCompari
   return null;
 }
 
-/** Depth-first scan for credential-shaped keys anywhere in the payload. */
-export function findSecretKey(value: unknown, path = ''): string | null {
+function findKey(value: unknown, path: string, matches: (key: string) => boolean): string | null {
   if (value == null || typeof value !== 'object') return null;
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i += 1) {
-      const found = findSecretKey(value[i], `${path}[${i}]`);
+      const found = findKey(value[i], `${path}[${i}]`, matches);
       if (found) return found;
     }
     return null;
   }
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const here = path ? `${path}.${key}` : key;
-    if (SECRET_KEY.test(key)) return here;
-    const found = findSecretKey(child, here);
+    if (matches(key)) return here;
+    const found = findKey(child, here, matches);
     if (found) return found;
   }
   return null;
+}
+
+/** Depth-first scan for credential-shaped keys anywhere in the payload. */
+export function findSecretKey(value: unknown, path = ''): string | null {
+  return findKey(value, path, (key) => SECRET_KEY.test(key));
 }
 
 /**
@@ -201,26 +245,12 @@ export function findSecretKey(value: unknown, path = ''): string | null {
  * echoed to every window and persisted with the chat, while a key belongs only
  * in the approval card and a QR payload only in a renderer-local display.
  */
-const PROVIDER_FORBIDDEN_FIELD = /(key|token|secret|credential|password|pairing|qr)/i;
-const PROVIDER_ALLOWED_FIELD = /^keyPresent$/;
-
-/** Depth-first scan naming the first forbidden provider/Companion field. */
 export function findProviderSecretField(value: unknown, path = ''): string | null {
-  if (value == null || typeof value !== 'object') return null;
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i += 1) {
-      const found = findProviderSecretField(value[i], `${path}[${i}]`);
-      if (found) return found;
-    }
-    return null;
-  }
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    const here = path ? `${path}.${key}` : key;
-    if (PROVIDER_FORBIDDEN_FIELD.test(key) && !PROVIDER_ALLOWED_FIELD.test(key)) return here;
-    const found = findProviderSecretField(child, here);
-    if (found) return found;
-  }
-  return null;
+  return findKey(
+    value,
+    path,
+    (key) => PROVIDER_FORBIDDEN_FIELD.test(key) && !PROVIDER_ALLOWED_FIELD.test(key),
+  );
 }
 
 /** A required non-empty string. Narrows so callers can keep reading. */
@@ -327,6 +357,31 @@ function arrayAt(
   return value;
 }
 
+function specObject(
+  spec: unknown,
+  message: string,
+): { issues: ValidationIssue[]; raw: Record<string, unknown> | null } {
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return { issues: [{ level: 'error', where: 'spec', message }], raw: null };
+  }
+  return { issues: [], raw: spec as Record<string, unknown> };
+}
+
+function optionalTitleAndSummary(issues: ValidationIssue[], raw: Record<string, unknown>): void {
+  optionalString(issues, raw.title, 'title', 200);
+  optionalString(issues, raw.summary, 'summary', 500);
+}
+
+function requiredTitle(
+  issues: ValidationIssue[],
+  raw: Record<string, unknown>,
+  what: string,
+): void {
+  if (requireString(issues, raw.title, 'title', what)) {
+    optionalString(issues, raw.title, 'title', 200);
+  }
+}
+
 export function validateReadinessJourney(spec: unknown): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const raw = objectAt(issues, spec, 'spec');
@@ -353,7 +408,7 @@ export function validateReadinessJourney(spec: unknown): ValidationIssue[] {
     optionalString(issues, marker.ref, 'marker.ref', 200);
     optionalString(issues, marker.commit, 'marker.commit', 200);
     optionalString(issues, marker.generatedAt, 'marker.generatedAt', 100);
-    optionalEnum(issues, marker.source, 'marker.source', new Set(['base-ref', 'worktree']));
+    optionalEnum(issues, marker.source, 'marker.source', VALID_MARKER_SOURCES);
   }
 
   if (!Array.isArray(raw.criteria)) {
@@ -399,12 +454,7 @@ export function validateReadinessJourney(spec: unknown): ValidationIssue[] {
     requireEnum(issues, row.kind, `${where}.kind`, VALID_WORK_KINDS);
     requireString(issues, row.text, `${where}.text`, 'work entry text');
     optionalString(issues, row.text, `${where}.text`, 2_000);
-    optionalEnum(
-      issues,
-      row.toolKind,
-      `${where}.toolKind`,
-      new Set(['command', 'read', 'edit', 'search', 'other']),
-    );
+    optionalEnum(issues, row.toolKind, `${where}.toolKind`, VALID_WORK_TOOL_KINDS);
     optionalBoolean(issues, row.done, `${where}.done`);
     optionalBoolean(issues, row.failed, `${where}.failed`);
   }
@@ -542,34 +592,19 @@ export function validateProviderStatus(spec: unknown): ValidationIssue[] {
 }
 
 export function validateChecklist(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-    return [{ level: 'error', where: 'spec', message: 'checklist must be an object' }];
-  }
+  const { issues, raw } = specObject(spec, 'checklist must be an object');
+  if (!raw) return issues;
 
-  const raw = spec as Record<string, unknown>;
-
-  if (typeof raw.title !== 'string' || !raw.title.trim()) {
-    issues.push({ level: 'error', where: 'title', message: 'checklist title is required' });
-  } else if (raw.title.length > 200) {
-    issues.push({
-      level: 'warning',
-      where: 'title',
-      message: 'title exceeds 200 characters and may be truncated',
-    });
-  }
-
-  if (raw.summary !== undefined) {
-    if (typeof raw.summary !== 'string') {
-      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
-    } else if (raw.summary.length > 500) {
+  if (requireString(issues, raw.title, 'title', 'checklist title')) {
+    if (raw.title.length > 200) {
       issues.push({
         level: 'warning',
-        where: 'summary',
-        message: 'summary exceeds 500 characters',
+        where: 'title',
+        message: 'title exceeds 200 characters and may be truncated',
       });
     }
   }
+  optionalString(issues, raw.summary, 'summary', 500);
 
   if (!Array.isArray(raw.items)) {
     issues.push({ level: 'error', where: 'items', message: 'checklist items must be an array' });
@@ -676,12 +711,8 @@ export function validateChecklist(spec: unknown): ValidationIssue[] {
 }
 
 export function validateChangeReceipt(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-    return [{ level: 'error', where: 'spec', message: 'change receipt must be an object' }];
-  }
-
-  const raw = spec as Record<string, unknown>;
+  const { issues, raw } = specObject(spec, 'change receipt must be an object');
+  if (!raw) return issues;
 
   if (typeof raw.target !== 'string' || !VALID_RECEIPT_TARGETS.has(raw.target)) {
     issues.push({
@@ -699,25 +730,7 @@ export function validateChangeReceipt(spec: unknown): ValidationIssue[] {
     });
   }
 
-  if (raw.title !== undefined) {
-    if (typeof raw.title !== 'string') {
-      issues.push({ level: 'error', where: 'title', message: 'title must be a string' });
-    } else if (raw.title.length > 200) {
-      issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
-    }
-  }
-
-  if (raw.summary !== undefined) {
-    if (typeof raw.summary !== 'string') {
-      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
-    } else if (raw.summary.length > 500) {
-      issues.push({
-        level: 'warning',
-        where: 'summary',
-        message: 'summary exceeds 500 characters',
-      });
-    }
-  }
+  optionalTitleAndSummary(issues, raw);
 
   if (raw.filesChanged !== undefined) {
     if (!Array.isArray(raw.filesChanged)) {
@@ -827,31 +840,10 @@ export function validateChangeReceipt(spec: unknown): ValidationIssue[] {
 }
 
 export function validateSettingsDiff(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-    return [{ level: 'error', where: 'spec', message: 'settings diff must be an object' }];
-  }
-  const raw = spec as Record<string, unknown>;
+  const { issues, raw } = specObject(spec, 'settings diff must be an object');
+  if (!raw) return issues;
 
-  if (raw.title !== undefined) {
-    if (typeof raw.title !== 'string') {
-      issues.push({ level: 'error', where: 'title', message: 'title must be a string' });
-    } else if (raw.title.length > 200) {
-      issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
-    }
-  }
-
-  if (raw.summary !== undefined) {
-    if (typeof raw.summary !== 'string') {
-      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
-    } else if (raw.summary.length > 500) {
-      issues.push({
-        level: 'warning',
-        where: 'summary',
-        message: 'summary exceeds 500 characters',
-      });
-    }
-  }
+  optionalTitleAndSummary(issues, raw);
 
   if (raw.scope !== undefined && typeof raw.scope !== 'string') {
     issues.push({ level: 'error', where: 'scope', message: 'scope must be a string' });
@@ -1054,43 +1046,14 @@ function validateOrphanWorktrees(issues: ValidationIssue[], value: unknown): voi
 }
 
 export function validateDiagnostics(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-    return [{ level: 'error', where: 'spec', message: 'diagnostics must be an object' }];
-  }
-  const raw = spec as Record<string, unknown>;
+  const { issues, raw } = specObject(spec, 'diagnostics must be an object');
+  if (!raw) return issues;
 
-  if (raw.title !== undefined) {
-    if (typeof raw.title !== 'string') {
-      issues.push({ level: 'error', where: 'title', message: 'title must be a string' });
-    } else if (raw.title.length > 200) {
-      issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
-    }
-  }
+  optionalTitleAndSummary(issues, raw);
 
-  if (raw.summary !== undefined) {
-    if (typeof raw.summary !== 'string') {
-      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
-    } else if (raw.summary.length > 500) {
-      issues.push({
-        level: 'warning',
-        where: 'summary',
-        message: 'summary exceeds 500 characters',
-      });
-    }
-  }
-
-  const VALID_CATEGORIES = new Set([
-    'doctor',
-    'orphans',
-    'maintenance',
-    'update',
-    'lifecycle',
-    'general',
-  ]);
   if (
     raw.category !== undefined &&
-    (typeof raw.category !== 'string' || !VALID_CATEGORIES.has(raw.category))
+    (typeof raw.category !== 'string' || !VALID_DIAGNOSTIC_CATEGORIES.has(raw.category))
   ) {
     issues.push({
       level: 'error',
@@ -1161,14 +1124,6 @@ export function validateDiagnostics(spec: unknown): ValidationIssue[] {
       issues.push({ level: 'error', where: 'update', message: 'update status must be an object' });
     } else {
       const uObj = raw.update as Record<string, unknown>;
-      const VALID_UPDATE_STAGES = new Set([
-        'idle',
-        'checking',
-        'available',
-        'downloading',
-        'ready',
-        'error',
-      ]);
       if (typeof uObj.stage !== 'string' || !VALID_UPDATE_STAGES.has(uObj.stage)) {
         issues.push({
           level: 'error',
@@ -1179,21 +1134,7 @@ export function validateDiagnostics(spec: unknown): ValidationIssue[] {
     }
   }
 
-  if (raw.lifecycleWarning !== undefined) {
-    if (typeof raw.lifecycleWarning !== 'string') {
-      issues.push({
-        level: 'error',
-        where: 'lifecycleWarning',
-        message: 'lifecycleWarning must be a string',
-      });
-    } else if (raw.lifecycleWarning.length > 2000) {
-      issues.push({
-        level: 'warning',
-        where: 'lifecycleWarning',
-        message: 'lifecycleWarning exceeds 2000 characters',
-      });
-    }
-  }
+  optionalString(issues, raw.lifecycleWarning, 'lifecycleWarning', 2000);
 
   if (raw.items !== undefined) {
     if (!Array.isArray(raw.items)) {
@@ -1211,41 +1152,12 @@ export function validateDiagnostics(spec: unknown): ValidationIssue[] {
 }
 
 export function validateDataTable(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-    return [{ level: 'error', where: 'spec', message: 'data table must be an object' }];
-  }
-  const raw = spec as Record<string, unknown>;
+  const { issues, raw } = specObject(spec, 'data table must be an object');
+  if (!raw) return issues;
 
-  if (typeof raw.title !== 'string' || !raw.title.trim()) {
-    issues.push({ level: 'error', where: 'title', message: 'table title is required' });
-  } else if (raw.title.length > 200) {
-    issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
-  }
+  requiredTitle(issues, raw, 'table title');
+  optionalString(issues, raw.summary, 'summary', 500);
 
-  if (raw.summary !== undefined) {
-    if (typeof raw.summary !== 'string') {
-      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
-    } else if (raw.summary.length > 500) {
-      issues.push({
-        level: 'warning',
-        where: 'summary',
-        message: 'summary exceeds 500 characters',
-      });
-    }
-  }
-
-  const VALID_CATALOG_KINDS = new Set([
-    'runs',
-    'projects',
-    'agents',
-    'pipelines',
-    'envelopes',
-    'prs',
-    'doctor',
-    'models',
-    'custom',
-  ]);
   if (
     raw.catalogKind !== undefined &&
     (typeof raw.catalogKind !== 'string' || !VALID_CATALOG_KINDS.has(raw.catalogKind))
@@ -1327,29 +1239,11 @@ export function validateDataTable(spec: unknown): ValidationIssue[] {
 }
 
 export function validateEvidenceDisclosure(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-    return [{ level: 'error', where: 'spec', message: 'evidence disclosure must be an object' }];
-  }
-  const raw = spec as Record<string, unknown>;
+  const { issues, raw } = specObject(spec, 'evidence disclosure must be an object');
+  if (!raw) return issues;
 
-  if (typeof raw.title !== 'string' || !raw.title.trim()) {
-    issues.push({ level: 'error', where: 'title', message: 'title is required' });
-  } else if (raw.title.length > 200) {
-    issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
-  }
-
-  if (raw.summary !== undefined) {
-    if (typeof raw.summary !== 'string') {
-      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
-    } else if (raw.summary.length > 500) {
-      issues.push({
-        level: 'warning',
-        where: 'summary',
-        message: 'summary exceeds 500 characters',
-      });
-    }
-  }
+  requiredTitle(issues, raw, 'title');
+  optionalString(issues, raw.summary, 'summary', 500);
 
   if (raw.occupancy !== undefined) {
     if (
@@ -1420,15 +1314,6 @@ export function validateEvidenceDisclosure(spec: unknown): ValidationIssue[] {
       message: `items cannot exceed 50 (${raw.items.length} supplied)`,
     });
   } else {
-    const VALID_ITEM_KINDS = new Set([
-      'prompt',
-      'command_output',
-      'event_tail',
-      'excerpt',
-      'diff',
-      'json',
-      'log',
-    ]);
     for (let i = 0; i < raw.items.length; i += 1) {
       const item = raw.items[i];
       const where = `items[${i}]`;
@@ -1444,7 +1329,7 @@ export function validateEvidenceDisclosure(spec: unknown): ValidationIssue[] {
           message: 'item label is required',
         });
       }
-      if (typeof itemObj.kind !== 'string' || !VALID_ITEM_KINDS.has(itemObj.kind)) {
+      if (typeof itemObj.kind !== 'string' || !VALID_EVIDENCE_ITEM_KINDS.has(itemObj.kind)) {
         issues.push({
           level: 'error',
           where: `${where}.kind`,
@@ -1498,6 +1383,24 @@ export function validateEnvelopeUsage(usage: unknown): ValidationIssue[] {
     });
   }
   return issues;
+}
+
+function validateEnvelopeExtras(
+  issues: ValidationIssue[],
+  usage: unknown,
+  sampleOutput: unknown,
+): void {
+  if (usage !== undefined) issues.push(...validateEnvelopeUsage(usage));
+  if (
+    sampleOutput !== undefined &&
+    (sampleOutput == null || typeof sampleOutput !== 'object' || Array.isArray(sampleOutput))
+  ) {
+    issues.push({
+      level: 'error',
+      where: 'sampleOutput',
+      message: 'sampleOutput must be an object',
+    });
+  }
 }
 
 export async function deriveChangeReceiptFromGit(
@@ -1629,27 +1532,14 @@ function validateProjectStrings(issues: ValidationIssue[], raw: Record<string, u
 }
 
 export function validateProjectCard(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-    return [{ level: 'error', where: 'spec', message: 'project card must be an object' }];
+  const { issues, raw } = specObject(spec, 'project card must be an object');
+  if (!raw) return issues;
+
+  if (requireString(issues, raw.path, 'path', 'project path')) {
+    optionalString(issues, raw.path, 'path', 500);
   }
-
-  const raw = spec as Record<string, unknown>;
-
-  if (typeof raw.path !== 'string' || !raw.path.trim()) {
-    issues.push({ level: 'error', where: 'path', message: 'project path is required' });
-  } else if (raw.path.length > 500) {
-    issues.push({ level: 'warning', where: 'path', message: 'path exceeds 500 characters' });
-  }
-
-  if (typeof raw.baseRef !== 'string' || !raw.baseRef.trim()) {
-    issues.push({ level: 'error', where: 'baseRef', message: 'baseRef is required' });
-  } else if (raw.baseRef.length > 100) {
-    issues.push({
-      level: 'warning',
-      where: 'baseRef',
-      message: 'baseRef exceeds 100 characters',
-    });
+  if (requireString(issues, raw.baseRef, 'baseRef', 'baseRef')) {
+    optionalString(issues, raw.baseRef, 'baseRef', 100);
   }
 
   validateProjectStrings(issues, raw);
@@ -1663,12 +1553,8 @@ export function validateProjectCard(spec: unknown): ValidationIssue[] {
 }
 
 export function validatePrCard(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-    return [{ level: 'error', where: 'spec', message: 'PR card must be an object' }];
-  }
-
-  const raw = spec as Record<string, unknown>;
+  const { issues, raw } = specObject(spec, 'PR card must be an object');
+  if (!raw) return issues;
 
   if (typeof raw.number !== 'number' || raw.number < 1) {
     issues.push({
@@ -1684,25 +1570,12 @@ export function validatePrCard(spec: unknown): ValidationIssue[] {
     issues.push({ level: 'warning', where: 'title', message: 'PR title exceeds 200 characters' });
   }
 
-  if (typeof raw.url !== 'string' || !raw.url.trim()) {
-    issues.push({ level: 'error', where: 'url', message: 'PR url is required' });
-  }
-
-  if (typeof raw.headRefName !== 'string' || !raw.headRefName.trim()) {
-    issues.push({ level: 'error', where: 'headRefName', message: 'headRefName is required' });
-  }
-
+  requireString(issues, raw.url, 'url', 'PR url');
+  requireString(issues, raw.headRefName, 'headRefName', 'headRefName');
   if (raw.baseRefName !== undefined && typeof raw.baseRefName !== 'string') {
     issues.push({ level: 'error', where: 'baseRefName', message: 'baseRefName must be a string' });
   }
-
-  if (raw.body !== undefined) {
-    if (typeof raw.body !== 'string') {
-      issues.push({ level: 'error', where: 'body', message: 'body must be a string' });
-    } else if (raw.body.length > 8000) {
-      issues.push({ level: 'warning', where: 'body', message: 'body exceeds 8000 characters' });
-    }
-  }
+  optionalString(issues, raw.body, 'body', 8000);
 
   if (
     raw.checks !== undefined &&
@@ -1856,34 +1729,19 @@ function validateSpec(
   if (kind === 'evidence_disclosure') return validateEvidenceDisclosure(spec);
   if (kind === 'readiness_journey') return validateReadinessJourney(spec);
   if (kind === 'provider_status') return validateProviderStatus(spec);
+  const comparisonDesign = {
+    agent: 'agent_design',
+    pipeline: 'pipeline_design',
+    envelope: 'envelope_design',
+  } as const;
   const targetKind =
-    kind === 'entity_comparison'
-      ? comparisonKind === 'agent'
-        ? 'agent_design'
-        : comparisonKind === 'pipeline'
-          ? 'pipeline_design'
-          : 'envelope_design'
-      : kind;
+    kind === 'entity_comparison' ? comparisonDesign[comparisonKind ?? 'envelope'] : kind;
   const envelopeNames = stores.envelopes.list().map((envelope) => envelope.name);
   if (targetKind === 'agent_design') return validateAgent(spec as AgentDef, envelopeNames);
   if (targetKind === 'envelope_design') {
     const rawEnvelope = spec as EnvelopeDef & { usage?: unknown; sampleOutput?: unknown };
     const issues = validateEnvelope(spec as EnvelopeDef);
-    if (rawEnvelope.usage !== undefined) {
-      issues.push(...validateEnvelopeUsage(rawEnvelope.usage));
-    }
-    if (
-      rawEnvelope.sampleOutput !== undefined &&
-      (rawEnvelope.sampleOutput == null ||
-        typeof rawEnvelope.sampleOutput !== 'object' ||
-        Array.isArray(rawEnvelope.sampleOutput))
-    ) {
-      issues.push({
-        level: 'error',
-        where: 'sampleOutput',
-        message: 'sampleOutput must be an object',
-      });
-    }
+    validateEnvelopeExtras(issues, rawEnvelope.usage, rawEnvelope.sampleOutput);
     return issues;
   }
   return validatePipeline(
@@ -1954,6 +1812,16 @@ function buildArtifact(
   return { ...base, kind: 'pipeline_design', pipeline: spec as PipelineDef };
 }
 
+function elapsedMs(
+  startedAt: string | null | undefined,
+  endedAt: string | null | undefined,
+): number | undefined {
+  const start = startedAt ? new Date(startedAt).getTime() : 0;
+  if (!(start > 0)) return undefined;
+  const end = endedAt ? new Date(endedAt).getTime() : 0;
+  return Math.max(0, (end > 0 ? end : Date.now()) - start);
+}
+
 function buildRunSummaryArtifact(
   detail: RunDetail,
   base: Omit<
@@ -1984,24 +1852,10 @@ function buildRunSummaryArtifact(
   >,
 ): SmithRunSummaryArtifact {
   const run = detail.run!;
-  const startedTime = run.startedAt ? new Date(run.startedAt).getTime() : 0;
-  const endedTime = run.endedAt ? new Date(run.endedAt).getTime() : 0;
-  const durationMs =
-    startedTime > 0 && endedTime > 0
-      ? Math.max(0, endedTime - startedTime)
-      : startedTime > 0
-        ? Math.max(0, Date.now() - startedTime)
-        : undefined;
+  const durationMs = elapsedMs(run.startedAt, run.endedAt);
 
   const phases: SmithRunSummaryPhase[] = detail.phases.map((p) => {
-    const pStart = p.startedAt ? new Date(p.startedAt).getTime() : 0;
-    const pEnd = p.endedAt ? new Date(p.endedAt).getTime() : 0;
-    const pDuration =
-      pStart > 0 && pEnd > 0
-        ? Math.max(0, pEnd - pStart)
-        : pStart > 0
-          ? Math.max(0, Date.now() - pStart)
-          : undefined;
+    const pDuration = elapsedMs(p.startedAt, p.endedAt);
     const env = detail.envelopes.find((e) => e.phaseId === p.phaseId);
     const envSummary = typeof env?.payload?.summary === 'string' ? env.payload.summary : null;
 
@@ -2217,15 +2071,13 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       required: ['kind'],
       additionalProperties: false,
     },
-    execute: (_id, params) => {
+    execute: async (_id, params) => {
       const kind = parseArtifactKind(field(params, 'kind'));
-      if (!kind) return Promise.resolve(json({ ok: false, error: 'unknown artifact kind' }));
+      if (!kind) return json({ ok: false, error: 'unknown artifact kind' });
 
       const secretPath = findSecretKey(params);
       if (secretPath) {
-        return Promise.resolve(
-          json({ ok: false, error: `spec must not carry a credential field (${secretPath})` }),
-        );
+        return json({ ok: false, error: `spec must not carry a credential field (${secretPath})` });
       }
 
       // `params` is scanned whole above, so a credential hidden in `usage` or
@@ -2240,30 +2092,28 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           : undefined;
 
       const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
-      if (!scope.ok) return Promise.resolve(json(scope));
+      if (!scope.ok) return json(scope);
 
       if (kind === 'run_summary') {
-        return Promise.resolve(presentRunSummary(deps, params, scope.projectId, rationale));
+        return presentRunSummary(deps, params, scope.projectId, rationale);
       }
 
       const spec = field(params, 'spec');
       if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-        return Promise.resolve(json({ ok: false, error: 'present needs a spec object' }));
+        return json({ ok: false, error: 'present needs a spec object' });
       }
 
       let serialized: string;
       try {
         serialized = JSON.stringify(spec);
       } catch {
-        return Promise.resolve(json({ ok: false, error: 'spec must be plain JSON data' }));
+        return json({ ok: false, error: 'spec must be plain JSON data' });
       }
       if (serialized.length > MAX_ARTIFACT_JSON) {
-        return Promise.resolve(
-          json({
-            ok: false,
-            error: `spec is too large to present (${serialized.length} > ${MAX_ARTIFACT_JSON} chars)`,
-          }),
-        );
+        return json({
+          ok: false,
+          error: `spec is too large to present (${serialized.length} > ${MAX_ARTIFACT_JSON} chars)`,
+        });
       }
 
       let entityKind: EntityComparisonKind | undefined;
@@ -2277,7 +2127,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           spec as Record<string, unknown>,
           scope.projectId,
         );
-        if (!comparison.ok) return Promise.resolve(json(comparison));
+        if (!comparison.ok) return json(comparison);
         ({ entityKind, entityName, beforeEntity } = comparison);
       }
 
@@ -2285,25 +2135,11 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       // reach the operator; warnings become part of the card.
       const issues = validateSpec(deps.stores, kind, spec, scope.projectId, entityKind);
       if (kind === 'envelope_design') {
-        if (paramUsage !== undefined) {
-          issues.push(...validateEnvelopeUsage(paramUsage));
-        }
-        if (
-          paramSampleOutput !== undefined &&
-          (paramSampleOutput == null ||
-            typeof paramSampleOutput !== 'object' ||
-            Array.isArray(paramSampleOutput))
-        ) {
-          issues.push({
-            level: 'error',
-            where: 'sampleOutput',
-            message: 'sampleOutput must be an object',
-          });
-        }
+        validateEnvelopeExtras(issues, paramUsage, paramSampleOutput);
       }
 
       const errors = issues.filter((issue) => issue.level === 'error');
-      if (errors.length) return Promise.resolve(json({ ok: false, validation: errors }));
+      if (errors.length) return json({ ok: false, validation: errors });
 
       const sessionProject = deps.projectId();
       const targetProject = scope.projectId;
@@ -2336,7 +2172,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
             : undefined,
       );
       deps.emit(artifact);
-      return Promise.resolve(json({ ok: true, artifactId: artifact.id }));
+      return json({ ok: true, artifactId: artifact.id });
     },
   });
 }

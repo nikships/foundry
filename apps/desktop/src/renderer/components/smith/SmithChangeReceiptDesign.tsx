@@ -6,7 +6,6 @@
  * command status/exit code, and bounded output excerpt.
  */
 
-import { useMemo } from 'react';
 import type { ChangeReceiptDef } from '@shared/types.js';
 import {
   changeReceiptStatusLabel,
@@ -88,7 +87,7 @@ export function ChangeReceiptDesign({
   receipt: ChangeReceiptDef;
   compact?: boolean;
 }): React.JSX.Element {
-  const summary = useMemo(() => changeReceiptSummary(receipt), [receipt]);
+  const summary = changeReceiptSummary(receipt);
   const targetLabel = changeReceiptTargetLabel(receipt.target);
   const statusLabel = changeReceiptStatusLabel(receipt.status);
 
@@ -172,5 +171,3 @@ export function ChangeReceiptDesign({
     </div>
   );
 }
-
-export default ChangeReceiptDesign;

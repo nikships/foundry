@@ -1,23 +1,24 @@
 package com.foundry.companion.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 
+private val defaultColors = FoundryColors()
+
 private val darkScheme = darkColorScheme(
-    primary = FoundryColors().accent,
-    background = FoundryColors().bgBase,
-    surface = FoundryColors().bgPanel,
-    surfaceVariant = FoundryColors().bgRaised,
-    onPrimary = FoundryColors().bgBase,
-    onBackground = FoundryColors().textPrimary,
-    onSurface = FoundryColors().textPrimary,
-    onSurfaceVariant = FoundryColors().textDim,
-    outline = FoundryColors().line,
-    outlineVariant = FoundryColors().lineStrong
+    primary = defaultColors.accent,
+    background = defaultColors.bgBase,
+    surface = defaultColors.bgPanel,
+    surfaceVariant = defaultColors.bgRaised,
+    onPrimary = defaultColors.bgBase,
+    onBackground = defaultColors.textPrimary,
+    onSurface = defaultColors.textPrimary,
+    onSurfaceVariant = defaultColors.textDim,
+    outline = defaultColors.line,
+    outlineVariant = defaultColors.lineStrong
 )
 
 @Composable

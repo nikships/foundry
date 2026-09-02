@@ -3,7 +3,14 @@ package com.foundry.companion.ui.theme
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -24,6 +31,22 @@ fun foundryPulseEnabled(active: Boolean): Boolean {
     if (!foundryLiveClockEnabled()) return false
     if (foundryReduceMotionEnabled()) return false
     return true
+}
+
+@Composable
+fun foundryPulseAlpha(active: Boolean): Float {
+    if (!foundryPulseEnabled(active)) return 1f
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 750, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+    return alpha
 }
 
 @Composable

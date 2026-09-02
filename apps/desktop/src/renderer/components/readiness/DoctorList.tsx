@@ -78,10 +78,14 @@ export default function DoctorList({
   checking?: boolean;
 }): React.JSX.Element {
   const openFix = (fix: NonNullable<DoctorCheck['fix']>): void => {
-    if (fix.kind === 'open-url') void api.app.openExternal(fix.value);
-    // project-commands is a deep link into the Project pane.
-    else if (fix.kind === 'open-settings')
+    if (fix.kind === 'open-url') {
+      void api.app.openExternal(fix.value);
+      return;
+    }
+    if (fix.kind === 'open-settings') {
+      // project-commands is a deep link into the Project pane.
       onOpenSettings?.(fix.value === 'project-commands' ? 'project' : fix.value);
+    }
   };
 
   return (

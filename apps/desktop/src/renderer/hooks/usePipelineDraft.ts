@@ -55,43 +55,9 @@ function withLocalCanvas(pipeline: PipelineDef): PipelineDef {
   return stored ? { ...pipeline, canvas: stored } : pipeline;
 }
 
-function clonePhase(phase: PhaseDef): PhaseDef {
-  return {
-    ...phase,
-    prompt: phase.prompt
-      ? { ...phase.prompt, inputs: [...(phase.prompt.inputs ?? [])] }
-      : undefined,
-    command: phase.command
-      ? 'argv' in phase.command
-        ? { ...phase.command, argv: [...phase.command.argv] }
-        : { ...phase.command }
-      : undefined,
-    gates: phase.gates ? [...phase.gates] : undefined,
-  };
-}
-
-function cloneCanvas(canvas: PipelineCanvas | undefined): PipelineCanvas | undefined {
-  if (!canvas) return undefined;
-  return {
-    nodes: canvas.nodes
-      ? Object.fromEntries(Object.entries(canvas.nodes).map(([name, at]) => [name, { ...at }]))
-      : undefined,
-    viewport: canvas.viewport ? { ...canvas.viewport } : undefined,
-  };
-}
-
-function clonePipeline(p: PipelineDef): PipelineDef {
-  return {
-    ...p,
-    acceptance: { ...p.acceptance },
-    phases: p.phases.map(clonePhase),
-    canvas: cloneCanvas(p.canvas),
-  };
-}
-
 /** Load a pipeline into a fresh draft, preferring the operator's local canvas. */
 function draftFrom(pipeline: PipelineDef | null): PipelineDef | null {
-  return pipeline ? withLocalCanvas(clonePipeline(pipeline)) : null;
+  return pipeline ? withLocalCanvas(structuredClone(pipeline)) : null;
 }
 
 function canvasForPhases(phases: PhaseDef[], canvas: PipelineCanvas | undefined): PipelineCanvas {
@@ -527,8 +493,9 @@ export function usePipelineDraft(deepLink?: {
   const setAcceptancePhase = useCallback(
     (phase: string): void => {
       const cur = draft?.acceptance;
-      if (cur?.kind === 'envelope_status') updateDraft({ acceptance: { ...cur, phase } });
-      else if (cur?.kind === 'phase_flag') updateDraft({ acceptance: { ...cur, phase } });
+      if (cur?.kind === 'envelope_status' || cur?.kind === 'phase_flag') {
+        updateDraft({ acceptance: { ...cur, phase } });
+      }
     },
     [draft, updateDraft],
   );

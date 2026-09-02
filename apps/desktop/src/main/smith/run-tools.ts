@@ -160,10 +160,11 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
 
       const gated = resolveGatedArgs(op as RunActionOperation, params, projectId);
       if (!gated.ok) return json({ ok: false, error: gated.error });
+      const label = op.replaceAll('_', ' ');
       return proposeAction(deps, {
         operation: op,
-        title: `${op.replaceAll('_', ' ')} run`,
-        summary: `${op.replaceAll('_', ' ')} the selected run.`,
+        title: `${label} run`,
+        summary: `${label} the selected run.`,
         args: gated.shownArgs,
         risk: RISKS[op] ?? 'write',
         execute: () => deps.invoke(ACTION_CHANNELS[op as RunActionOperation], ...gated.args),

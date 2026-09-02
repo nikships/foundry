@@ -16,8 +16,9 @@
  * when manifests are ambiguous or nested.
  */
 
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { packageRoots } from './detect.js';
 
 /** Where the install commands keep cwd at the git root without a shell cd. */
 function nodeRunnerFor(root: string): 'pnpm' | 'yarn' | 'bun' | 'npm' {
@@ -25,36 +26,6 @@ function nodeRunnerFor(root: string): 'pnpm' | 'yarn' | 'bun' | 'npm' {
   if (existsSync(join(root, 'yarn.lock'))) return 'yarn';
   if (existsSync(join(root, 'bun.lockb'))) return 'bun';
   return 'npm';
-}
-
-const SKIP_DIRS = new Set([
-  'node_modules',
-  '.git',
-  '.build',
-  'build',
-  'dist',
-  'target',
-  'vendor',
-  'DerivedData',
-  'checkouts',
-  '.foundry-worktrees',
-  '.lavish',
-  'coverage',
-  'out',
-]);
-
-function packageRoots(repoRoot: string): string[] {
-  const roots = [repoRoot];
-  try {
-    for (const ent of readdirSync(repoRoot, { withFileTypes: true })) {
-      if (!ent.isDirectory()) continue;
-      if (ent.name.startsWith('.') || SKIP_DIRS.has(ent.name)) continue;
-      roots.push(join(repoRoot, ent.name));
-    }
-  } catch {
-    // Unreadable root still yields itself.
-  }
-  return roots;
 }
 
 function nodeInstallLine(root: string, rel: string): { line: string; source: string } | null {
@@ -216,8 +187,8 @@ export interface SetupParseResult {
 
 /**
  * Parses the agent's reply into a script. Defensive: the reply is executed
- * later via sh -c, so only a string script is accepted; truncation and
- * control-character checks happen here rather than at exec time.
+ * later via sh -c, so only a string script is accepted and overlong replies
+ * are rejected here rather than at exec time.
  */
 export function parseSetupReply(text: string): SetupParseResult {
   const rawReply = text;

@@ -12,22 +12,31 @@
  * file snapshots, so the worktree half is `boundary.restoreToPhaseStart`'s job.
  */
 
-import {
-  SessionManager,
-  type AgentSession as PiAgentSession,
-} from '@earendil-works/pi-coding-agent';
+import type { AgentSession as PiAgentSession } from '@earendil-works/pi-coding-agent';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
-import { pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
+import { modelKey, pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
-import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
+import {
+  closeLiveSession,
+  compactSession,
+  foundryResourceLoader,
+  foundrySettings,
+  lastAssistantText,
+  lastUserMessageId,
+  openFoundrySession,
+  openOrCreateSessionManager,
+  promptUntilIdle,
+  sessionContextBreakdown,
+  sessionContextStats,
+} from './open-session.js';
 import { foundryExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { FOUNDRY_RUN_HARNESS } from './system-prompt.js';
 import { runToolsFor } from './tool-names.js';
 import { submitEnvelopeTool, type SubmissionTool } from './tools.js';
-import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
+import { subscribeSessionEvents, VendorEventReader } from './vendor-events.js';
 import type {
   AgentTransport,
   AgentTransportOptions,
@@ -87,16 +96,7 @@ export class PiTransport implements AgentTransport {
   }
 
   get lastUserMessageId(): string | null {
-    const session = this.session;
-    if (!session) return null;
-    // The live branch, not the append-only file: after a rewind the abandoned
-    // leaf is still in getEntries() and must not become the next anchor.
-    const entries = session.sessionManager.getBranch();
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const entry = entries[i];
-      if (entry?.type === 'message' && entry.message.role === 'user') return entry.id;
-    }
-    return null;
+    return lastUserMessageId(this.session);
   }
 
   get availableModels(): TransportModel[] {
@@ -105,7 +105,7 @@ export class PiTransport implements AgentTransport {
 
   get activeModel(): string {
     const model = this.session?.model ?? this.resolvedModel;
-    return model ? `${model.provider}/${model.id}` : this.opts.model;
+    return model ? modelKey(model) : this.opts.model;
   }
 
   /**
@@ -129,7 +129,11 @@ export class PiTransport implements AgentTransport {
     if (picked.warning) this.opts.onModelWarning?.(picked.warning);
 
     mkdirSync(this.opts.sessionDir, { recursive: true });
-    const sessionManager = await this.openSessionManager(existingSessionId);
+    const sessionManager = await openOrCreateSessionManager(
+      this.opts.cwd,
+      this.opts.sessionDir,
+      existingSessionId,
+    );
     const agentDir = join(this.opts.supportDir, 'pi');
     const settingsManager = foundrySettings();
     const resourceLoader = foundryResourceLoader({
@@ -156,11 +160,8 @@ export class PiTransport implements AgentTransport {
     });
     if (opened.modelFallbackMessage) this.opts.onModelWarning?.(opened.modelFallbackMessage);
 
-    const session = opened.session;
-    this.session = session;
-    this.unsubscribe = session.subscribe((event) =>
-      this.events.absorb(event, (e) => this.opts.onEvent?.(e)),
-    );
+    this.session = opened.session;
+    this.unsubscribe = subscribeSessionEvents(opened.session, this.events, this.opts.onEvent);
   }
 
   async send(text: string, opts: TurnOptions = {}): Promise<TurnResult> {
@@ -174,29 +175,21 @@ export class PiTransport implements AgentTransport {
     this.extension.useSystemPrompt(opts.systemPrompt ?? null);
     this.events.startTurn();
 
-    await session.prompt(text, { expandPromptTemplates: false, source: 'extension' });
-    // prompt() already waits through retries and queued continuations.
-    // waitForIdle() is the documented settle API and is a no-op when idle.
-    await session.waitForIdle();
-    await continueWithModelFailover({
-      session,
-      events: this.events,
-      availableModelCount: this.models.length,
-      hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
-      onWarning: (warning) => this.opts.onModelWarning?.(warning),
-    });
-
-    const last = lastAssistantStop(session);
-    const interrupted = last?.stopReason === 'aborted';
-    if (last?.stopReason === 'error') {
-      throw new Error(last.errorMessage || 'the model ended the turn with an error');
-    }
+    const last = await promptUntilIdle(session, text, () =>
+      continueWithModelFailover({
+        session,
+        events: this.events,
+        availableModelCount: this.models.length,
+        hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+        onWarning: (warning) => this.opts.onModelWarning?.(warning),
+      }),
+    );
 
     return {
-      text: (session.getLastAssistantText() ?? '').trim(),
+      text: lastAssistantText(session),
       usage: this.events.turnUsage,
       reason: last?.stopReason ?? 'stop',
-      interrupted,
+      interrupted: last?.stopReason === 'aborted',
       structuredOutput: this.envelopeTool?.submitted() ?? null,
     };
   }
@@ -210,34 +203,13 @@ export class PiTransport implements AgentTransport {
   }
 
   contextStats(): Promise<ContextStats | null> {
-    const usage = this.session?.getContextUsage();
-    if (!usage) return Promise.resolve(null);
-    const used = usage.tokens ?? 0;
-    return Promise.resolve({
-      used,
-      limit: usage.contextWindow,
-      remaining: Math.max(0, usage.contextWindow - used),
-    });
+    return Promise.resolve(sessionContextStats(this.session));
   }
 
-  /**
-   * Pi accounts for context as one estimate for the whole conversation rather
-   * than by source, so the breakdown is the model and its occupancy and
-   * nothing else. Inventing a composition to fill the panel would be a
-   * fabricated one; four honest numbers are the answer pi can give.
-   */
   contextBreakdown(): Promise<ContextBreakdown | null> {
-    const usage = this.session?.getContextUsage();
-    if (!usage) return Promise.resolve(null);
-    const model = this.session?.model ?? this.resolvedModel;
-    const used = usage.tokens ?? 0;
-    return Promise.resolve({
-      modelId: this.activeModel,
-      modelDisplayName: model?.name ?? this.activeModel,
-      contextBudget: usage.contextWindow,
-      usedTokens: used,
-      freeTokens: Math.max(0, usage.contextWindow - used),
-    });
+    return Promise.resolve(
+      sessionContextBreakdown(this.session, this.resolvedModel, this.activeModel),
+    );
   }
 
   /**
@@ -245,12 +217,8 @@ export class PiTransport implements AgentTransport {
    * session, so unlike the daemon there is no successor to adopt and no id to
    * re-persist.
    */
-  async compact(): Promise<{ removedCount: number } | null> {
-    const session = this.session;
-    if (!session) return null;
-    const before = session.messages.length;
-    await session.compact();
-    return { removedCount: Math.max(0, before - session.messages.length) };
+  compact(): Promise<{ removedCount: number } | null> {
+    return compactSession(this.session);
   }
 
   /**
@@ -300,13 +268,7 @@ export class PiTransport implements AgentTransport {
     this.unsubscribe = null;
     const session = this.session;
     this.session = null;
-    if (!session) return;
-    try {
-      await session.abort();
-    } catch {
-      // Nothing was running; disposal is what matters.
-    }
-    session.dispose();
+    await closeLiveSession(session);
   }
 
   kill(): void {
@@ -329,23 +291,5 @@ export class PiTransport implements AgentTransport {
     this.envelopeSchemaKey = key;
     this.envelopeTool = submitEnvelopeTool(schema);
     this.extension.useEnvelopeTool(this.envelopeTool);
-  }
-
-  /**
-   * Resume the run's own session file when there is one, otherwise start a new
-   * session in the run's directory. Sessions live with the run's other raw
-   * records, never in the user's `~/.pi`.
-   */
-  private async openSessionManager(existingSessionId?: string | null): Promise<SessionManager> {
-    if (existingSessionId) {
-      try {
-        const listed = await SessionManager.list(this.opts.cwd, this.opts.sessionDir);
-        const match = listed.find((entry) => entry.id === existingSessionId);
-        if (match) return SessionManager.open(match.path, this.opts.sessionDir, this.opts.cwd);
-      } catch {
-        // A missing or unreadable session dir is a fresh start, not a failed run.
-      }
-    }
-    return SessionManager.create(this.opts.cwd, this.opts.sessionDir);
   }
 }

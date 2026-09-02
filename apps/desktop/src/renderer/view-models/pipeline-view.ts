@@ -65,16 +65,6 @@ export function blankPhase(
   taken: Set<string>,
   defaults: BlankPhaseDefaults = {},
 ): PhaseDef {
-  if (kind === 'agent') {
-    return {
-      name: uniqueName('new_agent', taken, '_'),
-      kind: 'agent',
-      description: 'Do the implementation work for this run.',
-      agent: defaults.preferredAgent || 'builder',
-      prompt: { inputs: ['request'] },
-      gates: [],
-    };
-  }
   if (kind === 'code') {
     const commandName = defaults.commandNames?.find((name) => name.trim().length > 0);
     return {

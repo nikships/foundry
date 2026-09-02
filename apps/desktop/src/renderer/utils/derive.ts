@@ -77,10 +77,10 @@ export const KIND_LABEL: Record<string, string> = {
  * Phase-kind hues. `agent` is per-agent, so callers pass the resolved owner
  * colour; `code` is fixed. Unknown kinds fall back to cyan.
  */
-const KIND_COLOR: Record<string, string> = { code: 'var(--blue)' };
-
 export function phaseKindColor(kind: string, ownerColor: string): string {
-  return kind === 'agent' ? ownerColor : (KIND_COLOR[kind] ?? 'var(--accent)');
+  if (kind === 'agent') return ownerColor;
+  if (kind === 'code') return 'var(--blue)';
+  return 'var(--accent)';
 }
 
 /**

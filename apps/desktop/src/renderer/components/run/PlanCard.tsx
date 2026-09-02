@@ -84,6 +84,7 @@ export default function PlanCard({
     if (!name) return 'var(--text-faint)';
     return plan.agents.find((a) => a.name === name)?.color ?? agentColor(name);
   };
+  const commandPronoun = missingCommandRefs.length === 1 ? 'it' : 'them';
 
   return (
     <section className={`${styles.card} card`} data-testid="plan-card">
@@ -233,9 +234,8 @@ export default function PlanCard({
               <strong>Project commands</strong>
               <p className={styles.warningMessage}>
                 This plan needs {missingCommandRefs.map((ref) => `“${ref}”`).join(', ')}, but the
-                selected project does not provide {missingCommandRefs.length === 1 ? 'it' : 'them'}
-                yet. Configure {missingCommandRefs.length === 1 ? 'it' : 'them'} here without
-                leaving or losing this plan.
+                selected project does not provide {commandPronoun} yet. Configure {commandPronoun}{' '}
+                here without leaving or losing this plan.
               </p>
               <Button
                 size="sm"

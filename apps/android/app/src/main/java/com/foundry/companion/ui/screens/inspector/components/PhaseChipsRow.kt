@@ -1,6 +1,5 @@
 package com.foundry.companion.ui.screens.inspector.components
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,7 +22,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.ui.theme.FoundryTheme
-import com.foundry.companion.ui.theme.foundryPulseEnabled
+import com.foundry.companion.ui.theme.foundryPulseAlpha
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -39,22 +38,7 @@ fun PhaseChipsRow(
 
     val scrollState = rememberScrollState()
     val anyRunning = phases.any { it.status.equals("running", ignoreCase = true) }
-
-    val pulseAlpha = if (foundryPulseEnabled(anyRunning)) {
-        val infiniteTransition = rememberInfiniteTransition(label = "phaseDotPulse")
-        val alpha by infiniteTransition.animateFloat(
-            initialValue = 0.35f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 750, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "pulseAlpha"
-        )
-        alpha
-    } else {
-        1f
-    }
+    val pulseAlpha = foundryPulseAlpha(anyRunning)
 
     val requesters = remember(phases) {
         phases.associate { it.resolvedId to BringIntoViewRequester() }
@@ -94,7 +78,7 @@ fun PhaseChipsRow(
                     .clickable { onSelectPhase(phase.resolvedId) }
                     .semantics {
                         selected = isSelected
-                        contentDescription = phaseChipDescription(phase)
+                        contentDescription = phase.accessibilityLabel
                     }
                     .testTag("inspector-phase-${phase.resolvedId}")
                     .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -117,7 +101,3 @@ fun PhaseChipsRow(
     }
 }
 
-internal fun phaseChipDescription(phase: PhaseRunSummary): String {
-    val attempt = if (phase.attempt > 1) ", attempt ${phase.attempt}" else ""
-    return "Phase ${phase.name}, ${phase.status}$attempt"
-}

@@ -239,17 +239,19 @@ export class RunRegistry {
       runId,
       engineer: this.deps.engineerName,
       onLiveText: (phaseId, text) => this.appendLiveText(phaseId, text),
-      landing: (() => {
-        const { saveProject, notifySettings, projectById } = this.deps;
-        if (!saveProject || !notifySettings) return undefined;
-        return {
-          currentProject: () => projectById?.(input.project.id) ?? input.project,
-          saveProject,
-          notifySettings,
-          notifyRuns: () => this.deps.onRunsChanged(),
-        };
-      })(),
+      landing: this.landingFor(input.project),
     });
+  }
+
+  private landingFor(project: ProjectDef) {
+    const { saveProject, notifySettings, projectById } = this.deps;
+    if (!saveProject || !notifySettings) return undefined;
+    return {
+      currentProject: () => projectById?.(project.id) ?? project,
+      saveProject,
+      notifySettings,
+      notifyRuns: () => this.deps.onRunsChanged(),
+    };
   }
 
   private launch(

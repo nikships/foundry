@@ -1152,12 +1152,12 @@ export class Executor {
    * compaction that fails is not an error the run answers for: the next turn
    * hits the same context wall it would have hit without this.
    */
-  private async compactFullSessions(threshold = this.deps.compactionThreshold): Promise<void> {
-    const effective = threshold ?? 0.8;
+  private async compactFullSessions(): Promise<void> {
+    const threshold = this.deps.compactionThreshold;
     for (const session of this.sessions.values()) {
       const stats = await session.contextStats();
       if (!stats?.limit) continue;
-      if (stats.used / stats.limit < effective) continue;
+      if (stats.used / stats.limit < threshold) continue;
       // A summarised conversation may no longer carry an earlier phase's
       // prompt verbatim, and a compaction that refused still consumed the
       // decision — forget either way and let the next entry render in full.

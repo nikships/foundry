@@ -21,7 +21,6 @@ class CompanionNotifier(
 ) {
 
     private val knownRunStatuses = mutableMapOf<String, String>()
-    private val knownRunProjects = mutableMapOf<String, String>()
 
     @Synchronized
     fun onRuns(runs: List<RunRow>) {
@@ -32,9 +31,6 @@ class CompanionNotifier(
         val canPost = notificationManager?.hasNotificationPermission() ?: false
 
         for (run in runs) {
-            if (run.projectId.isNotBlank()) {
-                knownRunProjects[run.runId] = run.projectId
-            }
             val status = run.status.lowercase()
             val previous = knownRunStatuses[run.runId]
             val settled = status in SETTLED_STATUSES
@@ -64,7 +60,6 @@ class CompanionNotifier(
     @Synchronized
     fun reset() {
         knownRunStatuses.clear()
-        knownRunProjects.clear()
     }
 
     companion object {

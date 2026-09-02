@@ -1,18 +1,16 @@
 package com.foundry.companion.ui.components
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.ui.theme.FoundryTheme
-import com.foundry.companion.ui.theme.foundryPulseEnabled
+import com.foundry.companion.ui.theme.foundryPulseAlpha
 
 @Composable
 fun StatusBadge(
@@ -26,22 +24,7 @@ fun StatusBadge(
 
     val statusColor = colors.statusColorFor(status)
     val isRunning = status.equals("running", ignoreCase = true)
-
-    val pulseAlpha = if (foundryPulseEnabled(isRunning)) {
-        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-        val alpha by infiniteTransition.animateFloat(
-            initialValue = 0.35f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 750, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "alpha"
-        )
-        alpha
-    } else {
-        1.0f
-    }
+    val pulseAlpha = foundryPulseAlpha(isRunning)
 
     val displayLabel = (customLabel ?: status).uppercase()
 

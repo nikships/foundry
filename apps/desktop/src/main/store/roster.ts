@@ -14,7 +14,7 @@ import { REASONING_EFFORTS } from '@shared/reasoning-effort.js';
 import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_AGENTS } from '@shared/builtin-agents.js';
-import { uniqueCopyName, upsertBy } from './collections.js';
+import { seedBuiltins, uniqueCopyName, upsertBy } from './collections.js';
 
 export const agentSchema = z.object({
   name: z
@@ -118,22 +118,13 @@ export class RosterStore {
       join(appSupportDir, 'roster.json'),
       () => BUILTIN_AGENTS.map((a) => ({ ...a })),
       (raw) => {
-        const list = Array.isArray(raw) ? (raw as AgentDef[]) : [];
         // A roster missing a shipped agent would break the built-in pipelines
         // that name it, so absent built-ins are restored rather than assumed.
-        const shipped = new Set(BUILTIN_AGENTS.map((a) => a.name));
         // An agent forked off a built-in used to inherit `builtin: true`, which
         // hides its own Delete button. The flag says where an agent came from,
         // so a name that was never shipped cannot legitimately carry it.
-        const byName = new Map(
-          list
-            .map(normalizeAgent)
-            .map((a) => [a.name, shipped.has(a.name) ? a : { ...a, builtin: false }] as const),
-        );
-        for (const builtin of BUILTIN_AGENTS) {
-          if (!byName.has(builtin.name)) byName.set(builtin.name, { ...builtin });
-        }
-        return [...byName.values()];
+        const list = Array.isArray(raw) ? (raw as AgentDef[]).map(normalizeAgent) : [];
+        return seedBuiltins(list, BUILTIN_AGENTS, (agent) => agent.name);
       },
     );
   }

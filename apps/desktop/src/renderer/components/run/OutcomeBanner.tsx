@@ -24,6 +24,15 @@ function artFor(status: RunRow['status']): string {
   return 'scenes/run-failed.png';
 }
 
+function ExportAction({ onExport }: { onExport?: () => void }): React.JSX.Element | null {
+  if (!onExport) return null;
+  return (
+    <Button variant="ghost" size="sm" onClick={onExport}>
+      Export…
+    </Button>
+  );
+}
+
 /** The GitHub issue this run filed, when it filed one. */
 function IssueLink({
   run,
@@ -184,11 +193,7 @@ export default function OutcomeBanner({
       </div>
       {hasWorktree ? (
         <div className={styles.actions}>
-          {onExport && (
-            <Button variant="ghost" size="sm" onClick={onExport}>
-              Export…
-            </Button>
-          )}
+          <ExportAction onExport={onExport} />
           {canResume && onResume && (
             <Button
               variant="primary"
@@ -258,11 +263,7 @@ export default function OutcomeBanner({
         </div>
       ) : run.merged ? (
         <div className={styles.actions}>
-          {onExport && (
-            <Button variant="ghost" size="sm" onClick={onExport}>
-              Export…
-            </Button>
-          )}
+          <ExportAction onExport={onExport} />
           <IssueLink run={run} onOpenUrl={onOpenUrl} />
           {run.prUrl && (
             <Button
@@ -278,9 +279,7 @@ export default function OutcomeBanner({
         </div>
       ) : onExport ? (
         <div className={styles.actions}>
-          <Button variant="ghost" size="sm" onClick={onExport}>
-            Export…
-          </Button>
+          <ExportAction onExport={onExport} />
         </div>
       ) : null}
       {prFormOpen && hasWorktree && !run.prUrl && (

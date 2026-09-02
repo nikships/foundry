@@ -36,40 +36,41 @@ export function useSmithChat(projectId: string | undefined): {
     };
   }, [projectId]);
 
+  const apply = useCallback(async (work: () => Promise<SmithChatState | null>): Promise<void> => {
+    const next = await work();
+    if (next) setState(next);
+  }, []);
+
   const send = useCallback(
     async (text: string, screen: SmithScreenContext): Promise<void> => {
       if (!text.trim()) return;
-      const next = await api.smith.send(projectId, text, screen);
-      if (next) setState(next);
+      await apply(() => api.smith.send(projectId, text, screen));
     },
-    [projectId],
+    [apply, projectId],
   );
 
-  const cancel = useCallback(async (): Promise<void> => {
-    const next = await api.smith.cancel(projectId);
-    if (next) setState(next);
-  }, [projectId]);
+  const cancel = useCallback(
+    (): Promise<void> => apply(() => api.smith.cancel(projectId)),
+    [apply, projectId],
+  );
 
-  const newChat = useCallback(async (): Promise<void> => {
-    const next = await api.smith.newChat(projectId);
-    if (next) setState(next);
-  }, [projectId]);
+  const newChat = useCallback(
+    (): Promise<void> => apply(() => api.smith.newChat(projectId)),
+    [apply, projectId],
+  );
 
   const setModel = useCallback(
     async (model: string): Promise<void> => {
       if (!model.trim()) return;
-      const next = await api.smith.setModel(projectId, model);
-      if (next) setState(next);
+      await apply(() => api.smith.setModel(projectId, model));
     },
-    [projectId],
+    [apply, projectId],
   );
 
   const setReasoningEffort = useCallback(
-    async (effort: ReasoningEffort): Promise<void> => {
-      const next = await api.smith.setReasoningEffort(projectId, effort);
-      if (next) setState(next);
-    },
-    [projectId],
+    (effort: ReasoningEffort): Promise<void> =>
+      apply(() => api.smith.setReasoningEffort(projectId, effort)),
+    [apply, projectId],
   );
 
   return { state, send, cancel, newChat, setModel, setReasoningEffort };

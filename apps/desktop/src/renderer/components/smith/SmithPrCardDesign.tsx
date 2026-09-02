@@ -5,7 +5,6 @@
  * diffstats, action outcomes, and external link.
  */
 
-import { useMemo } from 'react';
 import type { PrCardDef } from '@shared/types.js';
 import {
   prChecksGlyph,
@@ -113,9 +112,8 @@ export function PrCardDesign({
   pr: PrCardDef;
   compact?: boolean;
 }): React.JSX.Element {
-  const checksLabel = useMemo(() => prChecksLabel(pr.checks), [pr.checks]);
-  const mergeableLabel = useMemo(() => prMergeableLabel(pr.mergeable), [pr.mergeable]);
-
+  const checksLabel = prChecksLabel(pr.checks);
+  const mergeableLabel = prMergeableLabel(pr.mergeable);
   const checksKind = pr.checks ?? 'none';
   const mergeKind = pr.mergeable ?? 'unknown';
 
@@ -212,5 +210,3 @@ export function PrCardDesign({
     </div>
   );
 }
-
-export default PrCardDesign;

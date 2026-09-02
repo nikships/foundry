@@ -45,23 +45,11 @@ fun LiveRunCard(
     val elapsedMs = RunFormatters.computeDurationMs(run, currentNow) ?: 0L
     val timerString = RunFormatters.formatElapsedTimer(elapsedMs)
 
-    // Phase statuses from phases list or phaseSummary
-    val phaseStatuses = remember(run.phases, run.phaseSummary) {
+    val (phaseStatuses, phaseNames) = remember(run.phases, run.phaseSummary) {
         if (run.phases.isNotEmpty()) {
-            run.phases.map { it.status }
-        } else if (run.phaseSummary.isNotEmpty()) {
-            run.phaseSummary.map { it.status }
+            run.phases.map { it.status } to run.phases.map { it.name }
         } else {
-            emptyList()
-        }
-    }
-    val phaseNames = remember(run.phases, run.phaseSummary) {
-        if (run.phases.isNotEmpty()) {
-            run.phases.map { it.name }
-        } else if (run.phaseSummary.isNotEmpty()) {
-            run.phaseSummary.map { it.name }
-        } else {
-            emptyList()
+            run.phaseSummary.map { it.status } to run.phaseSummary.map { it.name }
         }
     }
 
@@ -149,12 +137,8 @@ fun LiveRunCard(
         // Bottom meta: source badges · branch tail · tokens
         val branchTail = RunFormatters.branchTail(run.branch)
         val tokensText = RunFormatters.formatTokens(run.totalTokens)
-        val badges = buildList {
-            if (run.orchestrated) add("ORCH")
-            run.source?.snapshot?.let { add(it.identifier) }
-        }
         val metaString = listOfNotNull(
-            badges.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+            run.sourceBadges.takeIf { it.isNotEmpty() }?.joinToString(" · "),
             branchTail,
             tokensText
         ).joinToString(" · ")

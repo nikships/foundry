@@ -37,6 +37,13 @@ export function useOrchestratorPlan(
   const planIdRef = useRef('');
   const requestGenerationRef = useRef(0);
 
+  const resetPlanningFields = useCallback((): void => {
+    setPlanning(null);
+    setPlanError('');
+    setModelOverrides({});
+    setReasoningOverrides({});
+  }, []);
+
   useEffect(
     () =>
       api.on('orchestrator-progress', (data) => {
@@ -50,18 +57,15 @@ export function useOrchestratorPlan(
 
   useEffect(() => {
     requestGenerationRef.current += 1;
-    setPlanning(null);
     setRequestingPlan(false);
-    setPlanError('');
-    setModelOverrides({});
-    setReasoningOverrides({});
+    resetPlanningFields();
     return () => {
       requestGenerationRef.current += 1;
       const planId = planIdRef.current;
       planIdRef.current = '';
       if (planId) void api.orchestrator.cancel(planId);
     };
-  }, [projectId]);
+  }, [projectId, resetPlanningFields]);
 
   const original = planning?.status === 'done' ? planning.plan : null;
   const plan = useMemo(() => {
@@ -88,10 +92,7 @@ export function useOrchestratorPlan(
       const generation = ++requestGenerationRef.current;
       planIdRef.current = '';
       setRequestingPlan(true);
-      setPlanError('');
-      setModelOverrides({});
-      setReasoningOverrides({});
-      setPlanning(null);
+      resetPlanningFields();
       try {
         const result = await api.orchestrator.plan(
           projectId,
@@ -131,7 +132,7 @@ export function useOrchestratorPlan(
         if (generation === requestGenerationRef.current) setRequestingPlan(false);
       }
     },
-    [choice, projectId, requestingPlan],
+    [choice, projectId, requestingPlan, resetPlanningFields],
   );
 
   const cancel = useCallback((): void => {
@@ -140,21 +141,15 @@ export function useOrchestratorPlan(
     planIdRef.current = '';
     if (planId) void api.orchestrator.cancel(planId);
     setRequestingPlan(false);
-    setPlanning(null);
-    setPlanError('');
-    setModelOverrides({});
-    setReasoningOverrides({});
-  }, []);
+    resetPlanningFields();
+  }, [resetPlanningFields]);
 
   const discard = useCallback((): void => {
     requestGenerationRef.current += 1;
     planIdRef.current = '';
     setRequestingPlan(false);
-    setPlanning(null);
-    setPlanError('');
-    setModelOverrides({});
-    setReasoningOverrides({});
-  }, []);
+    resetPlanningFields();
+  }, [resetPlanningFields]);
 
   return {
     stage,

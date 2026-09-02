@@ -153,21 +153,16 @@ export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]
   // Pull requests ride on the operator's own gh install and login; Foundry
   // holds no GitHub token. Never blocking — local merge works without it.
   const gh = await probe(['gh', '--version'], 10_000);
-  if (!gh.passed) {
-    checks.push({
-      id: 'gh',
-      label: 'GitHub CLI',
-      ok: false,
-      detail: 'gh is not on PATH — pull requests are unavailable (local merge still works)',
-      fix: { kind: 'open-url', value: 'https://cli.github.com' },
-    });
-  } else {
-    checks.push({
-      id: 'gh',
-      label: 'GitHub CLI',
-      ok: true,
-      detail: gh.outputTail.trim().split('\n')[0] ?? 'installed',
-    });
+  checks.push({
+    id: 'gh',
+    label: 'GitHub CLI',
+    ok: gh.passed,
+    detail: gh.passed
+      ? (gh.outputTail.trim().split('\n')[0] ?? 'installed')
+      : 'gh is not on PATH — pull requests are unavailable (local merge still works)',
+    fix: gh.passed ? undefined : { kind: 'open-url', value: 'https://cli.github.com' },
+  });
+  if (gh.passed) {
     const ghAuth = await probe(['gh', 'auth', 'status'], 15_000);
     checks.push({
       id: 'gh:auth',

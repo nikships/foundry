@@ -1,6 +1,7 @@
 /** Continue an interrupted Pi turn on each next reachable model in catalog order. */
 
 import type { AgentSession as PiAgentSession } from '@earendil-works/pi-coding-agent';
+import { modelKey } from './model.js';
 import { lastAssistantStop, type VendorEventReader } from './vendor-events.js';
 
 const CONTINUATION =
@@ -8,7 +9,7 @@ const CONTINUATION =
 
 function modelId(session: PiAgentSession): string | null {
   const model = session.model;
-  return model ? `${model.provider}/${model.id}` : null;
+  return model ? modelKey(model) : null;
 }
 
 /**
@@ -44,7 +45,7 @@ export async function continueWithModelFailover(input: {
     const next = await input.session.cycleModel();
     if (!next) return;
 
-    const nextId = `${next.model.provider}/${next.model.id}`;
+    const nextId = modelKey(next.model);
     if (attempted.has(nextId)) return;
     attempted.add(nextId);
     // cycleModel() has already stepped onto this id. Do not start a turn on

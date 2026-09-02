@@ -11,12 +11,6 @@ import com.foundry.companion.util.RunFormatters
  * no separate ticks endpoint. Only tool / gate / interrupt leave a mark.
  */
 object TranscriptEvents {
-    val skippedTypes: Set<String> = setOf(
-        "agent_start",
-        "phase_start",
-        "phase_end"
-    )
-
     val knownTypes: Set<String> = setOf(
         "thinking",
         "assistant_text",
@@ -30,13 +24,6 @@ object TranscriptEvents {
         "compaction",
         "agent_end",
         "log"
-    )
-
-    val tickTypes: Set<String> = setOf(
-        "tool_call",
-        "gate_pass",
-        "gate_fail",
-        "interrupt"
     )
 
     fun isRenderable(type: String): Boolean = type in knownTypes

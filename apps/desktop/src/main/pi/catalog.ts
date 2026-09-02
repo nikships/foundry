@@ -20,20 +20,13 @@
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { ModelInfo } from '@shared/types.js';
 import { intelligenceFor } from '@shared/model-intelligence.js';
-import { effortsFor } from './model.js';
+import { defaultEffortFor, effortsFor, modelKey } from './model.js';
 import { modelRuntime } from './runtime.js';
+
+export { modelKey };
 
 /** pi's own model shape, derived from the runtime rather than imported. */
 type PiModel = Awaited<ReturnType<ModelRuntime['getAvailable']>>[number];
-
-/**
- * Provider-qualified, because that is the id a roster stores and
- * `pi-transport.ts` matches on. A bare `claude-opus-5` is ambiguous the moment
- * both `anthropic` and `bridge-claude` offer it.
- */
-export function modelKey(model: { provider: string; id: string }): string {
-  return `${model.provider}/${model.id}`;
-}
 
 /**
  * Which brand a model belongs to, which is what names its mark in the picker.
@@ -86,7 +79,7 @@ export function toModelInfo(model: PiModel): ModelInfo {
     // the id and name the way the picker's mark needs.
     provider: providerOf(model.id, model.name),
     supportedReasoningEfforts: efforts,
-    defaultReasoningEffort: efforts.includes('medium') ? 'medium' : (efforts[0] ?? 'off'),
+    defaultReasoningEffort: defaultEffortFor(efforts),
     // "Custom" means "not one of pi's built-ins": everything that arrived
     // through models.json, which is exactly what the Bridge writes.
     isCustom: !BUILTIN_PI_PROVIDERS.has(model.provider),

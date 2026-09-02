@@ -1,6 +1,6 @@
 /**
- * Encapsulates electron-updater configuration, update state management,
- * app.isPackaged guards, and status broadcasting to the renderer.
+ * Auto-update for packaged builds. The renderer owns the download action, so
+ * an available update cannot disappear into a background transfer.
  */
 
 import { app } from 'electron';
@@ -24,8 +24,7 @@ export class UpdaterService {
     customAutoUpdater?: typeof pkg.autoUpdater,
     isPackagedOverride?: boolean,
   ) {
-    this.isPackaged = isPackagedOverride ?? (app ? app.isPackaged : false);
-
+    this.isPackaged = isPackagedOverride ?? Boolean(app?.isPackaged);
     if (customAutoUpdater) {
       this.updater = customAutoUpdater;
     } else if (this.isPackaged) {
@@ -35,10 +34,7 @@ export class UpdaterService {
         console.warn('Failed to resolve autoUpdater:', err);
       }
     }
-
-    if (this.isPackaged && this.updater) {
-      this.initUpdater();
-    }
+    if (this.isPackaged && this.updater) this.initUpdater(this.updater);
   }
 
   private setStatus(next: UpdateStatus): void {
@@ -46,68 +42,62 @@ export class UpdaterService {
     this.broadcaster?.(IPC.eventUpdaterStatus, this.getStatus());
   }
 
-  public getStatus(): UpdateStatus {
+  getStatus(): UpdateStatus {
     return { ...this.status };
   }
 
-  private initUpdater(): void {
-    if (!this.updater) return;
-    try {
-      // The renderer owns the explicit download action, so an available
-      // update cannot disappear into a background transfer before the user
-      // sees how to install it.
-      this.updater.autoDownload = false;
-      this.updater.autoInstallOnAppQuit = true;
+  private initUpdater(updater: typeof pkg.autoUpdater): void {
+    // The renderer owns the explicit download action, so an available
+    // update cannot disappear into a background transfer before the user
+    // sees how to install it.
+    updater.autoDownload = false;
+    updater.autoInstallOnAppQuit = true;
 
-      this.updater.on('checking-for-update', () => {
-        this.setStatus({ stage: 'checking' });
-      });
+    updater.on('checking-for-update', () => {
+      this.setStatus({ stage: 'checking' });
+    });
 
-      this.updater.on('update-available', (info) => {
-        this.setStatus({
-          stage: 'available',
-          version: info.version,
-          releaseDate: typeof info.releaseDate === 'string' ? info.releaseDate : undefined,
-        });
+    updater.on('update-available', (info) => {
+      this.setStatus({
+        stage: 'available',
+        version: info.version,
+        releaseDate: typeof info.releaseDate === 'string' ? info.releaseDate : undefined,
       });
+    });
 
-      this.updater.on('update-not-available', (info) => {
-        this.setStatus({
-          stage: 'idle',
-          version: info?.version,
-          message: 'No update available',
-        });
+    updater.on('update-not-available', (info) => {
+      this.setStatus({
+        stage: 'idle',
+        version: info?.version,
+        message: 'No update available',
       });
+    });
 
-      this.updater.on('download-progress', (progress) => {
-        // Preserve version from the available/ready state so the banner and
-        // Settings can keep showing "Foundry vX.Y.Z is downloading".
-        const prev = this.status as UpdateStatus & { version?: string };
-        this.setStatus({
-          stage: 'downloading',
-          version: prev.version,
-          releaseDate: prev.releaseDate,
-          percent: Math.round(progress.percent),
-        });
+    updater.on('download-progress', (progress) => {
+      // Preserve version from the available/ready state so the banner and
+      // Settings can keep showing "Foundry vX.Y.Z is downloading".
+      this.setStatus({
+        stage: 'downloading',
+        version: this.status.version,
+        releaseDate: this.status.releaseDate,
+        percent: Math.round(progress.percent),
       });
+    });
 
-      this.updater.on('update-downloaded', (info) => {
-        this.setStatus({
-          stage: 'ready',
-          version: info.version,
-          releaseDate: typeof info.releaseDate === 'string' ? info.releaseDate : undefined,
-        });
+    updater.on('update-downloaded', (info) => {
+      this.setStatus({
+        stage: 'ready',
+        version: info.version,
+        releaseDate: typeof info.releaseDate === 'string' ? info.releaseDate : undefined,
       });
+    });
 
-      this.updater.on('error', (err) => {
-        this.setStatus({
-          stage: 'error',
-          message: err?.message || String(err),
-        });
+    updater.on('error', (err) => {
+      this.setStatus({
+        stage: 'error',
+        message: err?.message || String(err),
       });
-    } catch (e) {
-      console.warn('Failed to initialize autoUpdater:', e);
-    }
+    });
   }
 
   private disabledStatus(): UpdateStatus {
@@ -119,7 +109,7 @@ export class UpdaterService {
     return status;
   }
 
-  public async check(_options?: { interactive?: boolean }): Promise<UpdateStatus> {
+  async check(_options?: { interactive?: boolean }): Promise<UpdateStatus> {
     if (!this.isPackaged || !this.updater) return this.disabledStatus();
     if (this.status.stage === 'downloading' || this.status.stage === 'ready') {
       return this.getStatus();
@@ -139,14 +129,16 @@ export class UpdaterService {
     try {
       this.setStatus({ stage: 'checking' });
       await this.updater?.checkForUpdates();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.setStatus({ stage: 'error', message: msg });
+    } catch (err) {
+      this.setStatus({
+        stage: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
     return this.getStatus();
   }
 
-  public async download(): Promise<UpdateStatus> {
+  async download(): Promise<UpdateStatus> {
     if (!this.isPackaged || !this.updater) return this.disabledStatus();
     if (this.status.stage === 'ready') return this.getStatus();
     if (this.downloadInFlight) return this.downloadInFlight;
@@ -164,14 +156,16 @@ export class UpdaterService {
     try {
       this.setStatus({ stage: 'downloading', percent: 0 });
       await this.updater?.downloadUpdate();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.setStatus({ stage: 'error', message: msg });
+    } catch (err) {
+      this.setStatus({
+        stage: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
     return this.getStatus();
   }
 
-  public async quitAndInstall(): Promise<void> {
+  async quitAndInstall(): Promise<void> {
     if (!this.isPackaged || !this.updater) return;
     this.updater.quitAndInstall(false, true);
   }

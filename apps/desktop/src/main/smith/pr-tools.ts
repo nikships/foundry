@@ -47,10 +47,11 @@ export function smithPrsTool(deps: SmithActionToolDeps): ToolDefinition {
       const gated =
         op === 'create' ? createArgs(params, projectId) : prNumberArgs(op, params, projectId);
       if (!gated.ok) return json({ ok: false, error: gated.error });
+      const label = op.replaceAll('_', ' ');
       return proposeAction(deps, {
         operation: op,
-        title: `${op.replaceAll('_', ' ')} pull request`,
-        summary: `${op.replaceAll('_', ' ')} using GitHub.`,
+        title: `${label} pull request`,
+        summary: `${label} using GitHub.`,
         args: gated.shownArgs,
         risk: op === 'merge' ? 'destructive' : 'git',
         execute: () => deps.invoke(gated.channel, ...gated.args),

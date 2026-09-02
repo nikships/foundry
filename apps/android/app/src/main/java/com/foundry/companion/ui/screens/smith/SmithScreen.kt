@@ -58,6 +58,7 @@ import com.foundry.companion.ui.components.MarkdownText
 import com.foundry.companion.ui.components.ReconnectBanner
 import com.foundry.companion.ui.components.foundryBottomChromePadding
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.util.KNOWN_REASONING_EFFORTS
 import com.foundry.companion.util.isHiddenVendorText
 
 @Composable
@@ -88,8 +89,8 @@ fun SmithScreen(
     val selectedModel = models.firstOrNull { it.id == chosenModel }
     val effortModel = selectedModel ?: models.firstOrNull { it.id == chat?.activeModel }
     val effortOptions = effortModel?.supportedReasoningEfforts
-        ?.ifEmpty { listOf("off", "minimal", "low", "medium", "high", "xhigh", "max") }
-        ?: listOf("off", "minimal", "low", "medium", "high", "xhigh", "max")
+        ?.ifEmpty { KNOWN_REASONING_EFFORTS }
+        ?: KNOWN_REASONING_EFFORTS
     val modelBlocked = when {
         models.isEmpty() -> "Connect a provider on the Mac to choose a model."
         chosenModel.isBlank() || chosenModel == "inherit" -> "No model is selected. Choose one to start the conversation."

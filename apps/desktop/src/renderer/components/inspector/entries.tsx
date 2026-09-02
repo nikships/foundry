@@ -313,38 +313,42 @@ interface EnvelopePayload {
   summary?: string;
   notes_for_next_agent?: string;
   changed_files?: string[];
-  artifacts?: string[];
   commit_message?: string;
-  diff_matches_claims?: boolean;
 }
 
-function parseJsonEnvelope(text: string): EnvelopePayload | null {
+function tryParseJson(text: string): unknown {
   const trimmed = text.trim();
-  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+  const objectLike = trimmed.startsWith('{') && trimmed.endsWith('}');
+  const arrayLike = trimmed.startsWith('[') && trimmed.endsWith(']');
+  if (!objectLike && !arrayLike) return null;
   try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    const marker =
-      'status' in parsed ||
-      'summary' in parsed ||
-      'commit_message' in parsed ||
-      'notes_for_next_agent' in parsed;
-    if (!marker) return null;
-    return {
-      status: typeof parsed.status === 'string' ? parsed.status : undefined,
-      summary: typeof parsed.summary === 'string' ? parsed.summary : undefined,
-      notes_for_next_agent:
-        typeof parsed.notes_for_next_agent === 'string' ? parsed.notes_for_next_agent : undefined,
-      changed_files: Array.isArray(parsed.changed_files)
-        ? (parsed.changed_files as string[])
-        : undefined,
-      artifacts: Array.isArray(parsed.artifacts) ? (parsed.artifacts as string[]) : undefined,
-      commit_message: typeof parsed.commit_message === 'string' ? parsed.commit_message : undefined,
-      diff_matches_claims:
-        typeof parsed.diff_matches_claims === 'boolean' ? parsed.diff_matches_claims : undefined,
-    };
+    return JSON.parse(trimmed);
   } catch {
     return null;
   }
+}
+
+function envelopeFrom(value: unknown): EnvelopePayload | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const parsed = value as Record<string, unknown>;
+  if (!(
+    'status' in parsed ||
+    'summary' in parsed ||
+    'commit_message' in parsed ||
+    'notes_for_next_agent' in parsed
+  )) {
+    return null;
+  }
+  return {
+    status: typeof parsed.status === 'string' ? parsed.status : undefined,
+    summary: typeof parsed.summary === 'string' ? parsed.summary : undefined,
+    notes_for_next_agent:
+      typeof parsed.notes_for_next_agent === 'string' ? parsed.notes_for_next_agent : undefined,
+    changed_files: Array.isArray(parsed.changed_files)
+      ? (parsed.changed_files as string[])
+      : undefined,
+    commit_message: typeof parsed.commit_message === 'string' ? parsed.commit_message : undefined,
+  };
 }
 
 function EnvelopeCardBlock({
@@ -385,32 +389,23 @@ function EnvelopeCardBlock({
 function TextBlock({ event }: { event: EventRow }): React.JSX.Element {
   const open = event.endedAt == null;
   const rawText = str(event.payload.text);
-  const envelope = useMemo(() => parseJsonEnvelope(rawText), [rawText]);
+  const parsed = useMemo(() => tryParseJson(rawText), [rawText]);
+  const envelope = envelopeFrom(parsed);
 
   if (envelope) {
     return <EnvelopeCardBlock env={envelope} open={open} startedAt={event.startedAt} />;
   }
 
-  const trimmed = rawText.trim();
-  if (
-    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-    (trimmed.startsWith('[') && trimmed.endsWith(']'))
-  ) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      const pretty = JSON.stringify(parsed, null, 2);
-      return (
-        <div className={`te text json ${open ? 'open' : ''}`}>
-          <div className="te-row-head">
-            <span className="te-tag json">data</span>
-            <Time iso={event.startedAt} />
-          </div>
-          <TruncatedOutput text={pretty} maxLines={12} />
+  if (parsed !== null) {
+    return (
+      <div className={`te text json ${open ? 'open' : ''}`}>
+        <div className="te-row-head">
+          <span className="te-tag json">data</span>
+          <Time iso={event.startedAt} />
         </div>
-      );
-    } catch {
-      // Fallback to plain text
-    }
+        <TruncatedOutput text={JSON.stringify(parsed, null, 2)} maxLines={12} />
+      </div>
+    );
   }
 
   return (

@@ -59,28 +59,36 @@ fun FoundryNavHost(
     DisposableEffect(navController, sessionManager) {
         val listener = NavController.OnDestinationChangedListener { _, destination, arguments ->
             val route = destination.route ?: return@OnDestinationChangedListener
-            val formattedRoute = when {
-                route == NavRoute.RunDetail.route -> {
+            val formattedRoute = when (route) {
+                NavRoute.RunDetail.route -> {
                     val runId = arguments?.getString("runId").orEmpty()
-                    if (runId.isNotBlank()) "run/$runId" else "runs"
+                    if (runId.isNotBlank()) NavRoute.RunDetail.createRoute(runId) else NavRoute.Runs.route
                 }
-                route == NavRoute.Inspector.route -> {
+                NavRoute.Inspector.route -> {
                     val runId = arguments?.getString("runId").orEmpty()
-                    val phaseId = arguments?.getString("phaseId")
                     if (runId.isNotBlank()) {
-                        if (phaseId != null) "run/$runId/inspector?phase=$phaseId" else "run/$runId/inspector"
-                    } else "runs"
+                        NavRoute.Inspector.createRoute(runId, arguments?.getString("phaseId"))
+                    } else {
+                        NavRoute.Runs.route
+                    }
                 }
-                route == NavRoute.Pair.route -> "pair"
-                route == NavRoute.NewRun.route -> "new-run"
-                route == NavRoute.Smith.route -> "smith"
-                else -> "runs"
+                NavRoute.Pair.route -> NavRoute.Pair.route
+                NavRoute.NewRun.route -> NavRoute.NewRun.route
+                NavRoute.Smith.route -> NavRoute.Smith.route
+                else -> NavRoute.Runs.route
             }
             sessionManager?.setLastActiveRoute(formattedRoute)
         }
         navController.addOnDestinationChangedListener(listener)
         onDispose {
             navController.removeOnDestinationChangedListener(listener)
+        }
+    }
+
+    fun openStartedRun(runId: String) {
+        viewModel.loadRunDetail(runId)
+        navController.navigate(NavRoute.RunDetail.createRoute(runId)) {
+            popUpTo(NavRoute.Runs.route)
         }
     }
 
@@ -241,12 +249,7 @@ fun FoundryNavHost(
                 },
                 onRetryConnection = { viewModel.retryConnection() },
                 onStartRun = { projectId, pipelineId, request ->
-                    viewModel.startRun(projectId, pipelineId, request) { newRunId ->
-                        viewModel.loadRunDetail(newRunId)
-                        navController.navigate(NavRoute.RunDetail.createRoute(newRunId)) {
-                            popUpTo(NavRoute.Runs.route)
-                        }
-                    }
+                    viewModel.startRun(projectId, pipelineId, request, ::openStartedRun)
                 },
                 connectionStatus = uiState.connectionStatus,
                 isStarting = uiState.isStartingRun,
@@ -272,12 +275,7 @@ fun FoundryNavHost(
                     viewModel.restorePlanPhaseSettings()
                 },
                 onStartOrchestratedRun = { projectId ->
-                    viewModel.startOrchestratedRun(projectId) { newRunId ->
-                        viewModel.loadRunDetail(newRunId)
-                        navController.navigate(NavRoute.RunDetail.createRoute(newRunId)) {
-                            popUpTo(NavRoute.Runs.route)
-                        }
-                    }
+                    viewModel.startOrchestratedRun(projectId, ::openStartedRun)
                 },
                 linearConnection = uiState.linearConnection,
                 linearIssues = uiState.linearIssues,
@@ -292,12 +290,7 @@ fun FoundryNavHost(
                     viewModel.setLinearStatus(stage, stateId)
                 },
                 onStartLinearRun = { projectId, pipelineId, plan ->
-                    viewModel.startLinearRun(projectId, pipelineId, plan) { newRunId ->
-                        viewModel.loadRunDetail(newRunId)
-                        navController.navigate(NavRoute.RunDetail.createRoute(newRunId)) {
-                            popUpTo(NavRoute.Runs.route)
-                        }
-                    }
+                    viewModel.startLinearRun(projectId, pipelineId, plan, ::openStartedRun)
                 },
                 initialMode = NewRunMode.fromStorageKey(uiState.newRunMode),
                 onModeChange = { viewModel.setNewRunMode(it.storageKey) }

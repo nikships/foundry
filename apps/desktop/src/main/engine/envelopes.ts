@@ -166,7 +166,7 @@ function resolveBase(
   libraryFields: CustomEnvelopeField[];
   exampleKind: string;
 } {
-  if (builtinSet.has(kind) && kind in schemas) {
+  if (builtinSet.has(kind)) {
     return {
       baseSchema: schemas[kind as EnvelopeKind] as z.ZodObject<z.ZodRawShape>,
       libraryFields: [],

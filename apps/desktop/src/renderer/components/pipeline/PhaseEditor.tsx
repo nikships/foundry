@@ -35,6 +35,93 @@ function isBuiltinEnvelope(env: string | undefined): env is EnvelopeKind {
   return env ? (BUILTIN_ENVELOPE_KINDS as readonly string[]).includes(env) : false;
 }
 
+function FieldGroup({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: React.ReactNode;
+  htmlFor?: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className={styles.fieldGroup}>
+      <div className={styles.fieldHeader}>
+        {htmlFor ? (
+          <label htmlFor={htmlFor} className={styles.fieldLabel}>
+            {label}
+          </label>
+        ) : (
+          <span className={styles.fieldLabel}>{label}</span>
+        )}
+        {typeof hint === 'string' ? <span className={styles.fieldHint}>{hint}</span> : hint}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function RemovableChips({
+  items,
+  empty,
+  removeTitle,
+  onRemove,
+}: {
+  items: string[];
+  empty?: React.ReactNode;
+  removeTitle: string;
+  onRemove: (item: string) => void;
+}): React.JSX.Element {
+  return (
+    <div className={styles.chipRow}>
+      {items.map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onRemove(item)}
+          className={styles.removableChip}
+          title={removeTitle}
+        >
+          {item}
+          <span className={styles.chipClose}>×</span>
+        </button>
+      ))}
+      {items.length === 0 && empty}
+    </div>
+  );
+}
+
+function envelopeFieldHint(
+  phase: PhaseDef,
+  selectedAgent: AgentDef | undefined,
+  effectiveEnvelope: ReturnType<typeof effectivePhaseEnvelope>,
+): React.ReactNode {
+  if (phase.envelope) {
+    return (
+      <span className={styles.fieldHint}>
+        {isBuiltinEnvelope(phase.envelope)
+          ? `override · ${BUILTIN_ENVELOPE_BLURBS[phase.envelope]}`
+          : 'override'}
+      </span>
+    );
+  }
+  if (isBuiltinEnvelope(effectiveEnvelope)) {
+    return (
+      <span className={styles.fieldHint}>
+        {selectedAgent
+          ? `via ${selectedAgent.name} · ${BUILTIN_ENVELOPE_BLURBS[effectiveEnvelope]}`
+          : BUILTIN_ENVELOPE_BLURBS[effectiveEnvelope]}
+      </span>
+    );
+  }
+  if (selectedAgent?.envelope) {
+    return <span className={styles.fieldHint}>via {selectedAgent.name}</span>;
+  }
+  return null;
+}
+
 export default function PhaseEditor({
   phase,
   index,
@@ -91,7 +178,6 @@ export default function PhaseEditor({
     [agents, phase.agent],
   );
   const effectiveEnvelope = effectivePhaseEnvelope(phase, agents);
-  const envelopeOverridden = Boolean(phase.envelope);
 
   const handleKindChange = (kind: PhaseKind): void => {
     if (kind === phase.kind) return;
@@ -155,13 +241,7 @@ export default function PhaseEditor({
       )}
 
       {/* ── Name & Kind ──────────────────────────────────────────────── */}
-      <div className={styles.fieldGroup}>
-        <div className={styles.fieldHeader}>
-          <label htmlFor={`phase-name-${index}`} className={styles.fieldLabel}>
-            Name
-          </label>
-          <span className={styles.fieldHint}>snake_case identifier</span>
-        </div>
+      <FieldGroup label="Name" htmlFor={`phase-name-${index}`} hint="snake_case identifier">
         <input
           id={`phase-name-${index}`}
           className={styles.monoInput}
@@ -169,22 +249,13 @@ export default function PhaseEditor({
           onChange={(e) => onChange({ ...phase, name: e.target.value })}
           placeholder="e.g. build_app"
         />
-      </div>
+      </FieldGroup>
 
-      <div className={styles.fieldGroup}>
-        <div className={styles.fieldHeader}>
-          <span className={styles.fieldLabel}>Kind</span>
-        </div>
+      <FieldGroup label="Kind">
         <SegmentedControl options={kindOptions} />
-      </div>
+      </FieldGroup>
 
-      <div className={styles.fieldGroup}>
-        <div className={styles.fieldHeader}>
-          <label htmlFor={`phase-desc-${index}`} className={styles.fieldLabel}>
-            Description
-          </label>
-          <span className={styles.fieldHint}>required</span>
-        </div>
+      <FieldGroup label="Description" htmlFor={`phase-desc-${index}`} hint="required">
         <textarea
           id={`phase-desc-${index}`}
           rows={3}
@@ -193,18 +264,16 @@ export default function PhaseEditor({
           value={phase.description}
           onChange={(e) => onChange({ ...phase, description: e.target.value })}
         />
-      </div>
+      </FieldGroup>
 
       {/* ── Agent Specific ───────────────────────────────────────────── */}
       {phase.kind === 'agent' && (
         <>
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <label htmlFor={`phase-agent-${index}`} className={styles.fieldLabel}>
-                Agent
-              </label>
-              <span className={styles.fieldHint}>{agents.length} in roster</span>
-            </div>
+          <FieldGroup
+            label="Agent"
+            htmlFor={`phase-agent-${index}`}
+            hint={`${agents.length} in roster`}
+          >
             <select
               id={`phase-agent-${index}`}
               className={styles.select}
@@ -218,13 +287,9 @@ export default function PhaseEditor({
                 </option>
               ))}
             </select>
-          </div>
+          </FieldGroup>
 
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <span className={styles.fieldLabel}>Model</span>
-              <span className={styles.fieldHint}>{phase.model ? 'override' : 'via agent'}</span>
-            </div>
+          <FieldGroup label="Model" hint={phase.model ? 'override' : 'via agent'}>
             <ModelPicker
               value={phase.model ?? 'inherit'}
               models={models}
@@ -238,29 +303,13 @@ export default function PhaseEditor({
               onChange={(value) => onChange(applyPhaseModelOverride(phase, value))}
               onRefresh={() => void refreshModels()}
             />
-          </div>
+          </FieldGroup>
 
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <label htmlFor={`phase-envelope-${index}`} className={styles.fieldLabel}>
-                Report
-              </label>
-              {envelopeOverridden ? (
-                <span className={styles.fieldHint}>
-                  {isBuiltinEnvelope(phase.envelope)
-                    ? `override · ${BUILTIN_ENVELOPE_BLURBS[phase.envelope]}`
-                    : 'override'}
-                </span>
-              ) : isBuiltinEnvelope(effectiveEnvelope) ? (
-                <span className={styles.fieldHint}>
-                  {selectedAgent
-                    ? `via ${selectedAgent.name} · ${BUILTIN_ENVELOPE_BLURBS[effectiveEnvelope]}`
-                    : BUILTIN_ENVELOPE_BLURBS[effectiveEnvelope]}
-                </span>
-              ) : selectedAgent?.envelope ? (
-                <span className={styles.fieldHint}>via {selectedAgent.name}</span>
-              ) : null}
-            </div>
+          <FieldGroup
+            label="Report"
+            htmlFor={`phase-envelope-${index}`}
+            hint={envelopeFieldHint(phase, selectedAgent, effectiveEnvelope)}
+          >
             <select
               id={`phase-envelope-${index}`}
               className={styles.select}
@@ -294,35 +343,22 @@ export default function PhaseEditor({
                 Manage reports…
               </button>
             )}
-          </div>
+          </FieldGroup>
 
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <span className={styles.fieldLabel}>Checks</span>
-              <span className={styles.fieldHint}>{activeGates.length} active</span>
-            </div>
-            <div className={styles.chipRow}>
-              {activeGates.map((gate) => (
-                <button
-                  key={gate}
-                  type="button"
-                  onClick={() =>
-                    onChange({
-                      ...phase,
-                      gates: (phase.gates ?? []).filter((g) =>
-                        typeof g === 'string' ? g !== gate : g.gate !== gate,
-                      ),
-                    })
-                  }
-                  className={styles.removableChip}
-                  title="Remove check"
-                >
-                  {gate}
-                  <span className={styles.chipClose}>×</span>
-                </button>
-              ))}
-              {activeGates.length === 0 && <span className={styles.mutedText}>none</span>}
-            </div>
+          <FieldGroup label="Checks" hint={`${activeGates.length} active`}>
+            <RemovableChips
+              items={activeGates}
+              removeTitle="Remove check"
+              empty={<span className={styles.mutedText}>none</span>}
+              onRemove={(gate) =>
+                onChange({
+                  ...phase,
+                  gates: (phase.gates ?? []).filter((g) =>
+                    typeof g === 'string' ? g !== gate : g.gate !== gate,
+                  ),
+                })
+              }
+            />
             <select
               className={`${styles.select} ${styles.selectSm}`}
               value=""
@@ -342,33 +378,21 @@ export default function PhaseEditor({
                   </option>
                 ))}
             </select>
-          </div>
+          </FieldGroup>
 
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <span className={styles.fieldLabel}>Prompt inputs</span>
-            </div>
-            <div className={styles.chipRow}>
-              {inputs.map((inp) => (
-                <button
-                  key={inp}
-                  type="button"
-                  onClick={() =>
-                    onChange({
-                      ...phase,
-                      prompt: {
-                        inputs: inputs.filter((i) => i !== inp),
-                      },
-                    })
-                  }
-                  className={styles.removableChip}
-                  title="Remove input"
-                >
-                  {inp}
-                  <span className={styles.chipClose}>×</span>
-                </button>
-              ))}
-            </div>
+          <FieldGroup label="Prompt inputs">
+            <RemovableChips
+              items={inputs}
+              removeTitle="Remove input"
+              onRemove={(inp) =>
+                onChange({
+                  ...phase,
+                  prompt: {
+                    inputs: inputs.filter((i) => i !== inp),
+                  },
+                })
+              }
+            />
             {availableInputs.length > 0 && (
               <select
                 className={`${styles.select} ${styles.selectSm}`}
@@ -392,15 +416,13 @@ export default function PhaseEditor({
                 ))}
               </select>
             )}
-          </div>
+          </FieldGroup>
 
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <label htmlFor={`phase-retries-${index}`} className={styles.fieldLabel}>
-                Retries
-              </label>
-              <span className={styles.fieldHint}>0–5 on check failure</span>
-            </div>
+          <FieldGroup
+            label="Retries"
+            htmlFor={`phase-retries-${index}`}
+            hint="0–5 on check failure"
+          >
             <input
               id={`phase-retries-${index}`}
               type="number"
@@ -410,20 +432,17 @@ export default function PhaseEditor({
               value={phase.retries ?? 0}
               onChange={(e) => onChange({ ...phase, retries: Number(e.target.value) })}
             />
-          </div>
+          </FieldGroup>
         </>
       )}
 
       {/* ── Command Specific ─────────────────────────────────────────── */}
       {phase.kind === 'code' && (
         <>
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <span className={styles.fieldLabel}>Command source</span>
-              {commands.length > 0 && (
-                <span className={styles.fieldHint}>project: {commands.join(', ')}</span>
-              )}
-            </div>
+          <FieldGroup
+            label="Command source"
+            hint={commands.length > 0 ? `project: ${commands.join(', ')}` : undefined}
+          >
             <SegmentedControl options={sourceOptions} />
 
             <div className={styles.subField}>
@@ -489,15 +508,13 @@ export default function PhaseEditor({
                 />
               )}
             </div>
-          </div>
+          </FieldGroup>
 
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <label htmlFor={`phase-feedback-${index}`} className={styles.fieldLabel}>
-                Feedback to
-              </label>
-              <span className={styles.fieldHint}>earlier agent phases only</span>
-            </div>
+          <FieldGroup
+            label="Feedback to"
+            htmlFor={`phase-feedback-${index}`}
+            hint="earlier agent phases only"
+          >
             <select
               id={`phase-feedback-${index}`}
               className={styles.select}
@@ -537,7 +554,7 @@ export default function PhaseEditor({
                 />
               </div>
             )}
-          </div>
+          </FieldGroup>
 
           <div className={styles.fieldGroup}>
             <Toggle

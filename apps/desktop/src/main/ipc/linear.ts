@@ -25,10 +25,9 @@ const startSchema = z.object({
 
 export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.linearState, (): LinearConnectionState => ctx.linear.state());
-  handle(IPC.linearSetApiKey, (apiKey: string): Promise<LinearActionResult> => {
+  handle(IPC.linearSetApiKey, async (apiKey: string): Promise<LinearActionResult> => {
     const parsed = z.string().trim().min(1).max(4096).safeParse(apiKey);
-    if (!parsed.success)
-      return Promise.resolve({ ok: false, detail: 'Enter a valid Linear API key.' });
+    if (!parsed.success) return { ok: false, detail: 'Enter a valid Linear API key.' };
     return ctx.linear.setApiKey(parsed.data);
   });
   handle(IPC.linearTest, (): Promise<LinearActionResult> => ctx.linear.test());

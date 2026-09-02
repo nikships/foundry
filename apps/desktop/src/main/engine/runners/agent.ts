@@ -432,40 +432,21 @@ export class AgentPhaseRunner implements PhaseRunner {
     if (envelopeKind !== 'pr' && envelopeKind !== 'issue') return { ok: true };
     const title = typeof envelope.title === 'string' ? envelope.title : '';
     const body = typeof envelope.body === 'string' ? envelope.body : '';
-
-    if (envelopeKind === 'issue') {
-      const labels = Array.isArray(envelope.labels)
-        ? envelope.labels.filter((l): l is string => typeof l === 'string')
-        : [];
-      const result = await ctx.recordIssue({ title, body, labels });
-      ctx.tracer.event({
-        runId: ctx.runId,
-        phaseId,
-        type: 'log',
-        name: 'issue create',
-        payload: {
-          phase: phase.name,
-          detail: result.detail,
-          number: result.number ?? null,
-          url: result.url ?? null,
-        },
-      });
-      if (!result.ok || result.number == null || !result.url) {
-        return {
-          ok: false,
-          detail: result.detail || 'gh issue create did not return an issue number and URL',
-        };
-      }
-      ctx.tracer.setIssue(ctx.runId, result.number, result.url);
-      return { ok: true };
-    }
-
-    const result = await ctx.recordPr({ title, body });
+    const isIssue = envelopeKind === 'issue';
+    const result = isIssue
+      ? await ctx.recordIssue({
+          title,
+          body,
+          labels: Array.isArray(envelope.labels)
+            ? envelope.labels.filter((label): label is string => typeof label === 'string')
+            : [],
+        })
+      : await ctx.recordPr({ title, body });
     ctx.tracer.event({
       runId: ctx.runId,
       phaseId,
       type: 'log',
-      name: 'pr create',
+      name: isIssue ? 'issue create' : 'pr create',
       payload: {
         phase: phase.name,
         detail: result.detail,
@@ -476,10 +457,15 @@ export class AgentPhaseRunner implements PhaseRunner {
     if (!result.ok || result.number == null || !result.url) {
       return {
         ok: false,
-        detail: result.detail || 'gh pr create did not return a pull request number and URL',
+        detail:
+          result.detail ||
+          (isIssue
+            ? 'gh issue create did not return an issue number and URL'
+            : 'gh pr create did not return a pull request number and URL'),
       };
     }
-    ctx.tracer.setPr(ctx.runId, result.number, result.url);
+    if (isIssue) ctx.tracer.setIssue(ctx.runId, result.number, result.url);
+    else ctx.tracer.setPr(ctx.runId, result.number, result.url);
     return { ok: true };
   }
 

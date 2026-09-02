@@ -581,23 +581,9 @@ class FakeCompanionRepository(
         phaseId: String
     ): Result<List<TranscriptEvent>> {
         val page = getEventPage(projectId, runId, 0L).getOrNull()
-        val events = page?.events?.let { evList ->
-            val phaseEvents = if (phaseId.isBlank()) evList else evList.filter { it.phaseId == phaseId }
-            phaseEvents.map { ev ->
-                TranscriptEvent(
-                    id = ev.eventId.ifBlank { "ev_${ev.rowid}" },
-                    phaseId = ev.phaseId.orEmpty(),
-                    type = ev.type,
-                    timestamp = ev.startedAt,
-                    content = ev.textContent.ifBlank { ev.name },
-                    toolName = ev.toolName,
-                    durationMs = null,
-                    isSuccess = !ev.isError,
-                    toolArgs = ev.payload["args"]?.toString(),
-                    toolOutput = ev.resultText
-                )
-            }
-        } ?: emptyList()
+        val events = page?.events.orEmpty()
+            .let { if (phaseId.isBlank()) it else it.filter { event -> event.phaseId == phaseId } }
+            .map { it.toTranscriptEvent() }
         return Result.success(events)
     }
 

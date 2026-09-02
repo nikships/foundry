@@ -66,35 +66,40 @@ export function register(ctx: Ctx, handle: Handle): void {
     return cancelled;
   });
 
+  const mutateKey = async (
+    run: () => Promise<void>,
+    detail: string,
+  ): Promise<BridgeActionResult> => {
+    try {
+      await run();
+      ctx.broadcast(IPC.eventBridgeChanged);
+      return { ok: true, detail };
+    } catch (error) {
+      // pi's error names the provider and failure mode. It never carries the
+      // key: nothing in this path logs or echoes it.
+      return { ok: false, detail: message(error) };
+    }
+  };
+
   handle(
     IPC.bridgeSetApiKey,
     async (providerId: string, apiKey: string): Promise<BridgeActionResult> => {
       const key = apiKey.trim();
       if (!key) return { ok: false, detail: 'the API key is empty' };
-      try {
+      return mutateKey(async () => {
         // Imported lazily: this is the only path in the router that needs pi's
         // runtime, and building one reads catalogs off disk.
         const { setProviderApiKey } = await import('../pi/catalog.js');
         await setProviderApiKey(ctx.supportDir, providerId, key);
-        ctx.broadcast(IPC.eventBridgeChanged);
-        return { ok: true, detail: `stored an API key for ${providerId}` };
-      } catch (error) {
-        // pi's error, which names the provider and the failure mode. It never
-        // carries the key: nothing in this path logs or echoes it.
-        return { ok: false, detail: message(error) };
-      }
+      }, `stored an API key for ${providerId}`);
     },
   );
 
   handle(IPC.bridgeClearApiKey, async (providerId: string): Promise<BridgeActionResult> => {
-    try {
+    return mutateKey(async () => {
       const { clearProviderApiKey } = await import('../pi/catalog.js');
       await clearProviderApiKey(ctx.supportDir, providerId);
-      ctx.broadcast(IPC.eventBridgeChanged);
-      return { ok: true, detail: `removed the stored key for ${providerId}` };
-    } catch (error) {
-      return { ok: false, detail: message(error) };
-    }
+    }, `removed the stored key for ${providerId}`);
   });
 
   handle(IPC.bridgeStoredKeys, async (): Promise<StoredProviderKey[]> => {

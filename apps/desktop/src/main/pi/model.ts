@@ -33,6 +33,24 @@ export type PiModel = NonNullable<PiAgentSession['model']>;
 export type PiThinkingLevel = PiAgentSession['thinkingLevel'];
 export type PiUsage = NonNullable<ReturnType<typeof getLastAssistantUsage>>;
 
+/**
+ * Provider-qualified, because that is the id a roster stores and the
+ * transports match on. A bare `claude-opus-5` is ambiguous the moment both
+ * `anthropic` and `bridge-claude` offer it.
+ */
+export function modelKey(model: { provider: string; id: string }): string {
+  return `${model.provider}/${model.id}`;
+}
+
+/** Prefer medium when offered, else the first supported level, else off. */
+export function defaultEffortFor(efforts: readonly string[]): string {
+  return efforts.includes('medium') ? 'medium' : (efforts[0] ?? 'off');
+}
+
+function matchesWanted(model: { provider: string; id: string }, wanted: string): boolean {
+  return modelKey(model) === wanted || model.id === wanted;
+}
+
 /** Pi's thinking levels are a superset of `ReasoningEffort`, name for name. */
 export function thinkingLevelFor(effort: string): PiThinkingLevel {
   return effort as PiThinkingLevel;
@@ -80,11 +98,11 @@ const OMITTED_UNSUPPORTED: ReadonlySet<string> = new Set(['minimal', 'xhigh', 'm
 export function toTransportModel(model: PiModel): TransportModel {
   const levels = effortsFor(model);
   return {
-    id: `${model.provider}/${model.id}`,
+    id: modelKey(model),
     displayName: model.name,
     provider: model.provider,
     supportedReasoningEfforts: levels,
-    defaultReasoningEffort: levels.includes('medium') ? 'medium' : (levels[0] ?? 'off'),
+    defaultReasoningEffort: defaultEffortFor(levels),
     contextWindow: model.contextWindow,
   };
 }
@@ -120,9 +138,7 @@ export function requireModel(
   if (!wanted || wanted === INHERIT_MODEL) {
     return { ok: false, reason: 'unset', message: MODEL_UNSET_MESSAGE };
   }
-  const match = available.some(
-    (model) => `${model.provider}/${model.id}` === wanted || model.id === wanted,
-  );
+  const match = available.some((model) => matchesWanted(model, wanted));
   if (match) return { ok: true };
   return { ok: false, reason: 'unavailable', message: modelUnavailableMessage(wanted) };
 }
@@ -137,15 +153,13 @@ export function pickModel(
   wanted: string,
 ): { model: PiModel | null; warning?: string } {
   if (!wanted || wanted === INHERIT_MODEL) return { model: null };
-  const match = available.find(
-    (model) => `${model.provider}/${model.id}` === wanted || model.id === wanted,
-  );
+  const match = available.find((model) => matchesWanted(model, wanted));
   if (match) return { model: match };
   const fallback = available[0] ?? null;
   return {
     model: fallback,
     warning: fallback
-      ? `${wanted} is not available to this install; this session runs on ${fallback.provider}/${fallback.id}`
+      ? `${wanted} is not available to this install; this session runs on ${modelKey(fallback)}`
       : `${wanted} is not available to this install, and neither is anything else`,
   };
 }

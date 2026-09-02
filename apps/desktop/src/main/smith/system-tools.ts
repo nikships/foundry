@@ -101,10 +101,11 @@ export function smithSystemTool(deps: SmithActionToolDeps): ToolDefinition {
         shownArgs = { url };
       }
 
+      const label = action.replaceAll('_', ' ');
       return proposeAction(deps, {
         operation: action,
-        title: action.replaceAll('_', ' '),
-        summary: `Run ${action.replaceAll('_', ' ')}.`,
+        title: label,
+        summary: `Run ${label}.`,
         args: shownArgs,
         risk: RISKS[action],
         execute: () => deps.invoke(ACTION_CHANNELS[action], ...args),

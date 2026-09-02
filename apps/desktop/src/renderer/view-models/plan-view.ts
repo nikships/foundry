@@ -101,15 +101,23 @@ export interface PlanExportView {
  * override has to travel as a real edit to the pipeline rather than a
  * side-channel the engine would have to be taught about separately.
  */
+function patchAgentPhase(
+  plan: GeneratedRunPlan,
+  phaseName: string,
+  patch: Partial<Pick<PhaseDef, 'model' | 'reasoningEffort'>>,
+): GeneratedRunPlan {
+  const phases = plan.pipeline.phases.map((phase) =>
+    phase.name === phaseName && phase.kind === 'agent' ? { ...phase, ...patch } : phase,
+  );
+  return { ...plan, pipeline: { ...plan.pipeline, phases } };
+}
+
 export function withPhaseModel(
   plan: GeneratedRunPlan,
   phaseName: string,
   model: string,
 ): GeneratedRunPlan {
-  const phases = plan.pipeline.phases.map((phase) =>
-    phase.name === phaseName && phase.kind === 'agent' ? { ...phase, model } : phase,
-  );
-  return { ...plan, pipeline: { ...plan.pipeline, phases } };
+  return patchAgentPhase(plan, phaseName, { model });
 }
 
 /** Re-appoint one agent phase's reasoning level without changing its model. */
@@ -118,10 +126,7 @@ export function withPhaseReasoningEffort(
   phaseName: string,
   reasoningEffort: ReasoningEffort,
 ): GeneratedRunPlan {
-  const phases = plan.pipeline.phases.map((phase) =>
-    phase.name === phaseName && phase.kind === 'agent' ? { ...phase, reasoningEffort } : phase,
-  );
-  return { ...plan, pipeline: { ...plan.pipeline, phases } };
+  return patchAgentPhase(plan, phaseName, { reasoningEffort });
 }
 
 /** Which phases the operator re-cast, against the plan as it was generated. */

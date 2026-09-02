@@ -113,34 +113,36 @@ export function saveProposal(
 ): { ok: true; entity: unknown } | { ok: false; error: string } {
   const projectId = proposal.targetProjectId ?? proposal.projectId;
   const knownEnvelopes = ctx.envelopes.list().map((e) => e.name);
+  const finish = (
+    result: { ok: true } | { ok: false; issues: { where: string; message: string }[] },
+    entity: unknown,
+  ): { ok: true; entity: unknown } | { ok: false; error: string } => {
+    if (!result.ok) return { ok: false, error: issueText(result.issues) };
+    notifySettings(ctx);
+    return { ok: true, entity };
+  };
 
   if (proposal.kind === 'agent') {
     const agent = proposal.spec as AgentDef;
-    const result = ctx.roster.save(agent, ctx.rosterScope(projectId), knownEnvelopes);
-    if (!result.ok) return { ok: false, error: issueText(result.issues) };
-    notifySettings(ctx);
-    return { ok: true, entity: agent };
+    return finish(ctx.roster.save(agent, ctx.rosterScope(projectId), knownEnvelopes), agent);
   }
 
   if (proposal.kind === 'pipeline') {
     const pipeline = proposal.spec as PipelineDef;
-    const result = ctx.pipelines.save(
+    return finish(
+      ctx.pipelines.save(
+        pipeline,
+        ctx.rosterFor(projectId),
+        ctx.commandNames(projectId),
+        ctx.pipelineScope(projectId),
+        knownEnvelopes,
+      ),
       pipeline,
-      ctx.rosterFor(projectId),
-      ctx.commandNames(projectId),
-      ctx.pipelineScope(projectId),
-      knownEnvelopes,
     );
-    if (!result.ok) return { ok: false, error: issueText(result.issues) };
-    notifySettings(ctx);
-    return { ok: true, entity: pipeline };
   }
 
   const envelope = proposal.spec as EnvelopeDef;
-  const result = ctx.envelopes.save(envelope);
-  if (!result.ok) return { ok: false, error: issueText(result.issues) };
-  notifySettings(ctx);
-  return { ok: true, entity: envelope };
+  return finish(ctx.envelopes.save(envelope), envelope);
 }
 
 function issueText(issues: { where: string; message: string }[]): string {

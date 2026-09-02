@@ -230,10 +230,9 @@ export function useRunList(
 /** Selected-project Activity: every live run plus a short recency cap of finished runs. */
 export function useActivityRuns(projectId: string, recentLimit = 5): { runs: RunRow[] } {
   const { runs } = useRunList(projectId, false);
-  return {
-    runs: useMemo(
-      () => selectActivityRuns(runs, projectId, recentLimit),
-      [runs, projectId, recentLimit],
-    ),
-  };
+  const activityRuns = useMemo(
+    () => selectActivityRuns(runs, projectId, recentLimit),
+    [runs, projectId, recentLimit],
+  );
+  return { runs: activityRuns };
 }

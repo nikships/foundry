@@ -9,10 +9,8 @@ export interface ShortcutKey {
   shiftKey: boolean;
 }
 
-const VIEW_KEYS: Record<string, View> = Object.fromEntries(
-  [...NAV_ITEMS, SMITH_NAV_ITEM].map((item) => [item.key, item.id]),
-) as Record<string, View>;
-VIEW_KEYS[','] = 'settings';
+const VIEW_KEYS: Record<string, View> = { ',': 'settings' };
+for (const item of [...NAV_ITEMS, SMITH_NAV_ITEM]) VIEW_KEYS[item.key] = item.id;
 
 const DESIGN_TAB_KEYS: Record<string, DesignTab> = {
   '1': 'pipelines',

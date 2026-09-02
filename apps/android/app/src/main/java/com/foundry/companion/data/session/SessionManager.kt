@@ -9,9 +9,13 @@ class SessionManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("foundry_companion_prefs", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
 
+    private fun editPrefs(block: SharedPreferences.Editor.() -> Unit) {
+        prefs.edit().apply(block).apply()
+    }
+
     fun saveSession(session: PairedSession) {
         val serialized = json.encodeToString(PairedSession.serializer(), session)
-        prefs.edit().putString(KEY_SESSION, serialized).apply()
+        editPrefs { putString(KEY_SESSION, serialized) }
     }
 
     fun getSession(): PairedSession? {
@@ -24,7 +28,7 @@ class SessionManager(context: Context) {
     }
 
     fun clearSession() {
-        prefs.edit().remove(KEY_SESSION).apply()
+        editPrefs { remove(KEY_SESSION) }
     }
 
     fun isNotifyOnSettleEnabled(): Boolean {
@@ -32,7 +36,7 @@ class SessionManager(context: Context) {
     }
 
     fun setNotifyOnSettleEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_NOTIFY_SETTLE, enabled).apply()
+        editPrefs { putBoolean(KEY_NOTIFY_SETTLE, enabled) }
     }
 
     fun getLastUsedPipeline(projectId: String): String? {
@@ -42,7 +46,7 @@ class SessionManager(context: Context) {
 
     fun setLastUsedPipeline(projectId: String, pipelineId: String) {
         if (projectId.isBlank() || pipelineId.isBlank()) return
-        prefs.edit().putString("${KEY_LAST_PIPELINE_PREFIX}_$projectId", pipelineId).apply()
+        editPrefs { putString("${KEY_LAST_PIPELINE_PREFIX}_$projectId", pipelineId) }
     }
 
     fun getNewRunDraft(): String {
@@ -50,15 +54,13 @@ class SessionManager(context: Context) {
     }
 
     fun setNewRunDraft(text: String) {
-        if (text.isEmpty()) {
-            prefs.edit().remove(KEY_NEW_RUN_DRAFT).apply()
-        } else {
-            prefs.edit().putString(KEY_NEW_RUN_DRAFT, text).apply()
+        editPrefs {
+            if (text.isEmpty()) remove(KEY_NEW_RUN_DRAFT) else putString(KEY_NEW_RUN_DRAFT, text)
         }
     }
 
     fun clearNewRunDraft() {
-        prefs.edit().remove(KEY_NEW_RUN_DRAFT).apply()
+        editPrefs { remove(KEY_NEW_RUN_DRAFT) }
     }
 
     fun getSelectedProjectId(): String? {
@@ -66,10 +68,8 @@ class SessionManager(context: Context) {
     }
 
     fun setSelectedProjectId(projectId: String?) {
-        if (projectId.isNullOrBlank()) {
-            prefs.edit().remove(KEY_SELECTED_PROJECT).apply()
-        } else {
-            prefs.edit().putString(KEY_SELECTED_PROJECT, projectId).apply()
+        editPrefs {
+            if (projectId.isNullOrBlank()) remove(KEY_SELECTED_PROJECT) else putString(KEY_SELECTED_PROJECT, projectId)
         }
     }
 
@@ -78,7 +78,7 @@ class SessionManager(context: Context) {
     }
 
     fun setPromptedNotificationPermission(prompted: Boolean) {
-        prefs.edit().putBoolean(KEY_NOTIFY_PROMPTED, prompted).apply()
+        editPrefs { putBoolean(KEY_NOTIFY_PROMPTED, prompted) }
     }
 
     fun getLastActiveRoute(): String? {
@@ -86,10 +86,8 @@ class SessionManager(context: Context) {
     }
 
     fun setLastActiveRoute(route: String?) {
-        if (route == null) {
-            prefs.edit().remove(KEY_LAST_ROUTE).apply()
-        } else {
-            prefs.edit().putString(KEY_LAST_ROUTE, route).apply()
+        editPrefs {
+            if (route == null) remove(KEY_LAST_ROUTE) else putString(KEY_LAST_ROUTE, route)
         }
     }
 
@@ -101,7 +99,7 @@ class SessionManager(context: Context) {
         if (runId.isBlank()) return
         val current = getNotifiedSettledRunIds().toMutableSet()
         current.add(runId)
-        prefs.edit().putStringSet(KEY_NOTIFIED_RUNS, current).apply()
+        editPrefs { putStringSet(KEY_NOTIFIED_RUNS, current) }
     }
 
     companion object {

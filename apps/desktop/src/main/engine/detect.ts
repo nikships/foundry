@@ -287,7 +287,7 @@ async function fromXcode(root: string): Promise<CommandCandidate[]> {
  * Root plus one level of child directories. Deep monorepos still fall through
  * to the agent; most native apps (Package.swift under AppName/) are one deep.
  */
-function packageRoots(repoRoot: string): string[] {
+export function packageRoots(repoRoot: string): string[] {
   const roots = [repoRoot];
   try {
     for (const ent of readdirSync(repoRoot, { withFileTypes: true })) {
