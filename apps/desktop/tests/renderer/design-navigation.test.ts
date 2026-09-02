@@ -43,6 +43,8 @@ const proposalCardSrc = read('src/renderer/components/smith/SmithProposalCard.ts
 const confirmModalSrc = read('src/renderer/components/common/ConfirmModal.tsx');
 const onboardingSharedSrc = read('src/renderer/screens/onboarding/shared.tsx');
 const pipelinesScreenSrc = read('src/renderer/screens/PipelinesScreen.tsx');
+const dryRunSrc = read('src/renderer/components/run/DryRunSheet.tsx');
+const doctorListSrc = read('src/renderer/components/readiness/DoctorList.tsx');
 
 describe('the sidebar', () => {
   it('exposes Runs, Inspector, Design, and Pull Requests, in that order', () => {
@@ -85,6 +87,13 @@ describe('Design', () => {
 });
 
 describe('Settings', () => {
+  it('publishes App as the canonical initial pane while retaining the legacy inbound alias', () => {
+    expect(appSrc).toContain("useState('app')");
+    expect(sidebarSrc).toContain("onOpenSettings('app')");
+    expect(appSrc).toContain("pane === 'general' ? 'app' : pane");
+    expect(settingsSrc).toContain("value === 'general'");
+  });
+
   it('no longer treats Envelopes as a preference pane', () => {
     expect(settingsSrc).not.toContain("id: 'envelopes'");
     expect(settingsSrc).not.toContain('EnvelopesSettings');
@@ -295,6 +304,13 @@ describe('CDP automation hooks', () => {
     expect(envelopesSrc).toContain('data-testid={`envelope-builtin-${kind}`}');
     expect(pipelinesScreenSrc).toContain('data-testid="pipeline-dry-run"');
     expect(pipelinesScreenSrc).toContain('data-testid="pipeline-settings"');
+    expect(pipelinesScreenSrc).toContain('data-testid="pipeline-more"');
+    expect(rosterSrc).toContain('data-testid="roster-inherit-defaults"');
+    expect(doctorListSrc).toContain('data-testid={`doctor-check-${check.id}`}');
+    expect(dryRunSrc).toContain('data-testid="dry-run-dialog"');
+    expect(dryRunSrc).toContain('data-testid="dry-run-close"');
+    expect(dryRunSrc).toContain('data-testid="dry-run-empty"');
+    expect(dryRunSrc).toContain('data-testid={`dry-run-step-${prompt.phase}`}');
     expect(onboardingSharedSrc).toContain('data-testid="onboarding-next"');
     expect(onboardingSharedSrc).toContain('data-testid="onboarding-back"');
     expect(onboardingSharedSrc).toContain('data-testid={`onboarding-step-${s.id}`}');

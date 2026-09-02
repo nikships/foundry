@@ -18,7 +18,12 @@ export default function DryRunSheet({
   const current = prompts[selected];
 
   return (
-    <ModalShell onClose={onClose} ariaLabelledBy="dry-run-title" className={styles.modal}>
+    <ModalShell
+      onClose={onClose}
+      ariaLabelledBy="dry-run-title"
+      className={styles.modal}
+      data-testid="dry-run-dialog"
+    >
       <header className="spread">
         <div>
           <h2 id="dry-run-title">Dry run</h2>
@@ -27,7 +32,13 @@ export default function DryRunSheet({
             sent and nothing was spent.
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose} title="Close (Esc)">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          title="Close (Esc)"
+          data-testid="dry-run-close"
+        >
           Close
         </Button>
       </header>
@@ -38,6 +49,7 @@ export default function DryRunSheet({
               key={i}
               className={`${styles.step} ${selected === i ? styles.on : ''}`}
               onClick={() => setSelected(i)}
+              data-testid={`dry-run-step-${prompt.phase}`}
             >
               <AgentAvatar name={prompt.agent} size={26} />
               <span className={styles.stepName}>{prompt.phase}</span>
@@ -45,7 +57,9 @@ export default function DryRunSheet({
             </button>
           ))}
           {!prompts.length && (
-            <p className={`faint ${styles.none}`}>This pipeline has no agent phases.</p>
+            <p className={`faint ${styles.none}`} data-testid="dry-run-empty">
+              This pipeline has no agent phases.
+            </p>
           )}
         </nav>
         {current && (

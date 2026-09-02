@@ -297,13 +297,17 @@ Design:
 | `tab-envelopes`                                   | Design → Envelopes tab (labelled Reports)       |
 | `pipeline-selector`                               | Pipeline picker trigger                         |
 | `pipeline-option-{id}`                            | Pipeline option in the picker dropdown          |
-| `pipeline-new`                                    | New pipeline button                             |
+| `pipeline-new`                                    | New pipeline button (open picker first)         |
 | `pipeline-add-agent` / `-command` | Ribbon add buttons                              |
 | `pipeline-phase-{name}`                           | Phase card on the canvas                        |
 | `pipeline-dry-run`                                | Dry run overlay opener (safe, Esc closes)       |
+| `dry-run-dialog` / `dry-run-close`                | Dry run overlay and its Close button            |
+| `dry-run-empty` / `dry-run-step-{phase}`          | Empty state or a phase prompt step              |
 | `pipeline-settings`                               | Pipeline acceptance/validation sheet opener     |
+| `pipeline-more`                                   | Pipeline header More menu                       |
 | `agent-tab-{name}`                                | Agent roster tab (e.g. `agent-tab-builder`)     |
 | `agent-new`                                       | "+ New agent" button                            |
+| `roster-inherit-defaults`                         | Inherit model/reasoning checkbox                |
 | `agent-preview`                                   | Prompt preview overlay opener (safe, Esc)       |
 | `agent-duplicate`                                 | Duplicate agent                                 |
 | `agent-delete`                                    | Delete agent (custom agents only)               |
@@ -344,6 +348,7 @@ Settings:
 | `provider-card-{id}`     | Subscription provider card             |
 | `provider-key-{id}`      | Direct API-key card (e.g. `anthropic`) |
 | `providers-model-count`  | Reachable/hidden model count line      |
+| `doctor-check-{id}`      | Doctor/environment check row           |
 | `reset-hidden-models`    | Un-hide all models                     |
 | `hide-model-{id}`        | Hide one model row                     |
 
@@ -512,20 +517,26 @@ project-scoped.
 
 **Pipelines** (`tab-pipelines`):
 
-- Pipeline picker: `pipeline-selector` (current pipeline + phase count),
-  `pipeline-option-{id}` per pipeline, `pipeline-new` to create one.
+- Pipeline picker: `pipeline-selector` (current pipeline + phase count).
+  Open it before targeting `pipeline-option-{id}` or `pipeline-new`; those
+  controls are only mounted while the picker is open.
 - Canvas: one card per phase (`pipeline-phase-{name}`), add buttons
   `pipeline-add-agent` / `-command`; the phase editor opens
   in a right-hand sheet.
 - `pipeline-dry-run` shows the exact SYSTEM/USER prompt each agent phase
-  would receive. Nothing is sent; safe to click. Close with `Esc`.
-- `pipeline-settings` opens acceptance/validation settings.
+  would receive. Target the overlay with `dry-run-dialog`, its phase buttons
+  with `dry-run-step-{phase}`, and its empty state with `dry-run-empty`.
+  Nothing is sent; close with `dry-run-close` or `Esc`.
+- `pipeline-settings` opens acceptance/validation settings; `pipeline-more`
+  opens the header action menu.
 - Edits save automatically; validation status bottom-left.
 
 **Agents** (`tab-agents`):
 
 - Agent tabs: `agent-tab-{name}` (e.g. `agent-tab-builder`);
   `agent-new` to create one.
+- Execution: `roster-inherit-defaults` toggles whether the model and reasoning
+  controls inherit Agent defaults.
 - Header actions: `agent-preview` (rendered SYSTEM/USER prompt overlay,
   safe, close with Esc), `agent-duplicate`, `agent-delete` (custom agents),
   `agent-reset` (edited builtins).

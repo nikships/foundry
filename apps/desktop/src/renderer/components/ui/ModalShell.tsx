@@ -18,6 +18,7 @@ interface ModalShellProps {
   highPriority?: boolean;
   /** Plays the exit animation instead of the entrance. Surfaces that delay their unmount until the exit finishes set this for those frames. */
   leaving?: boolean;
+  'data-testid'?: string;
 }
 
 const noop = (): void => {};
@@ -33,6 +34,7 @@ export function ModalShell({
   tabIndex,
   highPriority = false,
   leaving = false,
+  'data-testid': dataTestId,
 }: ModalShellProps): React.JSX.Element {
   const resolvedRef = modalRef ?? sheetRef;
   const closeOnBackdrop = dismissible && Boolean(onClose);
@@ -62,6 +64,7 @@ export function ModalShell({
         aria-modal="true"
         aria-labelledby={ariaLabelledBy}
         tabIndex={tabIndex}
+        data-testid={dataTestId}
       >
         {children}
       </section>
