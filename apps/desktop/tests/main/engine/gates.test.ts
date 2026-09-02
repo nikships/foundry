@@ -36,6 +36,12 @@ describe('artifacts_exist', () => {
     expect(checks[0]!.ok).toBe(true);
     expect(checks[0]!.note).toContain('nothing to verify');
   });
+
+  it('accepts a test file the builder added with the change', async () => {
+    writeFileSync(join(dir, 'foo.test.ts'), 'test("foo", () => {});\n');
+    const checks = await GATES.artifacts_exist!({ ...base, artifacts: ['foo.test.ts'] }, ctx());
+    expect(checks[0]!.ok).toBe(true);
+  });
 });
 
 describe('files_non_empty', () => {

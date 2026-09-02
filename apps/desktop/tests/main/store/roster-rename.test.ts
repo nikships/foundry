@@ -101,6 +101,13 @@ describe('renaming a shipped agent', () => {
     expect(roster.get('planner')).toEqual(BUILTIN_AGENTS.find((agent) => agent.name === 'planner'));
     expect(roster.get('helper')).not.toBeNull();
   });
+
+  it('flags a shipped agent whose prompt no longer matches the seed', () => {
+    const planner = roster.get('planner')!;
+    roster.save({ ...planner, systemPrompt: 'Turn a request into a plan.' });
+
+    expect(roster.staleBuiltins()).toContain('planner');
+  });
 });
 
 describe('a rejected rename', () => {

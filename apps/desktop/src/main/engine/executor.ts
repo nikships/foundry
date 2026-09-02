@@ -140,6 +140,7 @@ export interface RunOutcome {
   detail: string;
 }
 
+/** Vestigial: builtins write specs/, but custom prompts may still use {{handoff_dir}}. */
 const HANDOFF_DIR = '.foundry-handoff';
 
 export class Executor {

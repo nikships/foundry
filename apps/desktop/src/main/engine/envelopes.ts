@@ -256,6 +256,8 @@ export function exampleFor(
   for (const key of Object.keys(baseSchema.shape)) {
     if (key === 'findings' && exampleKind === 'review') {
       example[key] = REVIEW_FINDINGS_HINT;
+    } else if (key === 'findings' && exampleKind === 'scout') {
+      example[key] = ['path + symbol + observation'];
     } else if (exampleKind === 'issue' && key in ISSUE_FIELD_HINTS) {
       example[key] = ISSUE_FIELD_HINTS[key];
     } else {
