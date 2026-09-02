@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EventRow, UsageBreakdown } from '@shared/types.js';
 import { clockTime, tokens } from '../../utils/format.js';
 import { isAutoAllowPolicy } from '../../utils/derive.js';
+import { EventIcon } from '../common/EventIcon.js';
 import { useCollapseSignal } from './collapse.js';
 
 function str(value: unknown): string {
@@ -34,8 +35,11 @@ function args(event: EventRow): Record<string, unknown> {
 function inferKind(event: EventRow): string {
   const kind = str(event.payload.kind);
   if (kind) return kind;
-  if (Array.isArray(event.payload.argv)) return 'command';
   const head = event.name.split(':', 1)[0]!.toLowerCase();
+  // A code phase's spanning row is named after the phase; `build` earns its
+  // own treatment rather than falling through to the generic command shape.
+  if (head === 'build' || head === 'builder') return 'build';
+  if (Array.isArray(event.payload.argv)) return 'command';
   if (head === 'bash') return 'command';
   if (head === 'read') return 'read';
   if (head === 'edit' || head === 'write') return 'edit';
@@ -282,7 +286,10 @@ function ThinkingBlock({ event }: { event: EventRow }): React.JSX.Element {
   return (
     <div className={`te thinking ${open ? 'open' : ''}`}>
       <div className="te-head">
-        <span className="te-tag">thought</span>
+        <span className="te-tag thinking">
+          <EventIcon event={event} size={11} />
+          thought
+        </span>
         {isLong && !open && (
           <button className="te-toggle-btn" onClick={() => setCollapsed((v) => !v)}>
             {collapsed ? 'show thought' : 'collapse thought'}
@@ -417,7 +424,13 @@ function TextBlock({ event }: { event: EventRow }): React.JSX.Element {
   );
 }
 
-function CommandBlock({ event }: { event: EventRow }): React.JSX.Element {
+function CommandBlock({
+  event,
+  build = false,
+}: {
+  event: EventRow;
+  build?: boolean;
+}): React.JSX.Element {
   const [expanded, setExpanded] = useCollapsible(true);
   const open = event.endedAt == null;
   const command = commandOf(event);
@@ -427,7 +440,14 @@ function CommandBlock({ event }: { event: EventRow }): React.JSX.Element {
   return (
     <div className={`te command ${failed ? 'failed' : ''} ${open ? 'open' : ''}`}>
       <button className="te-cmd-head" onClick={() => setExpanded((v) => !v)}>
-        <span className="te-prompt">$</span>
+        {build ? (
+          <span className="te-tag build">
+            <EventIcon event={event} size={11} />
+            build
+          </span>
+        ) : (
+          <span className="te-prompt">$</span>
+        )}
         <span className="te-cmd mono">{command}</span>
         {open ? (
           <span className="te-exec running">{str(event.payload.execPhase) || 'running'}</span>
@@ -457,6 +477,7 @@ function EditBlock({ event }: { event: EventRow }): React.JSX.Element {
     <div className={`te edit ${open ? 'open' : ''}`}>
       <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
         <span className={`te-tag ${isCreate ? 'create' : 'edit'}`}>
+          <EventIcon event={event} size={11} />
           {isCreate ? 'create' : 'edit'}
         </span>
         <span className="te-path mono">{path}</span>
@@ -500,7 +521,10 @@ function ReadBlock({
   return (
     <div className={`te read ${open ? 'open' : ''}`}>
       <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
-        <span className={`te-tag ${verb}`}>{verb}</span>
+        <span className={`te-tag ${verb}`}>
+          <EventIcon event={event} size={11} />
+          {verb}
+        </span>
         <span className="te-path mono">
           {target}
           {rangeInfo}
@@ -655,7 +679,10 @@ function GenericToolBlock({ event }: { event: EventRow }): React.JSX.Element {
   return (
     <div className={`te tool ${open ? 'open' : ''}`}>
       <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
-        <span className="te-tag tool">{toolName}</span>
+        <span className="te-tag tool">
+          <EventIcon event={event} size={11} />
+          {toolName}
+        </span>
         <span className="te-path mono">{summary}</span>
         {open && (
           <span className="te-exec running">{str(event.payload.execPhase) || 'running'}</span>
@@ -671,6 +698,8 @@ function ToolBlock({ event }: { event: EventRow }): React.JSX.Element {
   switch (inferKind(event)) {
     case 'command':
       return <CommandBlock event={event} />;
+    case 'build':
+      return <CommandBlock event={event} build />;
     case 'edit':
       return <EditBlock event={event} />;
     case 'read':
@@ -783,6 +812,9 @@ function LogRow({ event }: { event: EventRow }): React.JSX.Element {
     str(event.payload.message);
   return (
     <div className="te logrow">
+      <span className="te-log-icon">
+        <EventIcon event={event} size={11} />
+      </span>
       <span className="te-log-name">{event.name}</span>
       {detail && <span className="te-log-detail">{detail}</span>}
       <Time iso={event.startedAt} />
@@ -882,10 +914,12 @@ export function transcriptStyles(): string {
     .te-head, .te-row-head, .te-cmd-head { display: flex; align-items: center; gap: var(--s2); width: 100%; border: none; background: none; padding: 4px 6px; font: inherit; color: inherit; text-align: left; cursor: default; border-radius: var(--r-sm); transition: background var(--fast) var(--ease); }
     button.te-row-head:hover, button.te-cmd-head:hover { background: var(--bg-hover); }
     .te-time { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); flex: none; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
-    .te-tag { flex: none; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 6px; border-radius: var(--r-sm); background: var(--bg-raised); color: var(--text-faint); border: 1px solid transparent; }
+    .te-tag { flex: none; display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 6px; border-radius: var(--r-sm); background: var(--bg-raised); color: var(--text-faint); border: 1px solid transparent; }
     .te-tag.edit { color: var(--amber); background: var(--amber-dim); border-color: color-mix(in srgb, var(--amber) 14%, transparent); }
     .te-tag.create { color: var(--green); background: var(--green-dim); border-color: color-mix(in srgb, var(--green) 14%, transparent); }
-    .te-tag.read { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+    .te-tag.read { color: var(--blue); background: var(--blue-dim); border-color: color-mix(in srgb, var(--blue) 14%, transparent); }
+    .te-tag.build { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+    .te-tag.thinking { color: var(--amber); background: var(--amber-dim); border-color: color-mix(in srgb, var(--amber) 14%, transparent); }
     .te-tag.search { color: var(--purple); background: var(--purple-dim); border-color: color-mix(in srgb, var(--purple) 14%, transparent); }
     .te-tag.todo { color: var(--green); background: var(--green-dim); border-color: color-mix(in srgb, var(--green) 14%, transparent); }
     .te-tag.task { color: var(--blue); background: var(--blue-dim); border-color: color-mix(in srgb, var(--blue) 14%, transparent); }
@@ -976,6 +1010,7 @@ export function transcriptStyles(): string {
     .te.banner .te-time, .te.usage .te-time { color: inherit; opacity: 0.6; }
     .te.usage { display: flex; align-items: baseline; gap: var(--s2); margin: 4px 0; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); }
     .te.logrow { display: flex; align-items: baseline; gap: var(--s2); margin: 2px 0; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.02em; color: var(--text-faint); }
+    .te-log-icon { display: inline-flex; align-items: center; flex: none; align-self: center; }
     .te-log-name { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
     .te-log-detail { opacity: 0.8; word-break: break-word; text-transform: none; letter-spacing: 0; font-family: var(--font); }
   `;

@@ -9,6 +9,7 @@ import StatusBadge from '../common/StatusBadge.js';
 import AgentAvatar from '../media/AgentAvatar.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
 import JsonView from '../common/JsonView.js';
+import { EventIcon } from '../common/EventIcon.js';
 import PhaseDocument from './PhaseDocument.js';
 import styles from './PhaseDrawer.module.css';
 
@@ -35,22 +36,6 @@ function declaredArtifacts(envelopes: EnvelopeRow[]): string[] {
   }
   return latest;
 }
-
-const EVENT_ICON: Record<string, string> = {
-  phase_start: '▸',
-  phase_end: '▪',
-  agent_start: '◆',
-  agent_end: '∑',
-  tool_call: '⚙',
-  handoff: '→',
-  gate_pass: '⛨',
-  gate_fail: '⛨',
-  correction: '↻',
-  interrupt: '☝',
-  compaction: '⇲',
-  log: '·',
-  error: '✕',
-};
 
 const EVENT_CLASS: Partial<Record<EventRow['type'], string>> = {
   gate_fail: styles.failed,
@@ -255,7 +240,9 @@ export default function PhaseDrawer({
               {timelineEvents.map((event) => (
                 <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
                   <button className={styles.event} onClick={() => toggle(event.eventId)}>
-                    <span className={styles.icon}>{EVENT_ICON[event.type] ?? '·'}</span>
+                    <span className={styles.icon}>
+                      <EventIcon event={event} />
+                    </span>
                     <span className={styles.eventName}>{event.name}</span>
                     <span className={styles.spacer} />
                     {event.endedAt && (
