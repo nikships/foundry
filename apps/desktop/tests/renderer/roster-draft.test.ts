@@ -65,3 +65,17 @@ describe('creating an agent', () => {
     expect(createAgent).toContain('await flush()');
   });
 });
+
+describe('execution inheritance copy', () => {
+  it('distinguishes following every default from inheriting only the model', () => {
+    expect(rosterSrc).toContain('Follow all Agent defaults');
+    expect(rosterSrc).toContain('The model can follow its default independently.');
+    expect(rosterSrc).not.toContain('Inherit model and reasoning from Agent defaults');
+  });
+
+  it('shows the resolved model in roster badges instead of the inherit sentinel', () => {
+    expect(rosterSrc).toContain('<ModelBadge model={displayedModel(agent)}');
+    expect(rosterSrc).toContain('<ModelBadge model={displayedModel(draft)}');
+    expect(rosterSrc).toContain("? 'default model'");
+  });
+});

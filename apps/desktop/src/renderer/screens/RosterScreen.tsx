@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import {
   BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
+  resolveAgentExecution,
   type AgentDef,
   type ModelInfo,
   type ValidationIssue,
@@ -34,6 +35,7 @@ import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import { draftSyncAction } from '../view-models/roster-draft.js';
+import { rosterScrollEdges } from '../view-models/roster-scroll.js';
 import styles from './RosterScreen.module.css';
 
 const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
@@ -71,7 +73,7 @@ function providerFor(model: string, models: ModelInfo[]): string {
   return models.find((m) => m.id === model)?.provider ?? '';
 }
 
-/** Provider mark plus the model's label — or `inherit` when no connected provider offers the id. */
+/** Provider mark plus the model's label, with the inheritance sentinel named as a model default. */
 function ModelBadge({
   model,
   models,
@@ -84,7 +86,11 @@ function ModelBadge({
   return (
     <>
       <ProviderIcon provider={providerFor(model, models)} size={size} />
-      {model === 'inherit' || !models.some((m) => m.id === model) ? 'inherit' : modelLabel(model)}
+      {model === 'inherit'
+        ? 'default model'
+        : !models.some((m) => m.id === model)
+          ? 'inherit'
+          : modelLabel(model)}
     </>
   );
 }
@@ -169,6 +175,8 @@ export default function RosterScreen({
   const { models, refresh: refreshModels } = useAgentModels();
   const [showPreview, setShowPreview] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
+  const rosterTabsRef = useRef<HTMLDivElement>(null);
+  const [scrollEdges, setScrollEdges] = useState({ before: false, after: false });
   const agentsRef = useRef<AgentDef[]>(agents);
   agentsRef.current = agents;
   const projectIdRef = useRef(projectId);
@@ -235,9 +243,26 @@ export default function RosterScreen({
     return [...builtin, ...custom];
   }, [envelopes]);
 
+  const displayedModel = (agent: AgentDef): string =>
+    resolveAgentExecution(agent, {
+      model: settings?.defaultModel,
+      reasoningEffort: settings?.defaultReasoningEffort ?? 'medium',
+    }).model;
+
   useEffect(() => {
     if (!agents.some((a) => a.name === selectedName)) setSelectedName(agents[0]?.name ?? '');
   }, [agents, selectedName]);
+
+  useEffect(() => {
+    const tabs = rosterTabsRef.current;
+    if (!tabs) return;
+    const updateEdges = (): void => setScrollEdges(rosterScrollEdges(tabs));
+    updateEdges();
+    const observer = new ResizeObserver(updateEdges);
+    observer.observe(tabs);
+    if (tabs.firstElementChild) observer.observe(tabs.firstElementChild);
+    return () => observer.disconnect();
+  }, [agents.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,6 +339,11 @@ export default function RosterScreen({
     setSelectedName(name);
   };
   const onTablistKey = useTablistNav();
+  const scrollRoster = (direction: -1 | 1): void => {
+    const tabs = rosterTabsRef.current;
+    if (!tabs) return;
+    tabs.scrollBy({ left: direction * Math.max(340, tabs.clientWidth * 0.75), behavior: 'smooth' });
+  };
 
   /**
    * A rename is a separate operation from a save: `save` upserts by name, so
@@ -441,13 +471,15 @@ export default function RosterScreen({
   return (
     <div className={styles.rosterScreen}>
       {/* ── agent strip: every agent, one horizontal band ── */}
-      <div
-        className={styles.rosterTabs}
-        role="tablist"
-        aria-label="Agents"
-        onKeyDown={onTablistKey}
-      >
-        <div className={styles.rosterTabsInner}>
+      <div className={styles.rosterTabs}>
+        <div
+          ref={rosterTabsRef}
+          className={styles.rosterTabsInner}
+          role="tablist"
+          aria-label="Agents"
+          onKeyDown={onTablistKey}
+          onScroll={(event) => setScrollEdges(rosterScrollEdges(event.currentTarget))}
+        >
           {agents.map((agent) => {
             const isActive = agent.name === selectedName;
             return (
@@ -471,7 +503,7 @@ export default function RosterScreen({
                   <span className={styles.rosterCellRole}>{agent.purpose}</span>
                   <span className={styles.rosterCellModel}>
                     {isActive && <span className={styles.rosterCellDot} aria-hidden />}
-                    <ModelBadge model={agent.model} models={models} size={11} />
+                    <ModelBadge model={displayedModel(agent)} models={models} size={11} />
                   </span>
                 </span>
                 {isActive && <span className={styles.rosterCellUnderline} aria-hidden />}
@@ -487,6 +519,26 @@ export default function RosterScreen({
             + New agent
           </button>
         </div>
+        {scrollEdges.before && (
+          <button
+            type="button"
+            className={`${styles.rosterScrollControl} ${styles.before}`}
+            aria-label="Scroll to earlier agents"
+            onClick={() => scrollRoster(-1)}
+          >
+            <ChevronLeft size={18} aria-hidden />
+          </button>
+        )}
+        {scrollEdges.after && (
+          <button
+            type="button"
+            className={`${styles.rosterScrollControl} ${styles.after}`}
+            aria-label="Scroll to later agents"
+            onClick={() => scrollRoster(1)}
+          >
+            <ChevronRight size={18} aria-hidden />
+          </button>
+        )}
       </div>
 
       {draft && (
@@ -512,7 +564,7 @@ export default function RosterScreen({
                       {draft.name}
                     </h1>
                     <span className={styles.rosterHeadMeta}>
-                      <ModelBadge model={draft.model} models={models} size={13} /> ·{' '}
+                      <ModelBadge model={displayedModel(draft)} models={models} size={13} /> ·{' '}
                       {draft.envelope}
                     </span>
                   </div>
@@ -698,10 +750,10 @@ export default function RosterScreen({
                       checked={!!draft.inheritDefaults}
                       onChange={(e) => setDraft({ ...draft, inheritDefaults: e.target.checked })}
                     />
-                    Inherit model and reasoning from Agent defaults
+                    Follow all Agent defaults
                   </label>
                   <span className={styles.hint}>
-                    Uses the default model and reasoning from Settings → Agent defaults.
+                    Overrides both fields below. The model can follow its default independently.
                   </span>
                 </Field>
                 <Field label="Model">
