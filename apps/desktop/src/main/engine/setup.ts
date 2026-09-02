@@ -18,6 +18,9 @@
 
 import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { z } from 'zod';
+import { jsonSchemaWithoutDialect } from '@shared/zod-json-schema.js';
+import type { OutputFormat } from '../pi/transport.js';
 import { packageRoots } from './detect.js';
 
 /** Where the install commands keep cwd at the git root without a shell cd. */
@@ -166,23 +169,59 @@ After Foundry creates a fresh git worktree (tracked files only, no untracked dep
 
 Read the build and dependency manifests (including one directory down from the git root), lockfiles, Makefile, CI workflows, and contributor docs (AGENTS.md, README, CONTRIBUTING). Decide the minimal, reliable install steps.
 
-Reply with a single JSON object and nothing else:
+Call submit_result exactly once with:
 
 {"script":"npm ci\\nuv sync"}
+
+Do not print the answer as prose or JSON. After submit_result succeeds, stop.
 
 Rules:
 - "script" is a shell script string. One command per line, no empty lines needed. It runs with \`sh -c\` at the worktree root (repo root). Prefer flags that keep cwd at the root: --prefix, --dir, --cwd, --package-path, --manifest-path, or a (cd dir && ...) shim only when the tool has no such flag.
 - Use frozen-lockfile installs when a lockfile exists: npm ci, pnpm install --frozen-lockfile, yarn install --frozen-lockfile, bun install, uv sync, cargo fetch, go mod download, bundle install.
 - Keep it short and idempotent: install only, no build, no test, no lint. The script must be safe to run on every new worktree.
 - No sudo, no rm -rf, no curl|bash, no secrets. No interactive prompts.
-- If the repository truly needs no dependency install (pure docs, no manifests), reply {"script":""} — empty string. Omit the install rather than guessing.
-- Do not include markdown fences or prose outside the JSON.
+- If the repository truly needs no dependency install (pure docs, no manifests), submit {"script":""} — empty string. Omit the install rather than guessing.
+- Do not include markdown fences or prose.
 `;
 
 export interface SetupParseResult {
   script: string;
   rawReply: string;
   parseError?: string;
+}
+
+const setupReplySchema = z
+  .object({
+    script: z.string(),
+  })
+  .strict();
+
+const SETUP_OUTPUT_FORMAT: OutputFormat = {
+  type: 'json_schema',
+  schema: jsonSchemaWithoutDialect(setupReplySchema),
+};
+
+/** Schema-bound `submit_result` channel for setup-script generation. */
+export function setupOutputFormat(): OutputFormat {
+  return SETUP_OUTPUT_FORMAT;
+}
+
+export function setupCorrection(parseError: string): string {
+  return [
+    `Foundry could not read that reply: ${parseError}.`,
+    'Call submit_result exactly once with {"script":"..."} then stop.',
+  ].join(' ');
+}
+
+/**
+ * Prefer a `submit_result` object; fall back to extracting JSON from prose so
+ * a release that still dumps the object in text does not fail closed.
+ */
+export function parseSetupResult(structured: unknown, text: string): SetupParseResult {
+  if (structured != null && typeof structured === 'object' && !Array.isArray(structured)) {
+    return parseSetupObject(structured, text || JSON.stringify(structured));
+  }
+  return parseSetupReply(text);
 }
 
 /**
@@ -207,6 +246,10 @@ export function parseSetupReply(text: string): SetupParseResult {
       parseError: `the reply was not valid JSON: ${(e as Error).message}`,
     };
   }
+  return parseSetupObject(parsed, rawReply);
+}
+
+function parseSetupObject(parsed: unknown, rawReply: string): SetupParseResult {
   const obj = parsed as { script?: unknown };
   if (typeof obj.script !== 'string') {
     return { script: '', rawReply, parseError: 'the JSON object had no "script" string' };

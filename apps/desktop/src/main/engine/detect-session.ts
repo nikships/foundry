@@ -17,7 +17,15 @@ import {
   shortId,
   type PanelRegistry,
 } from '../session/index.js';
-import { buildDetectPrompt, DETECT_PROMPT, parseDetectReply, sniffCommands } from './detect.js';
+import {
+  buildDetectPrompt,
+  DETECT_PROMPT,
+  detectCorrection,
+  detectOutputFormat,
+  parseDetectResult,
+  sniffCommands,
+  type DetectReply,
+} from './detect.js';
 import { runCommand } from './commands.js';
 
 export type { DetectionState };
@@ -126,18 +134,40 @@ export class DetectSession {
 
     // Detection runs against the operator's own checkout, where nothing would
     // revert a write, so the session is opened with no tool that could make one.
-    const turn = await this.panel.ask({
-      oneShot: this.deps.oneShot,
-      cwd: this.deps.projectPath,
-      access: 'read',
-      model,
-      reasoningEffort: settings.helperReasoningEffort,
-      systemPrompt: DETECT_PROMPT,
-      prompt: buildDetectPrompt(sniffed, this.deps.existingCommands),
-    });
-    if (!turn) return;
+    const basePrompt = buildDetectPrompt(sniffed, this.deps.existingCommands);
+    let prompt = basePrompt;
+    let reply: DetectReply | null = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      if (attempt === 2) {
+        this.panel.push({
+          kind: 'note',
+          text: 'Sending the parse errors back (attempt 2 of 2)…',
+        });
+      }
+      const turn = await this.panel.ask({
+        oneShot: this.deps.oneShot,
+        cwd: this.deps.projectPath,
+        access: 'read',
+        model,
+        reasoningEffort: settings.helperReasoningEffort,
+        systemPrompt: DETECT_PROMPT,
+        outputFormat: detectOutputFormat(),
+        prompt,
+      });
+      if (!turn) return;
+      reply = parseDetectResult(turn.structuredOutput, turn.text);
+      if (!reply.parseError) break;
+      prompt = [
+        basePrompt,
+        '',
+        detectCorrection(reply.parseError),
+        '',
+        'Previous reply:',
+        reply.rawReply,
+      ].join('\n');
+    }
+    if (!reply) return;
 
-    const reply = parseDetectReply(turn.text);
     const state = this.panel.state;
     state.rawReply = reply.rawReply;
     state.rejected = reply.rejected;

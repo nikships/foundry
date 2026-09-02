@@ -57,11 +57,11 @@ function readingTurn(reply: string): ScriptedTurn {
 }
 
 async function run(opts: {
-  turn: ScriptedTurn;
+  turn: ScriptedTurn | ScriptedTurn[];
   projectPath: string;
   existingCommands?: string[];
 }): Promise<{ state: DetectionState; oneShots: ReturnType<typeof scriptedOneShots> }> {
-  const oneShots = scriptedOneShots([opts.turn]);
+  const oneShots = scriptedOneShots(Array.isArray(opts.turn) ? opts.turn : [opts.turn]);
   const states: DetectionState[] = [];
   const session = new DetectSession({
     projectId: 'p1',
@@ -81,6 +81,12 @@ function commandsReply(
   commands: { name: string; argv: string[]; source?: string }[],
 ): ScriptedTurn {
   return readingTurn(JSON.stringify({ commands }));
+}
+
+function submittedCommands(
+  commands: { name: string; argv: string[]; source?: string }[],
+): ScriptedTurn {
+  return { structuredOutput: { commands } };
 }
 
 beforeEach(() => {
@@ -175,14 +181,45 @@ describe('DetectSession', () => {
     expect(state.entries.some((e) => e.text.includes('Ignored a proposal'))).toBe(true);
   });
 
+  it('parses a detect reply that only calls submit_result', async () => {
+    const { state, oneShots } = await run({
+      turn: submittedCommands([{ name: 'test', argv: ['echo', 'from-tool'], source: 'AGENTS.md' }]),
+      projectPath: repoWithManifest(),
+    });
+
+    expect(state.proposals.map((p) => p.argv.join(' '))).toEqual(['echo from-tool']);
+    expect(state.status).toBe('done');
+    expect(oneShots.calls[0]!.outputFormat?.type).toBe('json_schema');
+    expect(oneShots.calls[0]!.systemPrompt).toContain('Call submit_result exactly once');
+  });
+
+  it('retries once when submit_result is missing, then accepts a structured correction', async () => {
+    const { state, oneShots } = await run({
+      turn: [
+        { text: 'I had a look but there are no tests here.' },
+        submittedCommands([{ name: 'test', argv: ['true'], source: 'AGENTS.md' }]),
+      ],
+      projectPath: repoWithManifest(),
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.proposals.map((p) => p.argv.join(' '))).toEqual(['true']);
+    expect(oneShots.calls).toHaveLength(2);
+    expect(oneShots.prompts[1]).toContain('Call submit_result exactly once');
+    expect(oneShots.calls[1]!.outputFormat).toBe(oneShots.calls[0]!.outputFormat);
+  });
+
   it('keeps the raw reply when the answer cannot be parsed at all', async () => {
     const { state } = await run({
-      turn: { text: 'I had a look but there are no tests here.' },
+      turn: [
+        { text: 'I had a look but there are no tests here.' },
+        { text: 'Still no tests, just prose.' },
+      ],
       projectPath: repoWithManifest(),
     });
 
     expect(state.status).toBe('failed');
-    expect(state.rawReply).toContain('no tests here');
+    expect(state.rawReply).toContain('Still no tests');
     expect(state.detail).toMatch(/no JSON/);
   });
 

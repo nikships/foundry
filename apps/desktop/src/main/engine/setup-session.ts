@@ -16,7 +16,14 @@ import {
   shortId,
   type PanelRegistry,
 } from '../session/index.js';
-import { SETUP_PROMPT, parseSetupReply, sniffSetupScript } from './setup.js';
+import {
+  SETUP_PROMPT,
+  parseSetupResult,
+  setupCorrection,
+  setupOutputFormat,
+  sniffSetupScript,
+  type SetupParseResult,
+} from './setup.js';
 
 export type { SetupState };
 
@@ -100,22 +107,42 @@ export class SetupSession {
 
     // Reads the operator's own checkout to propose a script; it never runs one,
     // so the session is opened without a tool that could.
-    const prompt = sniffed.script
+    const basePrompt = sniffed.script
       ? `Manifests suggested this script; confirm, correct, or replace it:\n${sniffed.script}`
       : 'Propose the worktree bootstrap script for this repository.';
+    let prompt = basePrompt;
+    let parsed: SetupParseResult | null = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      if (attempt === 2) {
+        this.panel.push({
+          kind: 'note',
+          text: 'Sending the parse errors back (attempt 2 of 2)…',
+        });
+      }
+      const turn = await this.panel.ask({
+        oneShot: this.deps.oneShot,
+        cwd: this.deps.projectPath,
+        access: 'read',
+        model,
+        reasoningEffort: settings.helperReasoningEffort,
+        systemPrompt: SETUP_PROMPT,
+        outputFormat: setupOutputFormat(),
+        prompt,
+      });
+      if (!turn) return;
+      parsed = parseSetupResult(turn.structuredOutput, turn.text);
+      if (!parsed.parseError) break;
+      prompt = [
+        basePrompt,
+        '',
+        setupCorrection(parsed.parseError),
+        '',
+        'Previous reply:',
+        parsed.rawReply,
+      ].join('\n');
+    }
+    if (!parsed) return;
 
-    const turn = await this.panel.ask({
-      oneShot: this.deps.oneShot,
-      cwd: this.deps.projectPath,
-      access: 'read',
-      model,
-      reasoningEffort: settings.helperReasoningEffort,
-      systemPrompt: SETUP_PROMPT,
-      prompt,
-    });
-    if (!turn) return;
-
-    const parsed = parseSetupReply(turn.text);
     const state = this.panel.state;
     state.rawReply = parsed.rawReply;
 
