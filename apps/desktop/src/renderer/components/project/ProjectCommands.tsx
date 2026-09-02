@@ -177,7 +177,11 @@ export default function ProjectCommands({
             const result = results[command.name];
             const isOpen = expanded === command.name;
             return (
-              <div key={i} className={styles.command}>
+              <div
+                key={i}
+                className={styles.command}
+                data-testid={`project-command-${command.name}`}
+              >
                 <div className="row">
                   <TextInput
                     className={styles.name}
@@ -204,10 +208,16 @@ export default function ProjectCommands({
                             : undefined
                       }
                       onClick={() => void tryIt(command.name, command.argv)}
+                      data-testid={`project-command-${command.name}-try`}
                     >
                       {result?.running ? 'Running…' : 'Try it'}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => remove(i)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(i)}
+                      data-testid={`project-command-${command.name}-remove`}
+                    >
                       ✕
                     </Button>
                   </div>
@@ -233,7 +243,7 @@ export default function ProjectCommands({
             );
           })}
           <div className={styles.commandActionsRow}>
-            <Button size="sm" onClick={add}>
+            <Button size="sm" onClick={add} data-testid="project-command-add">
               Add command
             </Button>
             <Button
