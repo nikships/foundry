@@ -39,6 +39,8 @@
   --red-dim: #ef444422;
   --blue: #60a5fa;
   --blue-dim: #60a5fa22;
+  --teal: #2dd4bf;
+  --teal-dim: #2dd4bf22;
 
   --status-queued: var(--text-faint);
   --status-running: var(--accent);
@@ -94,6 +96,8 @@
   --red-dim: rgb(197 39 39 / 11%);
   --blue: #1769aa;
   --blue-dim: rgb(23 105 170 / 11%);
+  --teal: #0e7f72;
+  --teal-dim: rgb(14 127 114 / 12%);
 
   --status-queued: var(--text-faint);
   --status-running: var(--accent);
