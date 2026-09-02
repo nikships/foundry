@@ -726,7 +726,7 @@ export default function LinearComposer({
                 then composes the pipeline.
               </p>
             )}
-            {currentBlocked && issue && !starting && orchestrator.stage === 'compose' && (
+            {currentBlocked && !starting && orchestrator.stage === 'compose' && (
               <p className={styles.startHint}>{currentBlocked}</p>
             )}
             {orchestrator.planError && (

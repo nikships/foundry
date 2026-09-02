@@ -164,8 +164,7 @@
 }
 
 .issueRowActive {
-  border-left-color: var(--accent);
-  background: var(--bg-active);
+  background: var(--bg-hover);
 }
 
 .issueStateDot {
@@ -184,10 +183,6 @@
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.issueRowActive .issueKey {
-  color: var(--accent);
 }
 
 .issueTitle {

@@ -38,7 +38,7 @@ export default function LinearIssueResults({
     <div className={styles.results}>
       <div className={styles.resultsHead}>
         <span>{label}</span>
-        {!loading && !error && issues.length > 0 && <span>↑↓ move · ⏎ select</span>}
+        {!loading && !error && issues.length > 0 && <span>↑↓ highlight · ⏎ select</span>}
       </div>
 
       {error ? (
@@ -78,8 +78,9 @@ export default function LinearIssueResults({
               <div
                 key={issue.id}
                 role="option"
-                aria-selected={active}
+                aria-selected={false}
                 data-active={active ? 'true' : 'false'}
+                data-selected="false"
                 data-testid={`linear-issue-${issue.id}`}
                 className={`${styles.issueRow} ${active ? styles.issueRowActive : ''}`}
                 onMouseEnter={() => onActiveIndex(index)}

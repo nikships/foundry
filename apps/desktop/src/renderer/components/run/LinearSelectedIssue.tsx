@@ -18,7 +18,7 @@ export default function LinearSelectedIssue({
   const [detailOpen, setDetailOpen] = useState(false);
 
   return (
-    <div className={styles.selectedIssue} data-testid="linear-issue-detail">
+    <div className={styles.selectedIssue} data-selected="true" data-testid="linear-issue-detail">
       <div className={styles.selectedIssueRow}>
         <span
           className={styles.issueStateDot}

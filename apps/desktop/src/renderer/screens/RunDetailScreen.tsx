@@ -266,7 +266,6 @@ export default function RunDetailScreen({
 
   const pipelineLabel = view.run?.pipelineName?.trim() || '';
   const linearSource = view.run?.source?.kind === 'linear' ? view.run.source : null;
-  const shortId = runId.slice(0, 7);
   const hasActiveFailure = view.run?.orchestrated
     ? Boolean(plan && planHasActiveFailure(plan, view.phases))
     : view.phases.some((phase) => phase.status === 'fail');
@@ -291,16 +290,23 @@ export default function RunDetailScreen({
           ← Runs
         </Button>
         <span className={styles.headSep} aria-hidden />
-        <span className={styles.headTitle} title={pipelineLabel || shortId}>
+        <span
+          className={styles.headTitle}
+          title={pipelineLabel ? `${pipelineLabel} · ${runId}` : runId}
+        >
           <span className={styles.headIndex}>Run</span>
           {pipelineLabel ? (
             <>
               <span className={styles.headName}>{pipelineLabel}</span>
               <span className={styles.headDot}>·</span>
-              <span className={styles.headId}>{shortId}</span>
+              <span className={styles.headId} title={runId}>
+                {runId}
+              </span>
             </>
           ) : (
-            <span className={styles.headId}>{shortId}</span>
+            <span className={styles.headId} title={runId}>
+              {runId}
+            </span>
           )}
         </span>
         <Button
