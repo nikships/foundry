@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { FIXED_ENGINE_DEFAULTS } from '../../../src/shared/types.js';
 import type { AgentDef, ModelInfo, ProjectCommand } from '../../../src/shared/types.js';
 import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
+import { ORCHESTRATOR_PROMPT } from '../../../src/main/orchestrator/plan.js';
 import { PlanSession } from '../../../src/main/orchestrator/plan-session.js';
 import { generatedCompositionIssues } from '../../../src/main/orchestrator/plan.js';
 import { BUILTIN_AGENTS } from '../../../src/shared/builtin-agents.js';
@@ -167,6 +168,15 @@ async function run(opts: {
   expect(states.length).toBeGreaterThan(0);
   return { session, state: session.snapshot(), oneShots, prompts };
 }
+
+describe('ORCHESTRATOR_PROMPT', () => {
+  it('does not treat unrestricted roster writes as a fit for path-bounded work', () => {
+    expect(ORCHESTRATOR_PROMPT).toContain('Unrestricted roster writes');
+    expect(ORCHESTRATOR_PROMPT).toContain(
+      'synthesize the implementation agent rather than using an unrestricted roster builder',
+    );
+  });
+});
 
 describe('PlanSession', () => {
   it('produces a validated plan with Foundry-owned ids from a good reply', async () => {

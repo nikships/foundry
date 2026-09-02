@@ -476,13 +476,13 @@ export const COMPOSITION_RULES: CompositionRule[] = [
   {
     id: 'prefer-roster',
     bullet:
-      'Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile fit. Do not assume capabilities that are not in their summary.',
+      'Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile all fit. Do not assume capabilities that are not in their summary. Unrestricted roster writes (shown as "unrestricted") do not fit a path-bounded request — do not appoint that agent just because its purpose is "implement".',
     check: () => [],
   },
   {
     id: 'synthesized-agent',
     bullet:
-      'A synthesized agent gets a one-line purpose, a tight "writes" boundary containing only paths its phase must touch, and never the name of a roster agent. A synthesized judge-only reviewer uses "writes":[] and "toolProfile":"read-only". Use the build envelope for implementation agents. Foundry appends the canonical envelope constitution to the synthesized systemPrompt after you submit.',
+      'A synthesized agent gets a one-line purpose, a tight "writes" boundary containing only paths its phase must touch, and never the name of a roster agent. When the request names the files or directories to touch, synthesize the implementation agent rather than using an unrestricted roster builder. A synthesized judge-only reviewer uses "writes":[] and "toolProfile":"read-only". Use the build envelope for implementation agents. Foundry appends the canonical envelope constitution to the synthesized systemPrompt after you submit.',
     check: synthesizedReviewerIssues,
   },
   {
