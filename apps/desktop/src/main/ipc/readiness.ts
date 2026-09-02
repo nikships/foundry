@@ -26,7 +26,11 @@ export function register(ctx: Ctx, handle: Handle): void {
       settings: ctx.settings.get(),
       oneShot: ctx.oneShot,
       persist: (next) => {
-        persist({ ...(projectOf(next.id) ?? next), contextSummary: next.contextSummary });
+        persist({
+          ...(projectOf(next.id) ?? next),
+          contextSummary: next.contextSummary,
+          contextSummarySha: next.contextSummarySha,
+        });
       },
     });
   const loadProject = async (projectId: string): Promise<ProjectDef | null> => {
