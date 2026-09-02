@@ -52,10 +52,14 @@
   line-height: 1;
 }
 .headId {
+  min-width: 0;
+  overflow: hidden;
+  flex: 0 1 auto;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-faint);
-  flex: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .inspectorBtn {
   gap: 4px;
