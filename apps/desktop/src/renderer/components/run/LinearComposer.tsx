@@ -8,7 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { linearIssueBrief } from '@shared/linear.js';
+import { linearIssueBrief, linearIssueEvidence } from '@shared/linear.js';
 import type {
   GeneratedRunPlan,
   LinearIssueSnapshot,
@@ -395,6 +395,10 @@ export default function LinearComposer({
     [pipelines, selectedPipeline],
   );
   const brief = useMemo(() => (issue ? linearIssueBrief(issue) : ''), [issue]);
+  const planPrompt = useMemo(
+    () => (issue ? [brief, linearIssueEvidence(issue)].join('\n\n') : ''),
+    [brief, issue],
+  );
   const mappingReady = mappingComplete(mapping) && !workflowError;
   const baseRef = project?.baseRef ?? 'base branch';
   const manualBlocked = blockedReason({
@@ -605,7 +609,7 @@ export default function LinearComposer({
     if (planBlocked || orchestrator.planningLive) return;
     setStartIssues([]);
     setPlanStartIssues([]);
-    void orchestrator.submit(brief);
+    void orchestrator.submit(planPrompt);
   };
 
   primaryActionRef.current = () => {
@@ -722,8 +726,9 @@ export default function LinearComposer({
 
             {issue && execution === 'orchestrator' && orchestrator.stage === 'compose' && (
               <p className={styles.orchestratorHint}>
-                The Orchestrator reads {issue.identifier}&apos;s title and description as the brief,
-                then composes the pipeline.
+                The Orchestrator reads {issue.identifier}&apos;s title as the brief and the
+                description, comments, labels, and parent as untrusted evidence, then composes the
+                pipeline.
               </p>
             )}
             {currentBlocked && !starting && orchestrator.stage === 'compose' && (

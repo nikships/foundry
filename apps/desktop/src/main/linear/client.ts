@@ -1,4 +1,8 @@
-import type { LinearIssueSnapshot, LinearWorkflowState } from '@shared/types.js';
+import type {
+  LinearIssueComment,
+  LinearIssueSnapshot,
+  LinearWorkflowState,
+} from '@shared/types.js';
 
 const LINEAR_GRAPHQL_URL = 'https://api.linear.app/graphql';
 const RETRYABLE_HTTP = new Set([429, 502, 503, 504]);
@@ -53,6 +57,13 @@ export class LinearApiError extends Error {
   }
 }
 
+interface RawComment {
+  id?: unknown;
+  body?: unknown;
+  createdAt?: unknown;
+  user?: { name?: unknown } | null;
+}
+
 interface RawIssue {
   id?: unknown;
   identifier?: unknown;
@@ -62,6 +73,12 @@ interface RawIssue {
   updatedAt?: unknown;
   team?: { id?: unknown; name?: unknown } | null;
   state?: { id?: unknown; name?: unknown; type?: unknown } | null;
+  labels?: { nodes?: { name?: unknown }[] | null } | null;
+  parent?: { identifier?: unknown; title?: unknown } | null;
+  comments?: {
+    nodes?: RawComment[] | null;
+    pageInfo?: { hasNextPage?: unknown } | null;
+  } | null;
 }
 
 const ISSUE_FIELDS = `
@@ -73,6 +90,17 @@ const ISSUE_FIELDS = `
   updatedAt
   team { id name }
   state { id name type }
+  labels { nodes { name } }
+  parent { identifier title }
+  comments(first: 20, orderBy: updatedAt) {
+    nodes {
+      id
+      body
+      createdAt
+      user { name }
+    }
+    pageInfo { hasNextPage }
+  }
 `;
 
 const VIEWER_QUERY = `query LinearViewer { viewer { id name } }`;
@@ -266,13 +294,14 @@ function parseEnvelope<T>(body: string): GraphqlEnvelope<T> {
 function parseIssue(issue: RawIssue): LinearIssueSnapshot {
   const description =
     issue.description == null ? '' : stringField(issue.description, 'issue.description');
+  const { comments, commentsTruncated } = parseComments(issue.comments);
   return {
     id: stringField(issue.id, 'issue.id'),
     identifier: stringField(issue.identifier, 'issue.identifier'),
     title: stringField(issue.title, 'issue.title'),
     description:
       description.length > MAX_DESCRIPTION_CHARS
-        ? `${description.slice(0, MAX_DESCRIPTION_CHARS)}\n\n[Linear description truncated]`
+        ? `${description.slice(0, MAX_DESCRIPTION_CHARS)}\n\n[Linear description truncated — ${description.length - MAX_DESCRIPTION_CHARS} chars omitted]`
         : description,
     url: stringField(issue.url, 'issue.url'),
     updatedAt: stringField(issue.updatedAt, 'issue.updatedAt'),
@@ -285,7 +314,59 @@ function parseIssue(issue: RawIssue): LinearIssueSnapshot {
       name: stringField(issue.state?.name, 'issue.state.name'),
       type: stringField(issue.state?.type, 'issue.state.type'),
     },
+    labels: parseLabels(issue.labels),
+    parent: parseParent(issue.parent),
+    comments,
+    commentsTruncated,
   };
+}
+
+function parseLabels(labels: RawIssue['labels']): string[] {
+  const nodes = labels?.nodes;
+  if (!Array.isArray(nodes)) return [];
+  return nodes
+    .map((node) => (typeof node?.name === 'string' ? node.name.trim() : ''))
+    .filter(Boolean);
+}
+
+function parseParent(parent: RawIssue['parent']): LinearIssueSnapshot['parent'] {
+  if (!parent) return null;
+  const identifier = typeof parent.identifier === 'string' ? parent.identifier : '';
+  const title = typeof parent.title === 'string' ? parent.title : '';
+  if (!identifier || !title) return null;
+  return { identifier, title };
+}
+
+function parseComments(comments: RawIssue['comments']): {
+  comments: LinearIssueComment[];
+  commentsTruncated: boolean;
+} {
+  if (!comments) return { comments: [], commentsTruncated: false };
+  const nodes = Array.isArray(comments.nodes) ? comments.nodes : [];
+  return {
+    comments: nodes.map(parseComment),
+    commentsTruncated: comments.pageInfo?.hasNextPage === true,
+  };
+}
+
+function parseComment(comment: RawComment): LinearIssueComment {
+  const author =
+    typeof comment.user?.name === 'string' && comment.user.name.trim()
+      ? comment.user.name.trim()
+      : 'unknown';
+  return {
+    id: stringField(comment.id, 'comment.id'),
+    body: comment.body == null ? '' : optionalText(comment.body, 'comment.body'),
+    createdAt: stringField(comment.createdAt, 'comment.createdAt'),
+    author,
+  };
+}
+
+function optionalText(value: unknown, name: string): string {
+  if (typeof value !== 'string') {
+    throw new LinearApiError(`Linear returned an invalid ${name}`, 'invalid_response');
+  }
+  return value;
 }
 
 function stringField(value: unknown, name: string): string {

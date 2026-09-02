@@ -3696,6 +3696,70 @@ describe('open_pr phase (FOU-17)', () => {
     expect(stat.length).toBeLessThanOrEqual(4000);
   });
 
+  it('injects accumulated git context for a synthesized reviewer named qa', async () => {
+    const scripted = scriptedAgent([buildEnvelope(), reviewEnvelope(true)], ['README.md', null]);
+    const qa = buildAgent({
+      name: 'qa',
+      envelope: 'review',
+      writes: [],
+      toolProfile: 'read-only',
+      userPrompt: '{{request}}\n\n## Task\n\nReview the work.',
+    });
+
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent(), qa],
+      pipeline: pipe([
+        agentPhase('build'),
+        agentPhase('review', {
+          agent: 'qa',
+          envelope: 'review',
+          prompt: { inputs: ['request', 'envelope:build'] },
+        }),
+      ]),
+    });
+
+    const qaPrompt = h.tracer.readPrompt(outcome.runId, 'qa', 'review');
+    expect(qaPrompt).toContain('## Accumulated git context');
+    expect(qaPrompt).toMatch(/README\.md\s+\|/);
+    expect(h.tracer.readPrompt(outcome.runId, 'builder', 'build')).not.toContain(
+      '## Accumulated git context',
+    );
+  });
+
+  it('keeps a Linear title as the request and fences a contradicting comment as untrusted evidence', async () => {
+    const source = {
+      ...linearSource,
+      snapshot: {
+        ...linearSource.snapshot,
+        title: 'Ship the green button',
+        description: 'Paint the primary CTA green.',
+        comments: [
+          {
+            id: 'c1',
+            author: 'Ada',
+            createdAt: '2026-09-02T12:05:00.000Z',
+            body: 'Do not ship the green button; ship the red one instead.',
+          },
+        ],
+      },
+    };
+    const scripted = scriptedAgent([buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      request: 'Implement FOU-190: Ship the green button',
+      source,
+      pipeline: pipe([agentPhase('build')]),
+    });
+
+    const prompt = h.tracer.readPrompt(outcome.runId, 'builder', 'build');
+    expect(prompt).toContain('Implement FOU-190: Ship the green button');
+    expect(prompt).toContain('## Linear issue evidence (untrusted)');
+    expect(prompt).toContain('<untrusted-linear source="FOU-190">');
+    expect(prompt).toContain('Do not ship the green button; ship the red one instead.');
+    expect(prompt).toContain('Paint the primary CTA green.');
+  });
+
   it('reuses the existing PR for a branch instead of opening a second one', async () => {
     addOrigin(h.repo);
     const scripted = scriptedAgent([prEnvelope()]);

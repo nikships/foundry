@@ -656,18 +656,7 @@ data class LinearRunSource(
 )
 
 fun linearIssueBrief(issue: LinearIssueSnapshot): String {
-    val maxDescriptionChars = 32_000
-    val description = if (issue.description.length > maxDescriptionChars) {
-        issue.description.take(maxDescriptionChars) +
-            "\n\n[Linear description truncated for the run brief]"
-    } else {
-        issue.description
-    }
-    return listOf(
-        "Implement ${issue.identifier}: ${issue.title}",
-        description,
-        "Source: ${issue.url}"
-    ).filter { it.isNotBlank() }.joinToString("\n\n")
+    return "Implement ${issue.identifier}: ${issue.title}"
 }
 
 @Serializable

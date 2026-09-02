@@ -62,6 +62,7 @@ import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateAgent } from '../store/roster.js';
 import { preflightForRun } from './preflight.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
+import { linearIssueEvidence } from '@shared/linear.js';
 import { activeRowsForPipeline } from './phase-history.js';
 import type { RunSourceLifecycle, RunSourceStage } from './source-lifecycle.js';
 
@@ -944,6 +945,10 @@ export class Executor {
       project: this.deps.project,
       pipeline: this.pipeline,
       request: this.deps.request,
+      untrustedEvidence:
+        this.deps.source?.kind === 'linear'
+          ? linearIssueEvidence(this.deps.source.snapshot)
+          : undefined,
       cwd: this.cwd,
       handoffDir: HANDOFF_DIR,
       branch: this.handle?.branch ?? null,

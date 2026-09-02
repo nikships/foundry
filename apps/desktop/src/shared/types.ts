@@ -693,6 +693,13 @@ export interface LinearWorkflowState {
   type: string;
 }
 
+export interface LinearIssueComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: string;
+}
+
 export interface LinearIssueSnapshot {
   id: string;
   identifier: string;
@@ -702,6 +709,14 @@ export interface LinearIssueSnapshot {
   updatedAt: string;
   team: { id: string; name: string };
   state: LinearWorkflowState;
+  /** Present when Linear returned labels; omitted on older snapshots. */
+  labels?: string[];
+  /** Parent issue when this ticket is a sub-issue. */
+  parent?: { identifier: string; title: string } | null;
+  /** Recent comments, newest first. */
+  comments?: LinearIssueComment[];
+  /** True when Linear has more comments than this snapshot fetched. */
+  commentsTruncated?: boolean;
 }
 
 export interface LinearRunSource {

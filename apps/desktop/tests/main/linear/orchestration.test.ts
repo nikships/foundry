@@ -133,9 +133,8 @@ describe('startLinearIssueRun', () => {
     expect(h.teamIds).toEqual([issue.team.id]);
     const startInput = h.started[0]!;
     expect(startInput.pipeline).toBe(pipeline);
-    expect(startInput.request).toBe(
-      `Implement ${issue.identifier}: ${issue.title}\n\n${issue.description}\n\nSource: ${issue.url}`,
-    );
+    expect(startInput.request).toBe(`Implement ${issue.identifier}: ${issue.title}`);
+    expect(startInput.request).not.toContain(issue.description);
     expect(startInput.source).toEqual({
       kind: 'linear',
       trigger: 'manual',
@@ -188,7 +187,7 @@ describe('startLinearIssueRun', () => {
     });
   });
 
-  it('bounds a large issue description in the run brief while preserving the source snapshot', async () => {
+  it('keeps a large issue description on the snapshot, not in the run request', async () => {
     const largeIssue = { ...issue, description: 'x'.repeat(40_000) };
     const h = harness(largeIssue);
 
@@ -199,8 +198,8 @@ describe('startLinearIssueRun', () => {
     });
 
     const startInput = h.started[0]!;
-    expect(startInput.request).toContain('[Linear description truncated for the run brief]');
-    expect(startInput.request.length).toBeLessThan(33_000);
+    expect(startInput.request).toBe(`Implement ${issue.identifier}: ${issue.title}`);
+    expect(startInput.request).not.toContain('x'.repeat(20));
     expect(startInput.source?.snapshot.description).toHaveLength(40_000);
   });
 });

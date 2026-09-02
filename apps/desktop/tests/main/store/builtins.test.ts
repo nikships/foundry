@@ -109,6 +109,13 @@ describe('shipped agents', () => {
     }
   });
 
+  it('keeps the reviewer userPrompt pipeline-shape-agnostic', () => {
+    const prompt = agentByName('reviewer')!.userPrompt;
+    expect(prompt).toContain('{{request}}');
+    expect(prompt).not.toContain('{{envelope:plan}}');
+    expect(prompt).not.toContain('{{envelope:build}}');
+  });
+
   it('points the diff-reading read-only agents at git_diff, not at a shell', () => {
     // Removing `bash` removed `git diff`, and the stat block `runners/agent.ts`
     // injects is a file list that cannot say what changed inside a file. The

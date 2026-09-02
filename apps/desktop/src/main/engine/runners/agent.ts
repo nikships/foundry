@@ -5,7 +5,7 @@
 
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
+import type { AgentDef, EnvelopeDef, PhaseDef, PipelineDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
 import { KILLED_DETAIL, type AgentSession } from '../../pi/session.js';
 import * as boundary from '../boundary.js';
@@ -30,8 +30,44 @@ import { promptFingerprint, type PromptLedger } from '../prompt-ledger.js';
 import { agentSystemRole, type SetupExecution } from '../agent-context.js';
 import { diffStat } from '../git.js';
 
-const DIFF_CONTEXT_AGENTS = new Set(['reviewer', 'finisher', 'pr_writer', 'documenter']);
+const DIFF_CONTEXT_ENVELOPES = new Set(['review', 'pr', 'document']);
 const DIFF_STAT_MAX_CHARS = 4000;
+
+/**
+ * Git context is a role property: review/pr/document envelopes, or any
+ * read-only agent sitting after a phase that can write the tree.
+ */
+export function wantsGitContext(
+  agent: Pick<AgentDef, 'envelope' | 'toolProfile'>,
+  phase: PhaseDef,
+  pipeline: PipelineDef,
+  agents: ReadonlyArray<Pick<AgentDef, 'name' | 'writes'>>,
+): boolean {
+  const envelope = phase.envelope ?? agent.envelope;
+  if (DIFF_CONTEXT_ENVELOPES.has(envelope)) return true;
+  return agent.toolProfile === 'read-only' && hasPriorWritePhase(pipeline, phase, agents);
+}
+
+function hasPriorWritePhase(
+  pipeline: PipelineDef,
+  phase: PhaseDef,
+  agents: ReadonlyArray<Pick<AgentDef, 'name' | 'writes'>>,
+): boolean {
+  const index = pipeline.phases.findIndex((candidate) => candidate.name === phase.name);
+  if (index <= 0) return false;
+  return pipeline.phases.slice(0, index).some((candidate) => phaseCanWrite(candidate, agents));
+}
+
+function phaseCanWrite(
+  phase: PhaseDef,
+  agents: ReadonlyArray<Pick<AgentDef, 'name' | 'writes'>>,
+): boolean {
+  if (phase.kind === 'code') return true;
+  if (phase.kind !== 'agent' || !phase.agent) return false;
+  const writer = agents.find((candidate) => candidate.name === phase.agent);
+  if (!writer) return false;
+  return writer.writes === null || writer.writes.length > 0;
+}
 
 export interface AgentRunnerDeps {
   agents: AgentDef[];
@@ -539,7 +575,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     phase: PhaseDef,
     ctx: RunContext,
   ): Promise<RenderContext> {
-    const stat = DIFF_CONTEXT_AGENTS.has(agent.name)
+    const stat = wantsGitContext(agent, phase, ctx.pipeline, this.deps.agents)
       ? (await diffStat(ctx.cwd, ctx.branchPointSha)).trim().slice(0, DIFF_STAT_MAX_CHARS)
       : null;
     return {
@@ -550,6 +586,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       handoffFiles: this.handoffFiles(ctx),
       branch: ctx.branch,
       baseRef: ctx.baseRef,
+      untrustedEvidence: ctx.untrustedEvidence,
       gitContext:
         stat === null ? undefined : { branchPointSha: ctx.branchPointSha, diffStat: stat },
       envelopes: ctx.envelopes,

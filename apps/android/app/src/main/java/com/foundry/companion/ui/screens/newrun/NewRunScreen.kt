@@ -1450,8 +1450,8 @@ private fun LinearComposerSection(
                 FoundrySecondaryButton(
                     text = "Generate plan from issue",
                     onClick = {
-                        // The canonical brief: same shape and 32k truncation the
-                        // repository uses, so phone and desktop agree verbatim.
+                        // Title line only: ticket prose is untrusted evidence on the
+                        // desktop engine, not the operator request.
                         onGeneratePlan(
                             linearIssueBrief(selectedIssue)
                         )

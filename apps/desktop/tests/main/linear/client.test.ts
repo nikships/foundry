@@ -112,4 +112,49 @@ describe('LinearClient', () => {
       description: rawIssue.description,
     });
   });
+
+  it('fetches comments, labels, and parent, including a comment that contradicts the title', async () => {
+    const transport = vi.fn<LinearTransport>(async (input) => {
+      const request = JSON.parse(input.body) as { query: string };
+      expect(request.query).toContain('comments(first: 20');
+      expect(request.query).toContain('labels { nodes { name } }');
+      expect(request.query).toContain('parent { identifier title }');
+      return response({
+        data: {
+          issue: {
+            ...rawIssue,
+            title: 'Ship the green button',
+            labels: { nodes: [{ name: 'Bug' }] },
+            parent: { identifier: 'FOU-1', title: 'Parent ticket' },
+            comments: {
+              nodes: [
+                {
+                  id: 'c1',
+                  body: 'Do not ship the green button; ship the red one instead.',
+                  createdAt: '2026-09-02T12:05:00.000Z',
+                  user: { name: 'Ada' },
+                },
+              ],
+              pageInfo: { hasNextPage: true },
+            },
+          },
+        },
+      });
+    });
+    const client = new LinearClient({ apiKey: 'secret', transport, retries: 0 });
+
+    await expect(client.issue('FOU-288')).resolves.toMatchObject({
+      title: 'Ship the green button',
+      labels: ['Bug'],
+      parent: { identifier: 'FOU-1', title: 'Parent ticket' },
+      comments: [
+        {
+          id: 'c1',
+          author: 'Ada',
+          body: 'Do not ship the green button; ship the red one instead.',
+        },
+      ],
+      commentsTruncated: true,
+    });
+  });
 });
