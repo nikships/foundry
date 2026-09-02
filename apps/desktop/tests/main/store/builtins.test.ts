@@ -16,6 +16,7 @@ import { BUILTIN_PIPELINES } from '../../../src/shared/builtin-pipelines.js';
 import { validate as validatePipeline } from '../../../src/main/store/pipelines.js';
 import { validate as validateAgent } from '../../../src/main/store/roster.js';
 import { exampleFor, schemaFor } from '../../../src/main/engine/envelopes.js';
+import { FOUNDRY_RUN_HARNESS } from '../../../src/main/pi/system-prompt.js';
 import {
   healingEligible,
   PR_FALLBACK_HEADINGS,
@@ -129,6 +130,130 @@ describe('shipped agents', () => {
         expect(prompts, agent.name).toMatch(/orientation|`git_diff`/i);
       }
     }
+  });
+});
+
+describe('builtin prompt contracts', () => {
+  const planner = agentByName('planner')!;
+  const builder = agentByName('builder')!;
+  const scout = agentByName('scout')!;
+
+  it('snapshots the planner contract: required sections, no invented paths, specs/ only', () => {
+    expect(planner.writes).toEqual(['specs/']);
+    expect(planner.systemPrompt).toMatchInlineSnapshot(`
+      "# Planner
+
+      ## Purpose
+
+      Turn a request into a plan the builder can implement without asking questions.
+
+      ## Instructions
+
+      - Read only what you need to understand the request.
+      - Do not invent paths. Name a file only when you have seen it in the tree; omit it rather than guess.
+      - Write the plan to a file under \`specs/\` and declare that path in your artifacts. The spec must contain these sections, in this order:
+        - Goal — the outcome, in one paragraph.
+        - Files — exact paths to create, edit, or delete.
+        - Stepwise changes — the edits, in order, tied to those files.
+        - Tests to add/run — the tests the builder must write or run before claiming done.
+        - Out of scope — what this plan must not do.
+        - Risks — what could go wrong, including missing context.
+      - Do not implement anything. Planning and building are different phases for a reason.
+      - If blocked, fail closed: report \`status: fail\`, put the blocker in \`summary\` and \`notes_for_next_agent\`, and do not invent success."
+    `);
+    expect(planner.userPrompt).toContain(
+      'Goal, Files, Stepwise changes, Tests to add/run, Out of scope, Risks',
+    );
+    expect(planner.userPrompt).toContain('Do not invent paths');
+    expect(planner.userPrompt).not.toMatch(/handoff/i);
+  });
+
+  it('snapshots the builder contract: open artifacts, listed files, test-first, missing spec fails', () => {
+    expect(builder.systemPrompt).toMatchInlineSnapshot(`
+      "# Builder
+
+      ## Purpose
+
+      Implement the plan (or request) exactly.
+
+      ## Instructions
+
+      - If a prior envelope carries a plan, a diagnosis, or test failures, that is your spec. Open the paths in its \`artifacts\` first and follow that spec.
+      - Implement only the files the spec lists. Do not touch unrelated files, and do not invent work the spec did not ask for.
+      - If the plan's verification names tests, write or update those tests in the same turn, before claiming success. Tests are part of the change, not a later command.
+      - When fixing test failures, address every reported failure, not the first one.
+      - Verify your work runs before reporting, and judge that by exit status. If tests were not run, or a required artifact is missing, fail the envelope.
+      - If the spec is missing or too ambiguous to implement, fail the envelope. Do not guess a design.
+      - Make the smallest change that satisfies the request; do not refactor unrelated code.
+      - If blocked, fail closed: report \`status: fail\`, put the blocker in \`summary\` and \`notes_for_next_agent\`, and do not invent success."
+    `);
+    expect(builder.userPrompt).toContain('Open the spec artifact paths first');
+    expect(builder.userPrompt).toContain('Change only the listed files');
+    expect(builder.userPrompt).toContain(
+      'Write or update the tests the spec names before claiming success',
+    );
+    expect(builder.userPrompt).not.toMatch(/handoff/i);
+  });
+
+  it('snapshots the scout contract: path+symbol+observation, contradict the premise', () => {
+    expect(scout.systemPrompt).toMatchInlineSnapshot(`
+      "# Scout
+
+      ## Purpose
+
+      Answer a question about this codebase with evidence, changing nothing.
+
+      ## Instructions
+
+      - You are read-only. Do not create, edit, or delete any file.
+      - Each \`findings\` entry is one concrete observation in the form \`path + symbol + observation\`. A finding without a location is a guess.
+      - Report what is actually there. If the tree contradicts the premise of the question, say so as a finding.
+      - If blocked, fail closed: report \`status: fail\`, put the blocker in \`summary\` and \`notes_for_next_agent\`, and do not invent success."
+    `);
+    expect(scout.userPrompt).toContain('path + symbol + observation');
+    expect(scout.userPrompt).toMatch(/disagrees with the question's premise|contradict/i);
+    expect(scout.userPrompt).not.toMatch(/handoff/i);
+  });
+
+  it('puts a fail-closed contract on every shipped systemPrompt', () => {
+    expect(BUILTIN_AGENTS).toHaveLength(9);
+    for (const agent of BUILTIN_AGENTS) {
+      expect(agent.systemPrompt, agent.name).toMatch(/fail closed/i);
+      expect(agent.systemPrompt, agent.name).toContain('status: fail');
+      expect(agent.systemPrompt, agent.name).toContain('summary');
+      expect(agent.systemPrompt, agent.name).toContain('notes_for_next_agent');
+    }
+  });
+
+  it('keeps the harness review halt line, quoted status fail stays out of review seeds', () => {
+    expect(FOUNDRY_RUN_HARNESS).toContain('when `approved` is false, report `status: "fail"` too');
+    for (const name of ['reviewer', 'finisher']) {
+      const agent = agentByName(name)!;
+      expect(`${agent.systemPrompt}\n${agent.userPrompt}`, name).not.toContain('status: "fail"');
+    }
+  });
+
+  it('never mentions handoff in a builtin userPrompt', () => {
+    for (const agent of BUILTIN_AGENTS) {
+      expect(agent.userPrompt, agent.name).not.toMatch(/handoff/i);
+    }
+  });
+
+  it('states that tests are part of the build in a shipped pipeline description', () => {
+    const descriptions = BUILTIN_PIPELINES.map((p) => p.description);
+    expect(descriptions.some((d) => /tests are part of the build/i.test(d))).toBe(true);
+    expect(agentByName('builder')!.systemPrompt).toMatch(/tests are part of the change/i);
+  });
+
+  it('accepts a successful builder envelope that lists the tests it added', () => {
+    const envelope = {
+      status: 'success',
+      summary: 'implemented with tests',
+      artifacts: ['src/foo.ts', 'src/foo.test.ts'],
+      notes_for_next_agent: '',
+      commit_message: 'Add foo with tests',
+    };
+    expect(schemaFor('build').safeParse(envelope).success).toBe(true);
   });
 });
 
