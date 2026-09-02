@@ -155,14 +155,23 @@ export function smithExtension(opts: {
  */
 function installPolicy(pi: ExtensionAPI, decide: FoundryExtensionOptions['decide']): void {
   pi.on('tool_call', async (event) => {
-    const input = { ...event.input };
     const decision = await decide({
       tool: event.toolName,
-      input,
-      ...(typeof input.command === 'string' ? { command: input.command } : {}),
-      ...(typeof input.path === 'string' ? { path: input.path } : {}),
+      input: { ...event.input },
+      ...commandOf(event.input),
+      ...pathOf(event.input),
     });
     if (decision.outcome === 'allow') return;
     return { block: true, reason: decision.reason };
   });
+}
+
+function commandOf(input: Record<string, unknown>): { command?: string } {
+  const command = input.command;
+  return typeof command === 'string' ? { command } : {};
+}
+
+function pathOf(input: Record<string, unknown>): { path?: string } {
+  const path = input.path;
+  return typeof path === 'string' ? { path } : {};
 }

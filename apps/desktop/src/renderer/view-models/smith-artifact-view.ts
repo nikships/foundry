@@ -369,7 +369,11 @@ export function groupJourneyCriteria(
   criteria: ReadinessJourneyCriterion[],
 ): GroupedJourneyCriteria {
   const groups: GroupedJourneyCriteria = { fail: [], pass: [], na: [] };
-  for (const criterion of criteria) groups[criterion.status].push(criterion);
+  for (const criterion of criteria) {
+    if (criterion.status === 'fail') groups.fail.push(criterion);
+    else if (criterion.status === 'pass') groups.pass.push(criterion);
+    else groups.na.push(criterion);
+  }
   return groups;
 }
 

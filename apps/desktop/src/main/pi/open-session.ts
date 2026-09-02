@@ -7,11 +7,11 @@
 import {
   createAgentSession,
   DefaultResourceLoader,
+  SessionManager,
   SettingsManager,
   type AgentSession as PiAgentSession,
   type ExtensionFactory,
   type ModelRuntime,
-  type SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import type { ContextBreakdown } from '@shared/types.js';
 import type { PiModel, PiThinkingLevel } from './model.js';
