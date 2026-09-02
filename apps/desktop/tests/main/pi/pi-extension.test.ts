@@ -36,6 +36,13 @@ interface FakeApi {
     input: Record<string, unknown>;
   }) => Promise<{ block: true; reason: string } | undefined | void>;
   beforeAgentStart?: (event: { systemPrompt: string }) => { systemPrompt: string } | undefined;
+  sessionBeforeCompact?: (event: {
+    preparation: {
+      firstKeptEntryId: string;
+      tokensBefore: number;
+      fileOps: { read: Set<string>; written: Set<string>; edited: Set<string> };
+    };
+  }) => { compaction?: { summary: string; firstKeptEntryId: string } } | undefined;
 }
 
 /**
@@ -60,6 +67,9 @@ function fakeApi(): {
       if (event === 'tool_call') state.toolCall = handler as FakeApi['toolCall'];
       if (event === 'before_agent_start') {
         state.beforeAgentStart = handler as FakeApi['beforeAgentStart'];
+      }
+      if (event === 'session_before_compact') {
+        state.sessionBeforeCompact = handler as FakeApi['sessionBeforeCompact'];
       }
     },
   };
@@ -227,5 +237,53 @@ describe('the system-prompt hook', () => {
   it('leaves the harness alone when no role is pending', () => {
     const { state } = bind(allow);
     expect(state.beforeAgentStart?.({ systemPrompt: 'harness' })).toBeUndefined();
+  });
+});
+
+describe('the compaction hook', () => {
+  it('returns a Foundry summary that pins the phase prompt and project card', () => {
+    const { handle, state } = bind(allow);
+    handle.useCompactionFacts({
+      request: 'ship the widget',
+      phase: 'build',
+      artifactPaths: ['.foundry-handoff/build.json'],
+      unresolvedFailures: ['test: ./check.sh exited 1'],
+      filesModified: [],
+      envelopeKind: 'build',
+      requiredFields: ['status', 'commit_message'],
+      phaseUserPrompt: 'Build: ship the widget.',
+      projectCard: '## Stack\nTypeScript',
+    });
+    const result = state.sessionBeforeCompact?.({
+      preparation: {
+        firstKeptEntryId: 'keep-1',
+        tokensBefore: 90_000,
+        fileOps: { read: new Set(), written: new Set(), edited: new Set(['src/widget.ts']) },
+      },
+    });
+    expect(result?.compaction?.firstKeptEntryId).toBe('keep-1');
+    const summary = result?.compaction?.summary ?? '';
+    expect(summary).toContain('Build: ship the widget.');
+    expect(summary).toContain('## Stack\nTypeScript');
+    expect(summary).toContain('ship the widget');
+    expect(summary).toContain('.foundry-handoff/build.json');
+    expect(summary).toContain('test: ./check.sh exited 1');
+    expect(summary).toContain('src/widget.ts');
+    expect(summary).toContain('kind: build');
+    expect(summary).not.toContain('## Goal');
+    expect(summary).not.toContain('You are a Foundry pipeline agent');
+  });
+
+  it('does not intercept compact when no facts were staged', () => {
+    const { state } = bind(allow);
+    expect(
+      state.sessionBeforeCompact?.({
+        preparation: {
+          firstKeptEntryId: 'keep-1',
+          tokensBefore: 90_000,
+          fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+        },
+      }),
+    ).toBeUndefined();
   });
 });

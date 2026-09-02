@@ -69,7 +69,11 @@ export function register(ctx: Ctx, handle: Handle): void {
       persist: (next) => {
         const current = ctx.projects.get(next.id);
         if (!current) return;
-        ctx.projects.save({ ...current, contextSummary: next.contextSummary });
+        ctx.projects.save({
+          ...current,
+          contextSummary: next.contextSummary,
+          contextSummarySha: next.contextSummarySha,
+        });
       },
     }).then(() => notifySettings(ctx));
   };
@@ -352,5 +356,50 @@ export function register(ctx: Ctx, handle: Handle): void {
     if (!project) return null;
     const result = await syncBase(project.path, project.baseRef);
     return { ok: result.ok, status: { ...result.status, projectId: project.id } };
+  });
+
+  /**
+   * Rebuild the repository fact card from a read-only one-shot. Explicit: a
+   * run never mutates the card mid-phase, and this is the Settings affordance.
+   */
+  handle(IPC.projectsRefreshContext, async (id: string): Promise<SaveResult<ProjectDef>> => {
+    const project = projectOf(id);
+    if (!project) {
+      return {
+        ok: false,
+        issues: [{ level: 'error', where: 'project', message: 'project not found' }],
+      };
+    }
+    const next = await ensureProjectContext({
+      project,
+      settings: ctx.settings.get(),
+      oneShot: ctx.oneShot,
+      persist: (updated) => {
+        const current = ctx.projects.get(updated.id);
+        if (!current) return;
+        ctx.projects.save({
+          ...current,
+          contextSummary: updated.contextSummary,
+          contextSummarySha: updated.contextSummarySha,
+        });
+      },
+      force: true,
+    });
+    notifySettings(ctx);
+    const latest = ctx.projects.get(next.id) ?? next;
+    if (!latest.contextSummary?.trim()) {
+      return {
+        ok: false,
+        issues: [
+          {
+            level: 'error',
+            where: 'contextSummary',
+            message: 'could not generate a repository card',
+          },
+        ],
+        value: latest,
+      };
+    }
+    return { ok: true, issues: noIssues, value: latest };
   });
 }

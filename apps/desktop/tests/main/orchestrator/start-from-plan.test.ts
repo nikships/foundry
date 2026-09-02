@@ -65,7 +65,14 @@ const synthesizedReviewer = (): AgentDef => ({
   purpose: 'review the change this one run made',
   model: 'scripted',
   reasoningEffort: 'medium',
-  systemPrompt: 'You review.',
+  systemPrompt: [
+    '## Purpose',
+    'review the change this one run made',
+    '## Write boundary',
+    'You are read-only. Call git_diff for the patch. Do not edit files.',
+    '## Envelope fields',
+    'Fill approved, findings, blocking, and status.',
+  ].join('\n'),
   userPrompt: 'Review: {{request}}',
   writes: [],
   toolProfile: 'read-only',
@@ -162,7 +169,11 @@ beforeEach(() => {
     support,
     db,
     tracer: new Tracer(db, projectRunsDir(support, repo)),
-    project: { ...defaultProject(repo), mergePolicy: 'never' },
+    project: {
+      ...defaultProject(repo),
+      mergePolicy: 'never',
+      contextSummary: '## Stack\nTypeScript',
+    },
   };
 });
 

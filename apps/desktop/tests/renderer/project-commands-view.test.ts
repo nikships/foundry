@@ -110,5 +110,9 @@ describe('project command provisioning', () => {
     expect(planCard).not.toContain('onOpenSettings');
     expect(editor).toContain('placeholder="command and arguments"');
     expect(editor).not.toContain('placeholder="npm test"');
+    expect(editor).toContain('data-testid={`project-command-${command.name}`}');
+    expect(editor).toContain('data-testid={`project-command-${command.name}-try`}');
+    expect(editor).toContain('data-testid={`project-command-${command.name}-remove`}');
+    expect(editor).toContain('data-testid="project-command-add"');
   });
 });

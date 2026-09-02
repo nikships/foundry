@@ -69,7 +69,8 @@ function buildPhase(refined = false): PhaseDef {
     kind: 'agent',
     agent: 'builder',
     retries: 2,
-    description: 'Implement the plan exactly.',
+    description:
+      'Implement the plan exactly, writing or updating the tests the spec names as part of the change.',
     prompt: {
       inputs: refined
         ? refinedRequest(['envelope:plan', 'envelope:refine'])
@@ -270,7 +271,7 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
     id: 'build-pr',
     name: 'Plan → Build → Test → PR',
     description:
-      "The standard chain: spec first, implement it, prove it with the project's own tests, then open the pull request.",
+      "The standard chain: spec first, implement it (tests are part of the build), prove it with the project's own tests, then open the pull request.",
     acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
     phases: [

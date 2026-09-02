@@ -92,8 +92,8 @@ export default function PlanCard({
         <div className={styles.headText}>
           <h2 className={styles.title}>{view.title}</h2>
           {sourceBadge && <span className={styles.sourceBadge}>{sourceBadge}</span>}
-          <p className={`faint ${styles.summary}`}>
-            {view.summary} · composed by {view.orchestratorModel}
+          <p className={`faint ${styles.summary}`} data-testid="plan-orchestrator">
+            {view.summary} · composed by {view.orchestratorCredit}
           </p>
         </div>
         <p className={styles.description}>{view.description}</p>
@@ -194,12 +194,20 @@ export default function PlanCard({
           <p className={styles.label}>Synthesized for this run</p>
           <div className={styles.agents}>
             {view.agents.map((agent) => (
-              <div key={agent.name} className={styles.agent}>
+              <div
+                key={agent.name}
+                className={styles.agent}
+                data-testid={`plan-agent-${agent.name}`}
+              >
                 <span className={styles.agentDot} style={{ background: agent.color }} />
                 <span className={styles.agentName}>{agent.name}</span>
                 <span className={styles.agentPurpose}>{agent.purpose}</span>
-                <span className={`faint ${styles.agentMeta}`}>
-                  {agent.model} · {agent.boundary}
+                <span className={`faint ${styles.agentMeta}`}>{agent.model}</span>
+                <span
+                  className={`faint ${styles.agentMeta}`}
+                  data-testid={`plan-agent-${agent.name}-writes`}
+                >
+                  {agent.boundary}
                 </span>
               </div>
             ))}

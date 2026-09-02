@@ -214,6 +214,20 @@ export function schemaFor(
   return extendWithFields(baseSchema, mergedFields(libraryFields, custom));
 }
 
+/** Field names an agent filling this envelope must know, from the same schema. */
+export function envelopeFieldNames(
+  kind: string,
+  custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
+): string[] {
+  const { baseSchema, libraryFields } = resolveBase(kind, defs);
+  const names = Object.keys(baseSchema.shape);
+  for (const field of mergedFields(libraryFields, custom)) {
+    if (!names.includes(field.name)) names.push(field.name);
+  }
+  return names;
+}
+
 /**
  * The JSON Schema handed to the model as an output constraint, derived from the
  * very schema the reply is parsed against — the fourth leg of the synced set
@@ -253,6 +267,8 @@ export function exampleFor(
   for (const key of Object.keys(baseSchema.shape)) {
     if (key === 'findings' && exampleKind === 'review') {
       example[key] = REVIEW_FINDINGS_HINT;
+    } else if (key === 'findings' && exampleKind === 'scout') {
+      example[key] = ['path + symbol + observation'];
     } else if (exampleKind === 'issue' && key in ISSUE_FIELD_HINTS) {
       example[key] = ISSUE_FIELD_HINTS[key];
     } else {

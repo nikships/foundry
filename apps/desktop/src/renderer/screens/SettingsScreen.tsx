@@ -32,6 +32,7 @@ import { ProviderIcon } from '../components/media/BrandIcon.js';
 import DoctorList from '../components/readiness/DoctorList.js';
 import ProjectCommands from '../components/project/ProjectCommands.js';
 import ProjectSetup from '../components/project/ProjectSetup.js';
+import ProjectContext from '../components/project/ProjectContext.js';
 import BaseSyncBar from '../components/project/BaseSyncBar.js';
 import QrCode from '../components/media/QrCode.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
@@ -2025,6 +2026,15 @@ export default function SettingsScreen({
                               onChange={(setupScript) =>
                                 setProjectDraft({ ...projectDraft, setupScript })
                               }
+                            />
+                          </Section>
+                          <Section
+                            label="Repository card"
+                            note="Facts injected into every run agent so they do not rediscover the stack."
+                          >
+                            <ProjectContext
+                              project={projectDraft}
+                              onChange={(patch) => setProjectDraft({ ...projectDraft, ...patch })}
                             />
                           </Section>
                           <Section
