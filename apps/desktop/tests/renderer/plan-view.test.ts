@@ -96,14 +96,16 @@ function generatedPlan(): GeneratedRunPlan {
 
 describe('plan-view', () => {
   it('shapes the full operator-facing plan card', () => {
-    const view = planCardView(generatedPlan());
+    const plan = generatedPlan();
+    const view = planCardView(plan);
 
     expect(view.title).toBe('Stabilize search results');
     expect(view.description).toContain('independently review');
     expect(view.summary).toBe('3 phases · 2 synthesized agents');
     expect(view.refinedRequest).toContain('deterministic');
     expect(view.rationale).toContain('bounded implementation');
-    expect(view.orchestratorModel).toBe('claude-opus-4');
+    expect(view.orchestratorCredit).toBe('claude-opus-4 · high');
+    expect(view.orchestratorCredit).toContain(plan.reasoningEffort);
     expect(view.acceptance).toBe('Accepted when the report returned by "review" reports success.');
 
     expect(view.phases.map((phase) => phase.name)).toEqual(['build', 'test', 'review']);
@@ -133,6 +135,16 @@ describe('plan-view', () => {
       boundary: 'read-only',
       readOnly: true,
     });
+  });
+
+  it('credits an inherit orchestrator as the default model and its effort', () => {
+    const plan = generatedPlan();
+    plan.model = 'inherit';
+    plan.reasoningEffort = 'medium';
+    const view = planCardView(plan);
+
+    expect(view.orchestratorCredit).toBe('the default model · medium');
+    expect(view.orchestratorCredit).toContain(plan.reasoningEffort);
   });
 
   it('re-casts one agent phase onto another model and leaves the rest identical', () => {
