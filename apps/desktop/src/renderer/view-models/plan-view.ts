@@ -75,8 +75,8 @@ export interface PlanCardView {
   agents: PlanAgentView[];
   acceptance: string;
   warnings: PlanWarningGroup[];
-  /** The mind that composed it, as the card credits it. */
-  orchestratorModel: string;
+  /** The mind that composed it, as the card credits it (model · effort). */
+  orchestratorCredit: string;
 }
 
 export type PlanExportItem = 'pipeline' | `agent:${string}`;
@@ -237,7 +237,10 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
     })),
     acceptance: acceptanceSummary(plan.pipeline.acceptance, plan.pipeline.phases),
     warnings: groupPlanWarnings(plan.warnings),
-    orchestratorModel: plan.model === 'inherit' ? 'the default model' : modelLabel(plan.model),
+    orchestratorCredit:
+      plan.model === 'inherit'
+        ? `the default model · ${plan.reasoningEffort}`
+        : `${modelLabel(plan.model)} · ${plan.reasoningEffort}`,
   };
 }
 
