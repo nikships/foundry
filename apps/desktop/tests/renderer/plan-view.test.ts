@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { GeneratedRunPlan } from '@shared/types.js';
 import {
@@ -196,6 +198,35 @@ describe('plan-view', () => {
     expect(boundaryLabel(['src/**', 'tests/**', 'docs/**', 'package.json'])).toBe(
       'writes src/**, tests/**, docs/** +1 more',
     );
+  });
+
+  it('exposes each synthesized agent row and write boundary for operators and evals', () => {
+    const src = readFileSync(
+      join(import.meta.dirname, '../../src/renderer/components/run/PlanCard.tsx'),
+      'utf8',
+    );
+    const mapStart = src.indexOf('{view.agents.map((agent) => (');
+    expect(mapStart, 'missing synthesized-agent map').toBeGreaterThan(-1);
+    const row = src.slice(mapStart, src.indexOf('))}', mapStart));
+
+    expect(row).toContain('data-testid={`plan-agent-${agent.name}`}');
+    expect(row).toContain('data-testid={`plan-agent-${agent.name}-writes`}');
+    expect(row).toContain('{agent.purpose}');
+    expect(row).toContain('{agent.model}');
+    expect(row).not.toContain('{agent.model} · {agent.boundary}');
+
+    const writesOpen = row.indexOf('data-testid={`plan-agent-${agent.name}-writes`}');
+    expect(writesOpen, 'missing writes test id').toBeGreaterThan(-1);
+    const writes = row.slice(writesOpen, row.indexOf('</span>', writesOpen));
+    expect(writes).toContain('{agent.boundary}');
+    expect(writes).not.toContain('{agent.model}');
+    expect(writes).not.toContain('{agent.purpose}');
+
+    const view = planCardView(generatedPlan());
+    expect(view.agents.map((agent) => agent.boundary)).toEqual([
+      boundaryLabel(['src/search/**']),
+      boundaryLabel([]),
+    ]);
   });
 
   it('summarizes builtin and argv command phases', () => {
