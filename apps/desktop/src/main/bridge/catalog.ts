@@ -168,14 +168,25 @@ function thinkingKind(provider: BridgeProviderId): ThinkingKind {
 }
 
 /**
- * An agent phase needs a model that can emit text. Image- and video-only
- * entries stay in CLIProxyAPI's catalog for other clients; offering them here
- * would put a generator in the picker that every phase then fails on.
+ * An agent phase needs a model that emits text and nothing else. Generators
+ * stay in CLIProxyAPI's catalog for other clients; offering them here would put
+ * a model in the picker and the Orchestrator's cast pool that every phase then
+ * fails on.
+ *
+ * The test is "declares an image output", not "declares no text output".
+ * `imagen-*` is image-only and was always caught, but an image-generating
+ * Gemini declares `["text", "image"]` — the commentary beside the picture — so
+ * a check for text passed it through. Nothing Foundry runs wants a picture
+ * back, so any model that can emit one is a generator.
+ *
+ * A model that declares no modalities at all is kept: CLIProxyAPI omits the
+ * field for some entries, and the failure that matters is silently hiding a
+ * working text model, not showing one extra.
  */
 export function isAgentModel(model: CliproxyModel): boolean {
   const outputs = model.supportedOutputModalities;
   if (!outputs || outputs.length === 0) return true;
-  return outputs.some((modality) => modality.toLowerCase() === 'text');
+  return !outputs.some((modality) => modality.toLowerCase() === 'image');
 }
 
 function toCatalogModel(model: CliproxyModel, kind: ThinkingKind): CatalogModel {

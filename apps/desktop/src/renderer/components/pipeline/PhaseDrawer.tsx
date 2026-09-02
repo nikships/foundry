@@ -9,9 +9,32 @@ import StatusBadge from '../common/StatusBadge.js';
 import AgentAvatar from '../media/AgentAvatar.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
 import JsonView from '../common/JsonView.js';
+import PhaseDocument from './PhaseDocument.js';
 import styles from './PhaseDrawer.module.css';
 
-type Tab = 'timeline' | 'envelope' | 'gates' | 'prompt';
+type Tab = 'timeline' | 'document' | 'envelope' | 'gates' | 'prompt';
+
+/**
+ * The paths this phase's latest valid envelope declared as artifacts.
+ *
+ * Mirrors the main-side read: a `feedbackTo` re-entry leaves several rows on
+ * one phase, and the last valid one is what the phase finished with. Counted
+ * here only to decide whether the tab exists; the files themselves are read
+ * on demand.
+ */
+function declaredArtifacts(envelopes: EnvelopeRow[]): string[] {
+  let latest: string[] = [];
+  for (const envelope of envelopes) {
+    if (!envelope.valid) continue;
+    const value = envelope.payload.artifacts;
+    if (Array.isArray(value)) {
+      latest = value.filter(
+        (entry): entry is string => typeof entry === 'string' && !!entry.trim(),
+      );
+    }
+  }
+  return latest;
+}
 
 const EVENT_ICON: Record<string, string> = {
   phase_start: '▸',
@@ -35,6 +58,35 @@ const EVENT_CLASS: Partial<Record<EventRow['type'], string>> = {
   correction: styles.warn,
   gate_pass: styles.passed,
 };
+
+/**
+ * The prose an event carries, when its payload is only text.
+ *
+ * A thought or an assistant reply is written for a person to read; wrapping it
+ * in a quoted, escaped JSON object hides the one field that matters. Anything
+ * with more than `text` (plus the folder's `truncated` marker) keeps the JSON
+ * view, because there the structure is the content.
+ */
+function proseOf(event: EventRow): string | null {
+  const text = event.payload.text;
+  if (typeof text !== 'string' || !text.trim()) return null;
+  const extra = Object.keys(event.payload).filter((k) => k !== 'text' && k !== 'truncated');
+  return extra.length ? null : text;
+}
+
+function EventPayload({ event }: { event: EventRow }): React.JSX.Element | null {
+  const prose = useMemo(() => proseOf(event), [event]);
+  if (!Object.keys(event.payload).length) return null;
+  if (prose === null) return <JsonView value={event.payload} />;
+  return (
+    <div className={styles.prose}>
+      <p className={`selectable ${styles.proseText}`}>{prose}</p>
+      {event.payload.truncated === true && (
+        <p className={`faint ${styles.truncated}`}>truncated here, full text in stream.jsonl</p>
+      )}
+    </div>
+  );
+}
 
 export default function PhaseDrawer({
   phase,
@@ -67,15 +119,27 @@ export default function PhaseDrawer({
     () => events.filter((event) => !isAutoAllowPolicy(event)),
     [events],
   );
+  const documentCount = useMemo(() => declaredArtifacts(envelopes).length, [envelopes]);
   const tabs = useMemo(
     () => [
       { id: 'timeline' as Tab, label: 'Timeline', count: timelineEvents.length },
+      // The written document only exists for a phase whose envelope declared
+      // one, so the tab appears with the work rather than as a dead label.
+      ...(documentCount
+        ? [{ id: 'document' as Tab, label: 'Document', count: documentCount }]
+        : []),
       { id: 'envelope' as Tab, label: 'Report', count: envelopes.length },
       { id: 'gates' as Tab, label: 'Checks', count: gates.length },
       { id: 'prompt' as Tab, label: 'Prompt' },
     ],
-    [timelineEvents.length, envelopes.length, gates.length],
+    [timelineEvents.length, documentCount, envelopes.length, gates.length],
   );
+
+  // A phase re-entered through `feedbackTo` can lose its document between
+  // attempts; a tab that vanished under the operator must not leave a blank pane.
+  useEffect(() => {
+    if (tab === 'document' && !documentCount) setTab('timeline');
+  }, [tab, documentCount]);
 
   useEffect(() => {
     let timer: number | null = null;
@@ -205,15 +269,21 @@ export default function PhaseDrawer({
                       {clockTime(event.startedAt)}
                     </span>
                   </button>
-                  {openEvents.has(event.eventId) && Object.keys(event.payload).length > 0 && (
-                    <JsonView value={event.payload} />
-                  )}
+                  {openEvents.has(event.eventId) && <EventPayload event={event} />}
                 </li>
               ))}
             </ol>
             {!timelineEvents.length && !liveTail && !liveTailError && (
               <p className={`faint ${styles.padded}`}>Nothing recorded for this phase yet.</p>
             )}
+          </>
+        )}
+        {tab === 'document' && (
+          <>
+            <p className={`eyebrow ${styles.sectionLabel}`}>
+              <span className="index">02</span>Document
+            </p>
+            <PhaseDocument projectId={projectId} phaseId={phase.phaseId} />
           </>
         )}
         {tab === 'envelope' && (

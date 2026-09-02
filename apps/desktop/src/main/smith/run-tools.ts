@@ -22,6 +22,7 @@ export const SMITH_RUN_OPERATIONS = [
   'live_tail',
   'context',
   'prompt',
+  'artifacts',
   'plan',
   'checkpoints',
   'start',
@@ -41,7 +42,8 @@ export const SMITH_RUN_OPERATIONS = [
 ] as const;
 
 type RunOperation = (typeof SMITH_RUN_OPERATIONS)[number];
-type RunReadOperation = 'detail' | 'events' | 'context' | 'prompt' | 'plan' | 'checkpoints';
+type RunReadOperation =
+  'detail' | 'events' | 'context' | 'prompt' | 'artifacts' | 'plan' | 'checkpoints';
 type LinearRunReadOperation = 'linear_issues' | 'linear_workflow_states';
 type RunActionOperation = Exclude<
   RunOperation,
@@ -54,6 +56,7 @@ const READS: Record<RunReadOperation, { channel: string; idField: 'runId' | 'pha
   events: { channel: IPC.runsEvents, idField: 'runId' },
   context: { channel: IPC.runsContextBreakdown, idField: 'runId' },
   prompt: { channel: IPC.runsPrompt, idField: 'phaseId' },
+  artifacts: { channel: IPC.runsArtifacts, idField: 'phaseId' },
   plan: { channel: IPC.runsPlan, idField: 'runId' },
   checkpoints: { channel: IPC.runsRestorableCheckpoints, idField: 'runId' },
 };
@@ -90,7 +93,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_runs',
     label: 'Smith runs',
     description:
-      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId).',
+      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt/artifacts(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId).',
     parameters: {
       type: 'object',
       properties: {

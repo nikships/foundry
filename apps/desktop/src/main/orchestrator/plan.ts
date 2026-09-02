@@ -41,7 +41,7 @@ Composition rules (enforced by code where possible; follow all of them):
 - Always rewrite the operator's prompt into a full brief first. That brief is "refinedRequest" and becomes the run request; keep every constraint the operator stated.
 - Every implementation phase using a build envelope, and every write-capable review phase, is proven before any commit. When Project commands are listed, immediately follow the agent with a code phase using one {"ref": ...} and set "feedbackTo" to the phase that owns a failure. When no Project command exists, put a configured "command_passes" gate on the agent instead. A new scaffold with no command yet is the only exception.
 - Reviewer/verifier agent phases carry the "verdict_consistent" and "disapproval_halts" gates.
-- **Every agent phase names its own model and reasoning level.** Set "model" to one of the configured cast-pool ids you are shown and set "reasoningEffort" to one of that model's listed efforts. Choose both for that phase's work: give design, review, and hard implementation strong reasoning, and hand mechanical or narrowly scoped work a fast, cheap model and lower effort. Never omit "model", write "inherit", or leave the model choice to the agent, roster, or install default — a plan with an unnamed model is rejected.
+- **Every agent phase names its own model and reasoning level.** Set "model" to one of the configured cast-pool ids you are shown and set "reasoningEffort" to one of that model's listed efforts. Choose both for that phase's work: give design, review, and hard implementation the strongest models and reasoning, and hand mechanical or narrowly scoped work a smaller model and lower effort. Never omit "model", write "inherit", or leave the model choice to the agent, roster, or install default — a plan with an unnamed model is rejected.
 - A proof code phase's "feedbackTo" names the earlier agent phase that owns the fix.
 - Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.
 - Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile fit. Do not assume capabilities that are not in their summary.
@@ -90,19 +90,26 @@ export function rosterLines(roster: AgentDef[]): string {
 
 /**
  * The enabled catalog as the Orchestrator must copy it: the exact id, plus the
- * facts it may use without guessing capability or price from a model name.
+ * facts it may use without guessing capability from a model name.
+ *
+ * Context window and per-token price are deliberately absent. Casting is a
+ * question of how capable a phase needs its model to be, and neither number
+ * answers it: every model in the pool holds a Foundry phase's prompt, and a
+ * price the operator is already paying tempts the model to weigh dollars it
+ * cannot see the budget for. The intelligence score is the one comparable
+ * fact, so a phase can be cast on capability rather than on brand recognition.
  */
 function modelLines(models: ModelInfo[]): string {
   return models
     .map((model) => {
       const facts = [`efforts ${model.supportedReasoningEfforts.join('/')}`];
-      if (model.contextWindow) facts.push(`${Math.round(model.contextWindow / 1000)}k context`);
-      if (model.cost) {
-        facts.push(
-          `$${model.cost.input}/M input; $${model.cost.output}/M output; ` +
-            `$${model.cost.cacheRead}/M cache read; $${model.cost.cacheWrite}/M cache write`,
-        );
-      }
+      // Named either way: a line that simply omitted the fact would read as a
+      // formatting gap, and the model would be free to invent a rank for it.
+      facts.push(
+        model.intelligence === undefined
+          ? 'intelligence unrated'
+          : `intelligence ${model.intelligence}`,
+      );
       return `- ${model.id} — ${model.displayName} (${facts.join('; ')})`;
     })
     .join('\n');
@@ -146,6 +153,13 @@ export function buildPlanPrompt(inputs: PlanPromptInputs): string {
     inputs.models.length
       ? modelLines(inputs.models)
       : '(this install reaches no model right now — omit "model" on agent phases)',
+    ...(inputs.models.length
+      ? [
+          'Intelligence is the Artificial Analysis Intelligence Index, roughly 0-100, higher is stronger.',
+          '"unrated" means the index does not publish a score for that id — it is not a low score, and a',
+          'capable current model is often unrated. Judge an unrated model on its name and your own knowledge.',
+        ]
+      : []),
     '',
     '## Envelopes',
     Object.entries(BUILTIN_ENVELOPE_BLURBS)

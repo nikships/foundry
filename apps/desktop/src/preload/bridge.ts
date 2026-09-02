@@ -149,6 +149,7 @@ const api: FoundryApi = {
     contextBreakdown: (projectId, runId, agent) =>
       call(IPC.runsContextBreakdown, projectId, runId, agent),
     promptFor: (projectId, phaseId) => call(IPC.runsPrompt, projectId, phaseId),
+    artifactsFor: (projectId, phaseId) => call(IPC.runsArtifacts, projectId, phaseId),
     kill: (projectId, runId) => call(IPC.runsKill, projectId, runId),
     archive: (projectId, runId, archived) => call(IPC.runsArchive, projectId, runId, archived),
     mergeWorktree: (projectId, runId) => call(IPC.runsMergeWorktree, projectId, runId),

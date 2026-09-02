@@ -1238,6 +1238,14 @@ export interface ModelInfo {
   contextWindow?: number;
   /** Per-million-token prices reported by the active model catalog. */
   cost?: ModelCost;
+  /**
+   * Artificial Analysis Intelligence Index, roughly 0-100, higher is better.
+   *
+   * Undefined means unrated, never zero: a Bridge-minted variant id and a
+   * superseded model both fall out of the published index, and reading a
+   * missing score as a low one would rank them below every measured model.
+   */
+  intelligence?: number;
 }
 
 export interface DoctorCheck {

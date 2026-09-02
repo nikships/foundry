@@ -710,6 +710,18 @@ export function createMockFoundryApi(): FoundryApi {
       liveTail: async () => '(web preview — no live process)',
       contextBreakdown: async () => ({ breakdown: null, reason: 'not_live' as const }),
       promptFor: async () => '(web preview)',
+      artifactsFor: async () => ({
+        files: [
+          {
+            path: 'specs/web-preview-plan.md',
+            content:
+              '# Web preview plan\n\nThis is a fixture document. A real run reads the file its plan phase wrote in the run worktree.\n',
+            bytes: 132,
+            truncated: false,
+          },
+        ],
+        missing: [],
+      }),
       kill: async () => false,
       archive: async () => {},
       mergeWorktree: async () => ({ ok: false, detail: UNAVAILABLE }),

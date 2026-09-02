@@ -224,6 +224,7 @@ npm run check:duplicate     # jscpd, max 2% duplication under apps/desktop/src
 npm run audit:deps          # npm audit --audit-level=high (clean env)
 npm run check               # full local gate (typecheck + lint + format:check + knip + test:coverage + build + check:css + check:docs + check:files + check:duplicate + audit:deps)
 npm run fetch:bridge        # downloads + checksums the pinned CLIProxyAPI into resources/bridge/
+npm run fetch:intelligence  # refreshes the vendored Artificial Analysis scores (--check to verify only)
 npm run package             # build + icons + fetch:bridge + electron-builder --mac --arm64 (local DMG)
 ```
 
@@ -233,6 +234,8 @@ npm run package             # build + icons + fetch:bridge + electron-builder --
 - `check:duplicate` runs jscpd over TypeScript, TSX, and CSS under `apps/desktop/src/**` with a 2% maximum and generated/dependency paths ignored.
 - `audit:deps` (`scripts/audit-deps.mjs`) spawns `npm audit` in a clean env (strips `npm_config_allow_scripts`) so it works on npm 12.
 - `fetch:bridge` (`scripts/fetch-bridge.mjs`) downloads the CLIProxyAPI release pinned in `package.json` → `config.bridge` and verifies both the archive and the extracted binary against their recorded sha256. It also writes that tag's `models.json` next to the binary — Foundry has no separate model allowlist, so a CLIProxyAPI bump is enough for new models to appear. It is **fail-closed**: a mismatch leaves nothing executable behind and exits non-zero. `resources/bridge/` is gitignored; `electron-builder.yml` ships it as `extraResources` and signs it through `mac.binaries`. `mac-package.yml` must run this before electron-builder — `mac.binaries` codesigns `Contents/Resources/bridge/cli-proxy-api`, and a missing file fails signing. `node scripts/fetch-bridge.mjs --bump` (or `--bump <version>`) rewrites the pin from a new upstream release; `.github/workflows/update-cliproxyapi.yml` does that every 12 hours and opens a PR. A checkout that skipped the fetch simply has no Bridge — the manager reports `binary_missing` and the app runs on whatever other credentials pi has.
+
+- `fetch:intelligence` (`scripts/fetch-intelligence.mjs`) refreshes `apps/desktop/src/shared/model-intelligence.json`, the Artificial Analysis Intelligence Index scores the Orchestrator casts phases on. Scores are read from `openrouter.ai/api/v1/models`, which republishes them under `benchmarks.artificial_analysis` and needs no key — Artificial Analysis' own API requires one and their terms forbid shipping it in client code. Unlike the Bridge binary the result **is** committed: it is 3 KB, and planning must work offline, so a runtime fetch would put a third-party host on the planning rail for a fact that is only advisory. `--check` writes nothing and exits non-zero when the file is stale. Attribution to Artificial Analysis is required by their terms and lives in the file's `source` field — keep it. Roughly half of a full Bridge catalog is unrated (Bridge-minted variant ids like `grok-4.20-multi-agent-0309` appear in no public index); unrated renders as `intelligence unrated`, never as a zero.
 
 **CI** (`.github/workflows/ci.yml`):
 

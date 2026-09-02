@@ -111,6 +111,36 @@ export interface ContextBreakdownResult {
   capturedAt?: string;
 }
 
+/**
+ * Why a phase's declared artifact could not be read back.
+ *
+ * A document phase's real output is the file it wrote, not the envelope that
+ * names it, and that file lives in the run's worktree. Absence is ordinary in
+ * specific ways — discarded worktree, merged and swept run, a path the agent
+ * declared but never wrote — so the reason travels and the renderer says it.
+ */
+export type RunArtifactReason =
+  'no_artifacts' | 'run_not_found' | 'worktree_gone' | 'not_found' | 'unreadable' | 'not_text';
+
+export interface RunArtifactFile {
+  /** Worktree-relative, exactly as the envelope declared it. */
+  path: string;
+  content: string;
+  bytes: number;
+  /** True when `content` stops short of `bytes`. */
+  truncated: boolean;
+}
+
+export interface RunArtifactResult {
+  files: RunArtifactFile[];
+  /** One entry per declared path that could not be read, with its reason. */
+  missing: { path: string; reason: RunArtifactReason }[];
+  /** Set only when nothing could be read at all, explaining the empty answer. */
+  reason?: RunArtifactReason;
+  /** Absolute directory the paths resolved against, for the reveal action. */
+  root?: string;
+}
+
 export interface TryCommandResult {
   exitCode: number | null;
   passed: boolean;
@@ -619,6 +649,12 @@ export interface FoundryApi {
     ): Promise<ContextBreakdownResult>;
     /** The prompt as sent, read from the run's files rather than the event stream. */
     promptFor(projectId: string, phaseId: string): Promise<string>;
+    /**
+     * The documents a phase's envelope declared as artifacts, read from the
+     * run's worktree. Always answers — a discarded worktree or an undeclared
+     * path carries its reason instead of throwing.
+     */
+    artifactsFor(projectId: string, phaseId: string): Promise<RunArtifactResult>;
     kill(projectId: string, runId: string): Promise<boolean>;
     archive(projectId: string, runId: string, archived: boolean): Promise<void>;
     mergeWorktree(projectId: string, runId: string): Promise<WorktreeAction>;
@@ -872,6 +908,7 @@ export const IPC = {
   runsLiveTail: 'runs:liveTail',
   runsContextBreakdown: 'runs:contextBreakdown',
   runsPrompt: 'runs:prompt',
+  runsArtifacts: 'runs:artifacts',
   runsKill: 'runs:kill',
   runsArchive: 'runs:archive',
   runsMergeWorktree: 'runs:mergeWorktree',

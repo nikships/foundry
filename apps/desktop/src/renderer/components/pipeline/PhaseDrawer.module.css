@@ -202,6 +202,22 @@
   color: var(--text-faint);
   flex: none;
 }
+.prose {
+  padding: var(--s2) var(--s3) var(--s3);
+  border-left: 2px solid var(--line);
+  margin: 0 0 var(--s2) var(--s4);
+}
+.prose-text {
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.prose .truncated {
+  margin-top: var(--s2);
+  font-size: var(--text-xs);
+}
 .block-card {
   margin-bottom: var(--s3);
   padding: var(--s3);

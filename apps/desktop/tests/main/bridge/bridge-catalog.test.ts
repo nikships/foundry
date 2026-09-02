@@ -96,12 +96,34 @@ describe('modelsForProvider', () => {
     expect(modelsForProvider(next, 'codex').find((m) => m.id === 'gpt-5.5')?.name).toBe('GPT 5.5');
   });
 
-  it('drops image-only generators that an agent phase cannot speak', () => {
+  it('drops image generators that an agent phase cannot speak', () => {
     expect(isAgentModel({ id: 'grok-imagine-image', supportedOutputModalities: ['image'] })).toBe(
       false,
     );
+    // An image-generating Gemini declares text too — the commentary beside the
+    // picture — so a text check alone let it into the picker and cast pool.
+    expect(
+      isAgentModel({
+        id: 'gemini-3-pro-image',
+        supportedOutputModalities: ['text', 'image'],
+      }),
+    ).toBe(false);
     expect(isAgentModel({ id: 'claude-opus-5', supportedOutputModalities: ['text'] })).toBe(true);
     expect(isAgentModel({ id: 'mystery' })).toBe(true);
+  });
+
+  it('keeps every image generator in the vendored catalog out of the picker', () => {
+    const vendored = loadBridgeCatalog();
+    if (Object.keys(vendored).length === 0) return;
+    const offered = new Set(
+      Object.values(vendored)
+        .flat()
+        .filter((model) => isAgentModel(model))
+        .map((model) => model.id),
+    );
+    for (const id of ['imagen-4.0-generate-001', 'gemini-3-pro-image', 'gemini-2.5-flash-image']) {
+      expect(offered.has(id)).toBe(false);
+    }
   });
 
   it('projects the vendored CLIProxyAPI catalog when fetch:bridge has run', () => {

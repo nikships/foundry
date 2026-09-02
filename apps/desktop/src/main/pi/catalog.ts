@@ -19,6 +19,7 @@
 
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { ModelInfo } from '@shared/types.js';
+import { intelligenceFor } from '@shared/model-intelligence.js';
 import { effortsFor } from './model.js';
 import { modelRuntime } from './runtime.js';
 
@@ -76,6 +77,7 @@ export const reasoningEffortsFor = effortsFor;
 
 export function toModelInfo(model: PiModel): ModelInfo {
   const efforts = reasoningEffortsFor(model);
+  const intelligence = intelligenceFor(model.id);
   return {
     id: modelKey(model),
     displayName: model.name,
@@ -90,6 +92,8 @@ export function toModelInfo(model: PiModel): ModelInfo {
     isCustom: !BUILTIN_PI_PROVIDERS.has(model.provider),
     deprecated: false,
     contextWindow: model.contextWindow,
+    // Advisory, and absent for a model the published index does not name.
+    ...(intelligence === undefined ? {} : { intelligence }),
     ...(model.cost
       ? {
           cost: {

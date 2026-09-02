@@ -31,7 +31,7 @@ const builder = (over: Partial<AgentDef> = {}): AgentDef => ({
 
 const commands: ProjectCommand[] = [{ name: 'test', argv: ['npm', 'test'] }];
 
-const model = (id: string, displayName: string): ModelInfo => ({
+const model = (id: string, displayName: string, intelligence?: number): ModelInfo => ({
   id,
   displayName,
   provider: 'claude',
@@ -41,11 +41,16 @@ const model = (id: string, displayName: string): ModelInfo => ({
   deprecated: false,
   contextWindow: 200_000,
   cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  ...(intelligence === undefined ? {} : { intelligence }),
 });
 
-/** What the fixture install can reach; the Orchestrator must appoint from it. */
+/**
+ * What the fixture install can reach; the Orchestrator must appoint from it.
+ * One rated and one unrated, because roughly half the real catalog is unrated
+ * and the prompt has to read sensibly for both.
+ */
 const enabled: ModelInfo[] = [
-  model('anthropic/claude-opus-4', 'Claude Opus 4'),
+  model('anthropic/claude-opus-4', 'Claude Opus 4', 61.5),
   model('anthropic/claude-haiku-4', 'Claude Haiku 4'),
 ];
 
@@ -213,7 +218,12 @@ describe('PlanSession', () => {
     expect(ask).toContain('- anthropic/claude-opus-4 — Claude Opus 4');
     expect(ask).toContain('- anthropic/claude-haiku-4 — Claude Haiku 4');
     expect(ask).toContain('efforts off/low/medium/high');
-    expect(ask).toContain('$3/M input');
+    // Casting is a capability question: the score is shown, and the numbers
+    // that would invite a budget or context argument are not.
+    expect(ask).toContain('intelligence 61.5');
+    expect(ask).toContain('intelligence unrated');
+    expect(ask).not.toContain('$3/M input');
+    expect(ask).not.toContain('200k context');
     expect(ask).toContain('"model":"anthropic/claude-opus-4"');
     expect(ask).toContain('"model":"anthropic/claude-haiku-4"');
     // Builtin pipelines ride along as few-shot examples of valid shapes.
