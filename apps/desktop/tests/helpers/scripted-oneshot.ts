@@ -18,7 +18,12 @@
  * final answer.
  */
 
-import type { OneShotOptions, OneShotResult, OneShotSession } from '../../src/main/pi/oneshot.js';
+import type {
+  OneShotImage,
+  OneShotOptions,
+  OneShotResult,
+  OneShotSession,
+} from '../../src/main/pi/oneshot.js';
 import type { TransportEvent } from '../../src/main/pi/transport.js';
 
 /** What one scripted turn does, in the order written. */
@@ -50,6 +55,8 @@ export interface ScriptedOneShots {
   readonly calls: OneShotOptions[];
   /** User prompts sent through each opened one-shot, in call order. */
   readonly prompts: string[];
+  /** Images sent with each prompt, in call order. */
+  readonly images: Array<readonly OneShotImage[] | undefined>;
   /** The factory to inject. */
   readonly factory: (opts: OneShotOptions) => OneShotSession;
 }
@@ -62,6 +69,7 @@ export interface ScriptedOneShots {
 export function scriptedOneShots(turns: ScriptedTurn[]): ScriptedOneShots {
   const calls: OneShotOptions[] = [];
   const prompts: string[] = [];
+  const images: Array<readonly OneShotImage[] | undefined> = [];
   let index = 0;
 
   const factory = (opts: OneShotOptions): OneShotSession => {
@@ -73,8 +81,9 @@ export function scriptedOneShots(turns: ScriptedTurn[]): ScriptedOneShots {
       abort(): void {
         aborted = true;
       },
-      async send(prompt: string): Promise<OneShotResult> {
+      async send(prompt: string, turnImages?: readonly OneShotImage[]): Promise<OneShotResult> {
         prompts.push(prompt);
+        images.push(turnImages);
         if (script.warning) opts.onWarning?.(script.warning);
         for (const event of script.events ?? []) opts.onEvent?.(event);
         script.work?.(opts);
@@ -104,7 +113,7 @@ export function scriptedOneShots(turns: ScriptedTurn[]): ScriptedOneShots {
     };
   };
 
-  return { calls, prompts, factory };
+  return { calls, prompts, images, factory };
 }
 
 /** The event pair one completed tool call produces, which is what a panel folds. */

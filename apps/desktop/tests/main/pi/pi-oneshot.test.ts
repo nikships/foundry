@@ -73,6 +73,7 @@ class ScriptedPiSession {
   aborts = 0;
   disposed = 0;
   prompts: string[] = [];
+  promptOptions: unknown[] = [];
   customMessages: string[] = [];
   cycles = 0;
   turn: (session: ScriptedPiSession) => void | Promise<void> = (s) => s.say('done');
@@ -97,9 +98,10 @@ class ScriptedPiSession {
     return Promise.resolve();
   }
 
-  async prompt(text: string): Promise<void> {
+  async prompt(text: string, options?: unknown): Promise<void> {
     spy.order.push('prompt');
     this.prompts.push(text);
+    this.promptOptions.push(options);
     if (this.hangUntilAbort) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => {
@@ -390,6 +392,26 @@ describe('where a one-shot session lives', () => {
 });
 
 describe('running one turn', () => {
+  it('maps Foundry attachments onto Pi ImageContent, not the sdk.md source wrapper', async () => {
+    const h = harness();
+    await h.open().send('look', [{ mediaType: 'image/png', data: 'aaaa' }]);
+    expect(h.session.promptOptions[0]).toMatchObject({
+      expandPromptTemplates: false,
+      source: 'extension',
+      images: [{ type: 'image', data: 'aaaa', mimeType: 'image/png' }],
+    });
+    expect(JSON.stringify(h.session.promptOptions[0])).not.toContain('"source":{"type":"base64"');
+  });
+
+  it('omits images on a text-only send', async () => {
+    const h = harness();
+    await h.open().send('look');
+    expect(h.session.promptOptions[0]).toEqual({
+      expandPromptTemplates: false,
+      source: 'extension',
+    });
+  });
+
   it('returns the final text, trimmed', async () => {
     const h = harness();
     h.session.turn = (s) => s.say('  the answer  ');

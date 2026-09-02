@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GeneratedRunPlan, ReasoningEffort } from '@shared/types.js';
+import type { GeneratedRunPlan, PlanImageAttachment, ReasoningEffort } from '@shared/types.js';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
 import type { OrchestratorChoice } from '../components/run/OrchestratorPicker.js';
@@ -15,6 +15,9 @@ export interface OrchestratorPlanController {
   planError: string;
   plan: GeneratedRunPlan | null;
   original: GeneratedRunPlan | null;
+  images: PlanImageAttachment[];
+  addImages(images: readonly PlanImageAttachment[]): void;
+  removeImage(index: number): void;
   submit(prompt: string): Promise<void>;
   cancel(): void;
   discard(): void;
@@ -31,6 +34,7 @@ export function useOrchestratorPlan(
   const [planning, setPlanning] = useState<OrchestratorState | null>(null);
   const [requestingPlan, setRequestingPlan] = useState(false);
   const [planError, setPlanError] = useState('');
+  const [images, setImages] = useState<PlanImageAttachment[]>([]);
   const [modelOverrides, setModelOverrides] = useState<Record<string, string>>({});
   const [reasoningOverrides, setReasoningOverrides] = useState<Record<string, ReasoningEffort>>({});
   const progressRef = useRef(new Map<string, OrchestratorState>());
@@ -42,6 +46,10 @@ export function useOrchestratorPlan(
     setPlanError('');
     setModelOverrides({});
     setReasoningOverrides({});
+  }, []);
+
+  const clearImages = useCallback((): void => {
+    setImages([]);
   }, []);
 
   useEffect(
@@ -59,13 +67,14 @@ export function useOrchestratorPlan(
     requestGenerationRef.current += 1;
     setRequestingPlan(false);
     resetPlanningFields();
+    clearImages();
     return () => {
       requestGenerationRef.current += 1;
       const planId = planIdRef.current;
       planIdRef.current = '';
       if (planId) void api.orchestrator.cancel(planId);
     };
-  }, [projectId, resetPlanningFields]);
+  }, [projectId, resetPlanningFields, clearImages]);
 
   const original = planning?.status === 'done' ? planning.plan : null;
   const plan = useMemo(() => {
@@ -86,9 +95,18 @@ export function useOrchestratorPlan(
       : 'compose';
   const planningLive = requestingPlan || planning?.status === 'running';
 
+  const addImages = useCallback((next: readonly PlanImageAttachment[]): void => {
+    if (next.length === 0) return;
+    setImages((current) => [...current, ...next]);
+  }, []);
+
+  const removeImage = useCallback((index: number): void => {
+    setImages((current) => current.filter((_, i) => i !== index));
+  }, []);
+
   const submit = useCallback(
     async (prompt: string): Promise<void> => {
-      if (!prompt.trim() || !projectId || requestingPlan) return;
+      if ((!prompt.trim() && images.length === 0) || !projectId || requestingPlan) return;
       const generation = ++requestGenerationRef.current;
       planIdRef.current = '';
       setRequestingPlan(true);
@@ -99,6 +117,7 @@ export function useOrchestratorPlan(
           prompt,
           choice.model,
           choice.reasoningEffort,
+          images.length ? images : undefined,
         );
         if (generation !== requestGenerationRef.current) {
           if (!('error' in result)) void api.orchestrator.cancel(result.planId);
@@ -132,7 +151,7 @@ export function useOrchestratorPlan(
         if (generation === requestGenerationRef.current) setRequestingPlan(false);
       }
     },
-    [choice, projectId, requestingPlan, resetPlanningFields],
+    [choice, images, projectId, requestingPlan, resetPlanningFields],
   );
 
   const cancel = useCallback((): void => {
@@ -149,7 +168,8 @@ export function useOrchestratorPlan(
     planIdRef.current = '';
     setRequestingPlan(false);
     resetPlanningFields();
-  }, [resetPlanningFields]);
+    clearImages();
+  }, [resetPlanningFields, clearImages]);
 
   return {
     stage,
@@ -159,6 +179,9 @@ export function useOrchestratorPlan(
     planError,
     plan,
     original,
+    images,
+    addImages,
+    removeImage,
     submit,
     cancel,
     discard,
