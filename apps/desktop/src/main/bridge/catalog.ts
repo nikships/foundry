@@ -13,6 +13,11 @@
 
 import { readFileSync } from 'node:fs';
 import { bridgeCatalogPath } from './paths.js';
+import {
+  BRIDGE_MODEL_DENYLIST,
+  isDeniedModel,
+  type BridgeModelDenylist,
+} from './model-denylist.js';
 import type { BridgeProviderId } from './providers.js';
 
 /** One model as CLIProxyAPI's models.json writes it. Extra keys are allowed. */
@@ -104,10 +109,18 @@ export function parseCliproxyCatalog(value: unknown): CliproxyCatalog {
   return out;
 }
 
-/** Every agent-usable model the given login unlocks, in catalog order. */
+/**
+ * Every agent-usable model the given login unlocks, in catalog order.
+ *
+ * This is the one funnel every Bridge model passes through on its way into
+ * pi's models.json, so the operator's denylist is applied here rather than at
+ * each consumer: filtering later would leave a model the picker hides but the
+ * roster could still name.
+ */
 export function modelsForProvider(
   catalog: CliproxyCatalog,
   provider: BridgeProviderId,
+  denylist: BridgeModelDenylist = BRIDGE_MODEL_DENYLIST,
 ): CatalogModel[] {
   const kind = thinkingKind(provider);
   const seen = new Set<string>();
@@ -116,6 +129,7 @@ export function modelsForProvider(
     for (const model of catalog[channel] ?? []) {
       if (seen.has(model.id) || !isAgentModel(model)) continue;
       seen.add(model.id);
+      if (isDeniedModel(provider, model.id, denylist)) continue;
       out.push(toCatalogModel(model, kind));
     }
   }
@@ -168,14 +182,25 @@ function thinkingKind(provider: BridgeProviderId): ThinkingKind {
 }
 
 /**
- * An agent phase needs a model that can emit text. Image- and video-only
- * entries stay in CLIProxyAPI's catalog for other clients; offering them here
- * would put a generator in the picker that every phase then fails on.
+ * An agent phase needs a model that emits text and nothing else. Generators
+ * stay in CLIProxyAPI's catalog for other clients; offering them here would put
+ * a model in the picker and the Orchestrator's cast pool that every phase then
+ * fails on.
+ *
+ * The test is "declares an image output", not "declares no text output".
+ * `imagen-*` is image-only and was always caught, but an image-generating
+ * Gemini declares `["text", "image"]` — the commentary beside the picture — so
+ * a check for text passed it through. Nothing Foundry runs wants a picture
+ * back, so any model that can emit one is a generator.
+ *
+ * A model that declares no modalities at all is kept: CLIProxyAPI omits the
+ * field for some entries, and the failure that matters is silently hiding a
+ * working text model, not showing one extra.
  */
 export function isAgentModel(model: CliproxyModel): boolean {
   const outputs = model.supportedOutputModalities;
   if (!outputs || outputs.length === 0) return true;
-  return outputs.some((modality) => modality.toLowerCase() === 'text');
+  return !outputs.some((modality) => modality.toLowerCase() === 'image');
 }
 
 function toCatalogModel(model: CliproxyModel, kind: ThinkingKind): CatalogModel {

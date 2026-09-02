@@ -11,11 +11,13 @@ import {
   IPC,
   type ContextBreakdownResult,
   type EventPage,
+  type RunArtifactResult,
   type RunDetail,
   type RunPlanExportResult,
   type RunPlanExportSelection,
   type WorktreeAction,
 } from '@shared/ipc-contract.js';
+import { readPhaseArtifacts } from '../engine/artifacts.js';
 import {
   emptyRunDetail,
   eventPage,
@@ -142,6 +144,17 @@ export function register(ctx: Ctx, handle: Handle): void {
     return phase
       ? scoped.tracer.readPrompt(phase.runId, phase.owner, phase.name, phase.attempt)
       : '';
+  });
+
+  /**
+   * The written document a phase produced, not the envelope that names it.
+   * Read on demand for the same reason the prompt is: a plan is prose-sized
+   * and belongs to no poll.
+   */
+  handle(IPC.runsArtifacts, (projectId: string, phaseId: string): RunArtifactResult => {
+    const scoped = tracerOf(projectId);
+    if (!scoped) return { files: [], missing: [], reason: 'run_not_found' };
+    return readPhaseArtifacts({ tracer: scoped.tracer, projectPath: scoped.project.path }, phaseId);
   });
 
   handle(IPC.runsKill, (projectId: string, runId: string) => {

@@ -60,8 +60,12 @@ describe('the IPC surface', () => {
     expect(registered.filter((channel) => channel === IPC.settingsGet)).toHaveLength(1);
   });
 
-  it('registers 132 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(132);
+  it('registers 133 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(133);
+  });
+
+  it('registers the artifact channel the phase Document tab reads', () => {
+    expect(registered).toContain(IPC.runsArtifacts);
   });
 
   it('registers the checkpoint-restore channels the Inspector picker reads', () => {

@@ -70,14 +70,25 @@ describe('channelsForProvider', () => {
   });
 });
 
+/**
+ * Channel projection is what this suite covers, so it passes an empty denylist
+ * throughout: the operator's shipped list is their preference and may change,
+ * and a projection test that moved every time someone edited it would be
+ * testing the wrong thing. The denylist has its own suite.
+ */
+const NO_DENYLIST = {};
+
 describe('modelsForProvider', () => {
   it('lists every text-capable model a login unlocks, and none from other executors', () => {
-    expect(modelsForProvider(fixture, 'gemini').map((m) => m.id)).toEqual([
+    expect(modelsForProvider(fixture, 'gemini', NO_DENYLIST).map((m) => m.id)).toEqual([
       'gemini-3.7-flash-high',
       'claude-sonnet-4-6',
     ]);
-    expect(modelsForProvider(fixture, 'grok').map((m) => m.id)).toEqual(['grok-4.6', 'grok-4.5']);
-    expect(modelsForProvider(fixture, 'claude').map((m) => m.id)).toEqual([
+    expect(modelsForProvider(fixture, 'grok', NO_DENYLIST).map((m) => m.id)).toEqual([
+      'grok-4.6',
+      'grok-4.5',
+    ]);
+    expect(modelsForProvider(fixture, 'claude', NO_DENYLIST).map((m) => m.id)).toEqual([
       'claude-opus-5',
       'claude-haiku-4-5-20251001',
     ]);
@@ -88,27 +99,51 @@ describe('modelsForProvider', () => {
       ...fixture,
       'codex-ultra': [{ id: 'gpt-5.9-orbit', display_name: 'GPT 5.9 Orbit' }],
     });
-    expect(modelsForProvider(next, 'codex').map((m) => m.id)).toEqual([
+    expect(modelsForProvider(next, 'codex', NO_DENYLIST).map((m) => m.id)).toEqual([
       'gpt-5.5',
       'gpt-5.6-sol',
       'gpt-5.9-orbit',
     ]);
-    expect(modelsForProvider(next, 'codex').find((m) => m.id === 'gpt-5.5')?.name).toBe('GPT 5.5');
+    expect(
+      modelsForProvider(next, 'codex', NO_DENYLIST).find((m) => m.id === 'gpt-5.5')?.name,
+    ).toBe('GPT 5.5');
   });
 
-  it('drops image-only generators that an agent phase cannot speak', () => {
+  it('drops image generators that an agent phase cannot speak', () => {
     expect(isAgentModel({ id: 'grok-imagine-image', supportedOutputModalities: ['image'] })).toBe(
       false,
     );
+    // An image-generating Gemini declares text too — the commentary beside the
+    // picture — so a text check alone let it into the picker and cast pool.
+    expect(
+      isAgentModel({
+        id: 'gemini-3-pro-image',
+        supportedOutputModalities: ['text', 'image'],
+      }),
+    ).toBe(false);
     expect(isAgentModel({ id: 'claude-opus-5', supportedOutputModalities: ['text'] })).toBe(true);
     expect(isAgentModel({ id: 'mystery' })).toBe(true);
+  });
+
+  it('keeps every image generator in the vendored catalog out of the picker', () => {
+    const vendored = loadBridgeCatalog();
+    if (Object.keys(vendored).length === 0) return;
+    const offered = new Set(
+      Object.values(vendored)
+        .flat()
+        .filter((model) => isAgentModel(model))
+        .map((model) => model.id),
+    );
+    for (const id of ['imagen-4.0-generate-001', 'gemini-3-pro-image', 'gemini-2.5-flash-image']) {
+      expect(offered.has(id)).toBe(false);
+    }
   });
 
   it('projects the vendored CLIProxyAPI catalog when fetch:bridge has run', () => {
     const vendored = loadBridgeCatalog();
     if (Object.keys(vendored).length === 0) return;
-    const antigravity = modelsForProvider(vendored, 'gemini').map((model) => model.id);
-    const grok = modelsForProvider(vendored, 'grok').map((model) => model.id);
+    const antigravity = modelsForProvider(vendored, 'gemini', NO_DENYLIST).map((model) => model.id);
+    const grok = modelsForProvider(vendored, 'grok', NO_DENYLIST).map((model) => model.id);
     expect(antigravity).toEqual(
       expect.arrayContaining([
         'gemini-3.7-flash-high',
@@ -126,8 +161,10 @@ describe('modelsForProvider', () => {
   });
 
   it('copies Claude adaptive-thinking compat only onto the anthropic-messages login', () => {
-    const opus = modelsForProvider(fixture, 'claude').find((m) => m.id === 'claude-opus-5');
-    const antigravityClaude = modelsForProvider(fixture, 'gemini').find(
+    const opus = modelsForProvider(fixture, 'claude', NO_DENYLIST).find(
+      (m) => m.id === 'claude-opus-5',
+    );
+    const antigravityClaude = modelsForProvider(fixture, 'gemini', NO_DENYLIST).find(
       (m) => m.id === 'claude-sonnet-4-6',
     );
     expect(opus?.compat).toEqual({ forceAdaptiveThinking: true, supportsStrictTools: true });
@@ -141,7 +178,7 @@ describe('modelsForProvider', () => {
   });
 
   it('projects Gemini thinking levels from the catalog, including minimal and without off', () => {
-    const flash = modelsForProvider(fixture, 'gemini').find(
+    const flash = modelsForProvider(fixture, 'gemini', NO_DENYLIST).find(
       (model) => model.id === 'gemini-3.7-flash-high',
     );
     expect(flash?.thinkingLevelMap).toEqual({

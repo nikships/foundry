@@ -1,0 +1,42 @@
+.padded {
+  padding: var(--s3) 0;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}
+.inline-error {
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
+  border-radius: var(--r-sm);
+  background: var(--red-dim);
+  color: var(--red);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+}
+.doc {
+  margin-bottom: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+.doc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.doc-body {
+  padding: var(--s3);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-dim);
+}

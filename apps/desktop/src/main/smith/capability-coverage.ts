@@ -120,6 +120,7 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.runsLiveTail]: read('smith_runs', 'live_tail'),
   [IPC.runsContextBreakdown]: read('smith_runs', 'context'),
   [IPC.runsPrompt]: read('smith_runs', 'prompt'),
+  [IPC.runsArtifacts]: read('smith_runs', 'artifacts'),
   [IPC.runsKill]: approve('smith_runs', 'kill'),
   [IPC.runsArchive]: approve('smith_runs', 'archive'),
   [IPC.runsMergeWorktree]: approve('smith_runs', 'merge'),

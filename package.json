@@ -29,6 +29,7 @@
     "engine:demo": "tsx scripts/engine-demo.ts",
     "icons": "bash scripts/make-icns.sh",
     "fetch:bridge": "node scripts/fetch-bridge.mjs",
+    "fetch:intelligence": "node scripts/fetch-intelligence.mjs",
     "package": "npm run build && npm run icons && npm run fetch:bridge && electron-builder --mac --arm64",
     "check:css": "node scripts/check-css-collisions.mjs",
     "check:docs": "node scripts/check-docs-commands.mjs",
