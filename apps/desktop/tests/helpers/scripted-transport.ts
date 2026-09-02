@@ -21,6 +21,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { normalizeReasoningEffort } from '@shared/reasoning-effort.js';
 import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type { CompactionFacts } from '../../src/main/engine/compaction.js';
 import type {
   AgentTransport,
   ContextStats,
@@ -119,6 +120,8 @@ export class ScriptedAgent {
    * mid-turn is only knowable from this ordering.
    */
   readonly wire: string[] = [];
+  /** Facts the engine handed compact(), so a test can assert the summarizer input. */
+  readonly compactFacts: CompactionFacts[] = [];
   /** Per-turn snapshots of watched files, so a test can see pre-retry restores. */
   readonly contentAtTurns: { turn: number; files: Record<string, string | null> }[] = [];
   /** `"turn <index>"` per turn the scripted agent has begun. */
@@ -208,8 +211,9 @@ export class ScriptedAgent {
     return this.options.contextUsedAfterCompaction ?? Math.round(used / 10);
   }
 
-  compact(): { removedCount: number } {
+  compact(facts?: CompactionFacts): { removedCount: number } {
     this.wire.push('compact');
+    if (facts) this.compactFacts.push(facts);
     if (this.options.compactFails) throw new Error('nothing to compact');
     this.compactions += 1;
     return { removedCount: 7 };
@@ -446,8 +450,8 @@ class ScriptedTransport implements AgentTransport {
     return Promise.resolve(this.agent.breakdown());
   }
 
-  compact(): Promise<{ removedCount: number } | null> {
-    return Promise.resolve(this.agent.compact());
+  compact(facts?: CompactionFacts): Promise<{ removedCount: number } | null> {
+    return Promise.resolve(this.agent.compact(facts));
   }
 
   getRewindInfo(messageId: string): Promise<RewindInfo | null> {
