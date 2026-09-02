@@ -6,6 +6,7 @@ import { tempDir } from '../../helpers/tmp.js';
 import { describe, expect, it } from 'vitest';
 import {
   ALWAYS_PROTECTED,
+  boundaryCorrection,
   describeBoundary,
   isAllowed,
   isProtected,
@@ -182,5 +183,17 @@ describe('restoreToPhaseStart', () => {
     const result = await restoreToPhaseStart(dir, snap);
     expect(result).toEqual({ restored: 0, cleaned: 0 });
     expect(readFileSync(join(dir, 'dirty.txt'), 'utf8')).toBe('agent changed it\n');
+  });
+});
+
+describe('boundaryCorrection', () => {
+  it('sends the agent back to submit_envelope without reprinting the schema example', () => {
+    const message = boundaryCorrection([
+      { path: 'secret.txt', change: 'outside write boundary', reverted: true },
+    ]);
+    expect(message).toContain('secret.txt');
+    expect(message).toContain('call submit_envelope again');
+    expect(message).not.toContain('## Report');
+    expect(message).not.toContain('"commit_message"');
   });
 });

@@ -31,7 +31,7 @@ export const BUILTIN_ENVELOPE_KINDS: readonly EnvelopeKind[] = [
 export const BUILTIN_ENVELOPE_BLURBS: Record<EnvelopeKind, string> = {
   generic: 'Base reply: status, summary, artifacts, notes',
   brief: 'Rewritten request with constraints and acceptance criteria',
-  plan: 'Approach plus a commit message for the next step',
+  plan: 'Files, steps, verification, and a commit message for the next step',
   build: 'Commit message for the work',
   scout: 'Findings from reading the repo, one per entry',
   review: 'Approve or block, with per-requirement findings',

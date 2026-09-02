@@ -2,9 +2,9 @@
  * The agents Foundry ships with. Prompts are pure shared seed data,
  * and every one is editable in the Roster editor: these are defaults, not law.
  *
- * The envelope example is NOT written into these prompts. It is generated from
- * the zod schema at render time and appended, so the shape an agent is shown
- * and the shape its answer is parsed against cannot drift.
+ * The envelope example is NOT written into these prompts. The shape rides on
+ * `submit_envelope` and the output constraint, derived from the same zod schema
+ * the reply is parsed against, so the two cannot drift.
  */
 
 import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS, type AgentDef } from '@shared/types.js';
@@ -91,7 +91,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       'Plan the work described above.',
       '',
       '1. Write the full plan to `specs/{{run_id}}-plan.md`.',
-      '2. Make it concrete enough that the builder never has to guess: exact files, exact changes, how to verify.',
+      '2. Fill `files_to_touch`, `steps`, and `verification` so the builder never has to guess: exact files, exact changes, how to verify. Put residual concerns in `risks`.',
       '3. Declare that path in `artifacts`.',
     ].join('\n'),
   },
@@ -114,7 +114,8 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '',
       '## Instructions',
       '',
-      '- If a prior envelope carries a plan, a diagnosis, or test failures, that is your spec. Follow it.',
+      '- If a prior envelope carries a plan, its `files_to_touch`, `steps`, and `verification` plus the declared artifact file are your spec. If they disagree, report `status: "fail"` rather than guessing.',
+      '- If a prior envelope carries a diagnosis or test failures, that is your spec. Follow it.',
       '- Make the smallest change that satisfies the request; do not refactor unrelated code.',
       '- When fixing test failures, address every reported failure, not the first one.',
       '- Verify your work runs before reporting, and judge that by exit status.',

@@ -138,7 +138,7 @@ const reviewEnvelope = (): string =>
     summary: 'reviewed',
     artifacts: [],
     approved: true,
-    findings: [],
+    findings: [{ requirement: 'it works', met: true, evidence: 'readme still has an intro' }],
     blocking: [],
     notes_for_next_agent: '',
   });

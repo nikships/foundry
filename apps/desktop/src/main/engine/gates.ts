@@ -45,9 +45,13 @@ function nothingToVerify(item: string): GateCheck[] {
   return [{ item, ok: true, note: 'nothing to verify' }];
 }
 
+function noArtifactsDeclared(): GateCheck[] {
+  return [{ item: '(no artifacts declared)', ok: false, note: 'no artifacts declared' }];
+}
+
 const artifactsExist: GateFn = async (envelope, ctx) => {
   const list = envelope.artifacts ?? [];
-  if (!list.length) return nothingToVerify('(no artifacts declared)');
+  if (!list.length) return noArtifactsDeclared();
   return list.map((a) => {
     const full = resolveIn(ctx.cwd, a);
     const ok = existsSync(full);
@@ -61,6 +65,7 @@ const artifactsExist: GateFn = async (envelope, ctx) => {
 
 const filesNonEmpty: GateFn = async (envelope, ctx) => {
   const list = envelope.artifacts ?? [];
+  if (!list.length) return noArtifactsDeclared();
   const checks: GateCheck[] = [];
   for (const a of list) {
     const full = resolveIn(ctx.cwd, a);
@@ -109,6 +114,8 @@ const verdictConsistent: GateFn = async (envelope) => {
   const blocking = (envelope.blocking as string[] | undefined) ?? [];
   const findings = (envelope.findings as { requirement: string; met: boolean }[] | undefined) ?? [];
   const unmet = findings.filter((f) => !f.met).map((f) => f.requirement);
+  const met = findings.filter((f) => f.met);
+  const vacuousApproval = approved && met.length === 0;
 
   let approvedVsBlocking: string;
   if (!blocking.length) approvedVsBlocking = 'no blocking items';
@@ -120,6 +127,12 @@ const verdictConsistent: GateFn = async (envelope) => {
   else if (approved)
     approvedVsFindings = `${unmet.length} unmet requirement(s) while approved=true`;
   else approvedVsFindings = `${unmet.length} unmet requirement(s), not approved`;
+
+  let approvalHasFindings: string;
+  if (!approved) approvalHasFindings = 'not approved';
+  else if (met.length) approvalHasFindings = `${met.length} met finding(s)`;
+  else if (findings.length) approvalHasFindings = 'approved=true but no finding is met';
+  else approvalHasFindings = 'approved=true with no findings is a vacuous approval';
 
   const rejectionSupported = approved || blocking.length > 0 || unmet.length > 0;
 
@@ -133,6 +146,11 @@ const verdictConsistent: GateFn = async (envelope) => {
       item: 'approved vs findings',
       ok: !(approved && unmet.length),
       note: approvedVsFindings,
+    },
+    {
+      item: 'approval has findings',
+      ok: !vacuousApproval,
+      note: approvalHasFindings,
     },
     {
       item: 'rejection names a problem',
@@ -196,7 +214,8 @@ export const GATE_DESCRIPTIONS: Record<string, string> = {
   artifacts_exist: 'Every path the envelope declares as an artifact exists on disk.',
   files_non_empty: 'Declared artifacts have content, not just a name.',
   json_parses: 'Declared .json artifacts actually parse.',
-  verdict_consistent: 'A review cannot approve while it also lists blocking items.',
+  verdict_consistent:
+    'A review cannot approve while it lists blocking items, unmet requirements, or no findings.',
   disapproval_halts:
     'A review that does not approve must report failure, so disapproved work never flows into later phases.',
   command_passes: 'A configured command exits 0 against the phase result.',

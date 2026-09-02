@@ -41,6 +41,7 @@ Composition rules (enforced by code where possible; follow all of them):
 - Always rewrite the operator's prompt into a full brief first. That brief is "refinedRequest" and becomes the run request; keep every constraint the operator stated.
 - Every implementation phase using a build envelope, and every write-capable review phase, is proven before any commit. When Project commands are listed, immediately follow the agent with a code phase using one {"ref": ...} and set "feedbackTo" to the phase that owns a failure. When no Project command exists, put a configured "command_passes" gate on the agent instead. A new scaffold with no command yet is the only exception.
 - Reviewer/verifier agent phases carry the "verdict_consistent" and "disapproval_halts" gates.
+- A write-capable review or finisher that is followed by a PR must itself be followed by a read-only review phase before open_pr. Builtin sdlc-pr is the shape.
 - **Every agent phase names its own model and reasoning level.** Set "model" to one of the configured cast-pool ids you are shown and set "reasoningEffort" to one of that model's listed efforts. Choose both for that phase's work: give design, review, and hard implementation the strongest models and reasoning, and hand mechanical or narrowly scoped work a smaller model and lower effort. Never omit "model", write "inherit", or leave the model choice to the agent, roster, or install default — a plan with an unnamed model is rejected.
 - A proof code phase's "feedbackTo" names the earlier agent phase that owns the fix.
 - Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.
@@ -497,6 +498,55 @@ export function generatedCompositionIssues(
   }
 
   issues.push(...synthesizedReviewerIssues(pipeline, synthesizedAgents, agents));
+  issues.push(...independentJudgeBeforePrIssues(pipeline, agents, indexOffset));
+  return issues;
+}
+
+function isPrPhase(phase: PhaseDef, agents: readonly AgentDef[]): boolean {
+  if (phase.kind !== 'agent') return false;
+  return phase.name === 'open_pr' || effectivePhaseEnvelope(phase, agents) === 'pr';
+}
+
+function writesWorktree(agent: AgentDef | undefined): boolean {
+  const writes = agent?.writes;
+  return writes === null || (writes?.length ?? 0) > 0;
+}
+
+/**
+ * A write-capable review can fix as well as judge. Generated plans that then
+ * open a PR still need a later read-only reviewer — builtin sdlc-pr is the
+ * few-shot for that shape.
+ */
+function independentJudgeBeforePrIssues(
+  pipeline: Pick<PipelineDef, 'phases'>,
+  agents: readonly AgentDef[],
+  indexOffset: number,
+): ValidationIssue[] {
+  const prIndex = pipeline.phases.findIndex((phase) => isPrPhase(phase, agents));
+  if (prIndex < 0) return [];
+
+  const byName = new Map(agents.map((agent) => [agent.name, agent]));
+  const issues: ValidationIssue[] = [];
+  for (const [index, phase] of pipeline.phases.entries()) {
+    if (index >= prIndex || phase.kind !== 'agent') continue;
+    if (effectivePhaseEnvelope(phase, agents) !== 'review') continue;
+    const agent = phase.agent ? byName.get(phase.agent) : undefined;
+    if (!writesWorktree(agent)) continue;
+    const laterJudge = pipeline.phases.slice(index + 1, prIndex).some((candidate) => {
+      if (candidate.kind !== 'agent') return false;
+      if (effectivePhaseEnvelope(candidate, agents) !== 'review') return false;
+      const judge = candidate.agent ? byName.get(candidate.agent) : undefined;
+      return judge?.toolProfile === 'read-only';
+    });
+    if (!laterJudge) {
+      issues.push({
+        level: 'error',
+        where: `phases[${index + indexOffset}] ${phase.name}`,
+        message:
+          'a write-capable review or finisher must be followed by a read-only review before open_pr',
+      });
+    }
+  }
   return issues;
 }
 

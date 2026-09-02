@@ -60,12 +60,68 @@ describe('envelope parsing', () => {
   it('requires a non-empty improved_request on a brief envelope', () => {
     expect(parseEnvelope('{"status":"success","summary":"sharpened"}', 'brief').ok).toBe(false);
     expect(parseEnvelope('{"status":"success","improved_request":""}', 'brief').ok).toBe(false);
-    const ok = parseEnvelope(
+  });
+
+  it('requires non-empty constraints and acceptance_criteria on a brief envelope', () => {
+    const missing = parseEnvelope(
       '{"status":"success","improved_request":"add rate limiting"}',
       'brief',
     );
+    expect(missing.ok).toBe(false);
+    const empty = parseEnvelope(
+      JSON.stringify({
+        status: 'success',
+        improved_request: 'add rate limiting',
+        constraints: [],
+        acceptance_criteria: [],
+      }),
+      'brief',
+    );
+    expect(empty.ok).toBe(false);
+    const ok = parseEnvelope(
+      JSON.stringify({
+        status: 'success',
+        improved_request: 'add rate limiting',
+        constraints: ['stay in this repo'],
+        acceptance_criteria: ['tests pass'],
+      }),
+      'brief',
+    );
     expect(ok.ok).toBe(true);
-    expect(ok.envelope).toMatchObject({ constraints: [], acceptance_criteria: [] });
+    expect(ok.envelope).toMatchObject({
+      constraints: ['stay in this repo'],
+      acceptance_criteria: ['tests pass'],
+    });
+  });
+
+  it('rejects a plan envelope with empty files_to_touch', () => {
+    const empty = parseEnvelope(
+      JSON.stringify({
+        status: 'success',
+        files_to_touch: [],
+        steps: ['change it'],
+        verification: ['run tests'],
+      }),
+      'plan',
+    );
+    expect(empty.ok).toBe(false);
+    expect(empty.problem).toContain('files_to_touch');
+    const ok = parseEnvelope(
+      JSON.stringify({
+        status: 'success',
+        files_to_touch: ['src/main.ts'],
+        steps: ['change it'],
+        verification: ['run tests'],
+      }),
+      'plan',
+    );
+    expect(ok.ok).toBe(true);
+    expect(ok.envelope).toMatchObject({
+      files_to_touch: ['src/main.ts'],
+      steps: ['change it'],
+      verification: ['run tests'],
+      risks: [],
+    });
   });
 
   it('requires a bounded title and non-empty body on a pr envelope', () => {
@@ -309,7 +365,7 @@ describe('json schema derivation', () => {
     const expected: Record<(typeof BUILTIN_KINDS)[number], string[]> = {
       generic: base,
       brief: [...base, 'improved_request', 'constraints', 'acceptance_criteria'],
-      plan: [...base, 'commit_message'],
+      plan: [...base, 'commit_message', 'files_to_touch', 'steps', 'verification', 'risks'],
       build: [...base, 'commit_message'],
       scout: [...base, 'findings'],
       review: [...base, 'approved', 'findings', 'blocking'],
@@ -335,7 +391,16 @@ describe('json schema derivation', () => {
     // JSON Schema allows but still a valid envelope on the parse side.
     for (const kind of BUILTIN_KINDS) {
       const minimal: Record<string, unknown> = { status: 'success' };
-      if (kind === 'brief') minimal.improved_request = 'do the thing';
+      if (kind === 'brief') {
+        minimal.improved_request = 'do the thing';
+        minimal.constraints = ['stay in scope'];
+        minimal.acceptance_criteria = ['tests pass'];
+      }
+      if (kind === 'plan') {
+        minimal.files_to_touch = ['src/main.ts'];
+        minimal.steps = ['change it'];
+        minimal.verification = ['run tests'];
+      }
       if (kind === 'review') minimal.approved = true;
       if (kind === 'pr' || kind === 'issue') {
         minimal.title = 'Add the thing';
@@ -353,6 +418,8 @@ describe('json schema derivation', () => {
     const cases: { kind: (typeof BUILTIN_KINDS)[number]; omit: string; instance: unknown }[] = [
       { kind: 'generic', omit: 'status', instance: JSON.parse(exampleFor('generic')) },
       { kind: 'brief', omit: 'improved_request', instance: JSON.parse(exampleFor('brief')) },
+      { kind: 'brief', omit: 'constraints', instance: JSON.parse(exampleFor('brief')) },
+      { kind: 'plan', omit: 'files_to_touch', instance: JSON.parse(exampleFor('plan')) },
       { kind: 'review', omit: 'approved', instance: JSON.parse(exampleFor('review')) },
       { kind: 'pr', omit: 'title', instance: JSON.parse(exampleFor('pr')) },
       { kind: 'pr', omit: 'body', instance: JSON.parse(exampleFor('pr')) },
