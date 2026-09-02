@@ -22,8 +22,6 @@ https://github.com/user-attachments/assets/d8b27e8d-de15-4b0d-8d0d-964ab697e569
 
 https://github.com/user-attachments/assets/798a0e94-762f-4f0d-af0a-996ed594d849
 
-
-
 ---
 
 ## Two lock-ins are slowing you down
