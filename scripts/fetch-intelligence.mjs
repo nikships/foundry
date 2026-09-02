@@ -68,7 +68,8 @@ export function normalizeModelId(id) {
 const response = await fetch(SOURCE_URL, { headers: { accept: 'application/json' } });
 if (!response.ok) fail(`${SOURCE_URL} answered ${response.status}`);
 const body = await response.json();
-const models = Array.isArray(body?.data) ? body.data : fail('response had no data array');
+if (!Array.isArray(body?.data)) fail('response had no data array');
+const models = body.data;
 
 /** Highest score wins a collision: variants of one model differ by effort. */
 const scores = {};
