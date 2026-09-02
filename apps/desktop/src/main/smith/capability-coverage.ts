@@ -60,6 +60,7 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.projectsScopeCopies]: read('smith_projects', 'scope_copies'),
   [IPC.projectsBaseSyncInspect]: read('smith_projects', 'base_inspect'),
   [IPC.projectsBaseSync]: approve('smith_projects', 'base_sync'),
+  [IPC.projectsRefreshContext]: approve('smith_projects', 'refresh_context'),
   [IPC.readinessInspect]: read('readiness_manage', 'inspect'),
   [IPC.readinessEvaluate]: approve('readiness_manage', 'evaluate'),
   [IPC.readinessMakeReady]: approve('readiness_remediate', 'remediate'),

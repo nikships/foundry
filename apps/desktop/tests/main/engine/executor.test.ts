@@ -673,6 +673,7 @@ describe('agent phases', () => {
     expect(outcome.status).toBe('accepted');
     const system = turnRequests(scripted)[0]!.systemPrompt;
     expect(system).toContain('You build.');
+    expect(system).toContain('# Repository context');
     expect(system).toContain('## Stack\nTypeScript');
     expect(system).toContain(
       `isolated run worktree at ${h.tracer.run(outcome.runId)!.worktreePath}`,
@@ -1144,6 +1145,47 @@ describe('healing a failed programmatic phase', () => {
     expect(spy.prompts[0]).toContain('exited 1');
     expect(spy.prompts[0]).toContain('teach the widget to fly');
     expect(spy.prompts[0]).toContain('vendor/');
+  });
+
+  it('writes a healing prompt record with the repository card and prior envelope', async () => {
+    installCheck(fixableCheck);
+    const scripted = scriptedAgent([buildEnvelope({ summary: 'added the widget' })]);
+    const spy = healingSpy([(cwd) => writeFileSync(join(cwd, 'fix.txt'), 'healed\n')]);
+
+    const outcome = await run({
+      scripted,
+      project: {
+        ...project,
+        contextSummary: [
+          '## Stack\nTypeScript',
+          '## Repository layout\n`apps/`',
+          '## Conventions\nstrict',
+          '## Verification\n`npm test`',
+          '## Setup\n`npm ci`',
+        ].join('\n\n'),
+      },
+      healing: spy.support,
+      pipeline: pipe(
+        [
+          agentPhase('build', { description: 'Implement the change.' }),
+          codePhase('test', { ref: 'test' }, { description: 'Run the project check.' }),
+        ],
+        {
+          description: 'build then a healable check',
+          acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const record = readFileSync(
+      join(h.tracer.runDir(outcome.runId), 'healer', 'prompts', 'test-1.md'),
+      'utf8',
+    );
+    expect(record).toContain('## Stack');
+    expect(record).toContain('## Verification');
+    expect(record).toContain('added the widget');
+    expect(record).toContain('npm test');
   });
 
   it('escalates through feedbackTo once its attempts are spent', async () => {

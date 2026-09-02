@@ -162,7 +162,11 @@ beforeEach(() => {
     support,
     db,
     tracer: new Tracer(db, projectRunsDir(support, repo)),
-    project: { ...defaultProject(repo), mergePolicy: 'never' },
+    project: {
+      ...defaultProject(repo),
+      mergePolicy: 'never',
+      contextSummary: '## Stack\nTypeScript',
+    },
   };
 });
 

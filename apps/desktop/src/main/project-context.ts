@@ -6,6 +6,7 @@
  */
 
 import type { AppSettings, ProjectDef } from '@shared/types.js';
+import { resolveRef } from './engine/git.js';
 import type { OneShotFactory } from './pi/oneshot.js';
 
 const MAX_CONTEXT_CHARS = 8_000;
@@ -38,10 +39,16 @@ interface ProjectContextInput {
   settings: Pick<AppSettings, 'helperModel' | 'helperReasoningEffort'>;
   oneShot: OneShotFactory;
   persist: (project: ProjectDef) => void;
+  /** Rebuild even when a card is already stored. */
+  force?: boolean;
+  /** Rebuild when the stored SHA no longer matches HEAD of `baseRef`. */
+  refreshIfStale?: boolean;
 }
 
-export function ensureProjectContext(input: ProjectContextInput): Promise<ProjectDef> {
-  if (input.project.contextSummary?.trim()) return Promise.resolve(input.project);
+export async function ensureProjectContext(input: ProjectContextInput): Promise<ProjectDef> {
+  if (!input.force && input.project.contextSummary?.trim()) {
+    if (!input.refreshIfStale || !(await isContextStale(input.project))) return input.project;
+  }
   const existing = inFlight.get(input.project.path);
   if (existing) return existing;
 
@@ -50,6 +57,17 @@ export function ensureProjectContext(input: ProjectContextInput): Promise<Projec
   });
   inFlight.set(input.project.path, pending);
   return pending;
+}
+
+async function isContextStale(project: ProjectDef): Promise<boolean> {
+  const recorded = project.contextSummarySha?.trim();
+  if (!recorded) return false;
+  const current = await resolveRef(project.path, project.baseRef);
+  return Boolean(current) && current !== recorded;
+}
+
+async function contextSha(project: ProjectDef): Promise<string> {
+  return resolveRef(project.path, project.baseRef);
 }
 
 async function generateProjectContext(input: ProjectContextInput): Promise<ProjectDef> {
@@ -67,7 +85,11 @@ async function generateProjectContext(input: ProjectContextInput): Promise<Proje
       return input.project;
     }
 
-    const next = { ...input.project, contextSummary };
+    const sha = await contextSha(input.project);
+    const { contextSummarySha: _previousSha, ...rest } = input.project;
+    const next: ProjectDef = sha
+      ? { ...rest, contextSummary, contextSummarySha: sha }
+      : { ...rest, contextSummary };
     input.persist(next);
     return next;
   } catch {

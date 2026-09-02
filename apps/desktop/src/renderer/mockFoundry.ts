@@ -427,6 +427,11 @@ export function createMockFoundryApi(): FoundryApi {
       scopeCopies: async () => ({ roster: false, pipelines: false }),
       baseSyncInspect: async (id): Promise<BaseSyncStatus | null> => mockBaseSync(id),
       baseSync: async (id) => ({ ok: true, status: mockBaseSync(id) }),
+      refreshContext: async (id): Promise<SaveResult<ProjectDef>> => {
+        const project = MOCK_PROJECTS.find((p) => p.id === id);
+        if (!project) return { ok: false, issues: [] };
+        return { ok: true, issues: [], value: project };
+      },
     },
     readiness: {
       inspect: async (projectId): Promise<ReadinessInspectResult | null> => ({

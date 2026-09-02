@@ -465,6 +465,11 @@ export interface ProjectDef {
    * read-only one-shot and supplied to every run agent's system role.
    */
   contextSummary?: string;
+  /**
+   * SHA of `baseRef` when `contextSummary` was generated. Used to treat the
+   * card as stale when that ref has moved.
+   */
+  contextSummarySha?: string;
   addedAt: string;
 }
 

@@ -16,6 +16,7 @@ describe('run-agent system context', () => {
     });
 
     expect(role).toContain('# Builder');
+    expect(role).toContain('# Repository context');
     expect(role).toContain('## Stack\nTypeScript');
     expect(role).toContain('isolated run worktree at /repo/.foundry-worktrees/run_1');
     expect(role).toContain('Setup ran npm ci — exit 0.');
@@ -52,6 +53,17 @@ describe('run-agent system context', () => {
 
     expect(role).not.toContain('# Worktree and shell');
     expect(role).not.toContain('Setup ran');
+  });
+
+  it('omits the repository context block when the card is empty', () => {
+    const role = agentSystemRole({
+      rosterRole: '# Builder',
+      writes: ['src/'],
+      cwd: '/repo/.foundry-worktrees/run_1',
+      projectPath: '/repo',
+    });
+
+    expect(role).not.toContain('# Repository context');
   });
 
   it('states when a writable run is operating directly in the project checkout', () => {

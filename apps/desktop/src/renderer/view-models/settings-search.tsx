@@ -54,7 +54,7 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
     label: 'Project',
     hint: 'Repo, readiness, git, commands, boundaries',
     keywords:
-      'repository path git base ref merge policy protected paths setup script commands scope remove',
+      'repository path git base ref merge policy protected paths setup script commands scope remove repository card refresh context',
   },
   {
     id: 'app',
@@ -224,6 +224,12 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     label: 'Setup',
     note: 'Script that installs deps in every new worktree, so agents find their binaries.',
     keywords: 'install dependencies worktree script sh',
+  },
+  {
+    pane: 'project',
+    label: 'Repository card',
+    note: 'Facts injected into every run agent so they do not rediscover the stack.',
+    keywords: 'repository card refresh context stack layout conventions verification setup',
   },
   {
     pane: 'project',
