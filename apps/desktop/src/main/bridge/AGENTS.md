@@ -1,74 +1,44 @@
 # AGENTS.md — src/main/bridge
 
-The Bridge turns an operator's provider **subscriptions** (Claude, ChatGPT, Gemini, Kimi, Grok) into a local OpenAI- or Anthropic-shaped endpoint that `pi/` can call. It is a vendored [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) binary, started as a child of the app, plus the code that configures it, logs providers in, and writes the models it serves into pi's `models.json`.
+The Bridge runs a vendored CLIProxyAPI child that exposes an operator’s provider subscriptions through a local endpoint and projects its authenticated model catalog into pi.
 
-## Project Overview
+## Ownership
 
-- `paths.ts` — where the binary, config, and auth material live. The binary is **resolved, never assumed**: packaged under `process.resourcesPath/bridge/`, in dev under the checkout's `resources/bridge/`, and null when neither is an executable file.
-- `config.ts` — the generated YAML the child is started with. Hand-emitted so the bytes are stable; pinned to `127.0.0.1` with remote management off.
-- `providers.ts` — the one table: login flag, the `type` values CLIProxyAPI writes into auth files, the pi API kind, and the base-URL suffix. A provider is loggable and reachable from the same row or not at all. Models are not listed here.
-- `catalog.ts` — projects CLIProxyAPI's `models.json` (vendored next to the binary by `fetch:bridge`) onto those logins. A new model in that file appears on the next regeneration; Foundry does not keep its own allowlist.
-- `model-denylist.ts` — the operator's hand-edited list of ids a login should not offer. Meant to be edited directly; see the invariant below.
-- `manager.ts` — the child's lifecycle: `ensure()` with coalescing, port scan, health poll, SIGTERM→SIGKILL.
-- `auth.ts` — provider login/logout, account reading, and the debounced auth-directory watcher.
-- `models.ts` — generating and merging the `bridge-*` half of pi's `models.json`.
-- `service.ts` — the orchestrator the app holds: manager + watcher + regeneration + one pi refresh per committed write.
+- `paths.ts` resolves the packaged or development binary.
+- `config.ts` emits stable localhost-only configuration.
+- `providers.ts` is the provider/login/API-kind table.
+- `catalog.ts` filters the vendored model catalog by authenticated providers.
+- `model-denylist.ts` contains exact model IDs the operator does not want offered.
+- `manager.ts` owns child startup, health, and termination.
+- `auth.ts` owns login files and the auth-directory watcher.
+- `models.ts` merges Bridge providers into pi’s `models.json`.
+- `service.ts` coordinates lifecycle, regeneration, and runtime refresh.
 
-## Setup Commands
+`npm run fetch:bridge` downloads and verifies the pinned binary and catalog. A checkout without it is supported: `bridgeBinaryPath()` returns null and `ensure()` reports `binary_missing`.
 
-```bash
-npm ci
-npm run fetch:bridge   # downloads + checksums the pinned CLIProxyAPI into resources/bridge/
-npm run dev
-```
+## Security and lifecycle invariants
 
-`fetch:bridge` is **fail-closed**: a checksum mismatch leaves nothing executable on disk and exits non-zero. The version and both hashes (archive and extracted binary) are pinned in `package.json` under `config.bridge`; `node scripts/fetch-bridge.mjs --bump` recomputes both from a new upstream release (the `update-cliproxyapi.yml` workflow opens that as a PR). The same tag's `internal/registry/models/models.json` is written beside the binary — that file is the model catalog, so bumping CLIProxyAPI is enough for new models to appear. `resources/bridge/` is gitignored and shipped through electron-builder `extraResources`, with the binary listed in `mac.binaries` so hardened-runtime signing covers it. `mac-package.yml` must fetch the binary before electron-builder runs.
+- **Localhost only.** Bind `127.0.0.1`, disable remote management, and never expose subscription credentials to the LAN.
+- **Never use `~/.cli-proxy-api`.** Config and auth live under Foundry Application Support.
+- **No token leaves `auth.ts`.** Expose only non-secret account metadata. Never echo login-child output, which may contain OAuth callback codes.
+- **Merge `models.json`; never overwrite it.** Replace only `bridge-*` providers so user-added providers and unknown fields survive.
+- Refresh pi exactly once per committed model-file write; skip byte-identical writes.
+- Only authenticated providers enter the generated catalog.
+- Every `ensure()` records the child in the app-scoped trace with null `run_id`, regardless of caller.
+- Close a process row only after `terminate()` confirms the PID is gone.
+- Bridge models have zero per-token cost because they use existing subscriptions.
+- The model denylist is exact, lowercase, and deny-by-default only for listed IDs. Do not convert it to an allowlist or prefix matching.
+- Reject models declaring image output, including mixed text/image models. Keep entries with unspecified modalities.
+- Anthropic receives the root base URL; other providers receive `/v1`.
+- GitHub Copilot and request-body rewriting are out of scope.
 
-A checkout that never ran the fetch simply has no Bridge: `bridgeBinaryPath()` returns null and `ensure()` answers `binary_missing`. That is a supported state, not a broken install.
+Provider IDs use a `bridge-` prefix so they cannot override pi’s built-in providers.
 
-## Invariants
+## Tests
 
-- **Localhost only.** `host: 127.0.0.1`, `allow-remote: false`, `secret-key: ""`, control panel disabled. The Bridge holds the operator's provider subscriptions; a bind on `0.0.0.0` would put their Claude and Codex accounts on the local network.
-- **Never `~/.cli-proxy-api`.** Config and auth live under Foundry's Application Support directory. The operator may run CLIProxyAPI themselves, and an app that logged into their directory would rewrite the accounts their own tools use.
-- **No token leaves `auth.ts`.** Auth files hold refresh and access tokens. Only `type`, `email`/`login`, `expired`, and `disabled` are parsed out; nothing is logged, and login-child stdout is never echoed (a failing OAuth flow can print a callback URL carrying a code).
-- **`models.json` is merged, never overwritten.** Only `bridge-*` keys are replaced. A hand-added Ollama provider and any unknown top-level field survive every regeneration.
-- **One `modelRuntime.refresh()` per committed write.** The write is skipped when the rendered bytes match what is on disk, and the refresh happens only when the write did. An auth directory emits several events for one login.
-- **Only authenticated providers reach the catalog.** A provider with no usable account is absent, not present-and-failing: pi would list its models and refuse at request time, which reads as a broken model rather than a missing login.
-- **The `processes` row carries a null run id, in the app's own trace.** `processes.run_id` has a foreign key to `runs` with `foreign_keys = ON`, so a synthetic id is rejected. Null satisfies the constraint, keeps the row out of every per-run query (retention's delete, the kill-by-run path), and still reaches the relaunch sweep's unfiltered `openProcesses()`. The store is `appDbPath()` (`trace/db.ts`), not a project's: the Bridge is app-scoped, a project can be removed while its Bridge still holds a port, and a Bridge started from Settings before any project exists has no project trace to be written to.
-- **Every `ensure()` records, no caller opts in.** `BridgeService` wires `onProcess`/`onProcessEnd` to `opts.trace` at construction, so the run path, the doctor, and a Settings login all record identically. A row written only by some callers leaves exactly the orphan it exists to catch.
-- **A row is closed only when the pid is confirmed gone.** `terminate()` (`system/procs.ts`) SIGTERMs the tree, escalates to SIGKILL, and reports whether the pid actually died. A survivor keeps its row open, because closing it would hide the one process still holding the port from the only sweep that could reclaim it.
-- **Cost is zero for every Bridge model.** These run against a subscription already paid for; a per-token price would accumulate a dollar figure in the trace that no invoice will ever show.
-- **The model denylist is a denylist, and a stale entry is inert.** `model-denylist.ts` lists ids a login should not offer, applied in `modelsForProvider` — the single funnel every Bridge model passes through on its way into pi's `models.json`, so a denied model is absent from the picker, Settings, the roster, and the Orchestrator's cast pool alike rather than hidden in one of them. An id absent from the file is offered, so a CLIProxyAPI bump that adds a new flagship shows it without a Foundry edit; do not invert it into an allowlist, which would silently withhold every future model. Matching is exact on the bare lowercased catalog id — never a prefix, because a prefix rule would swallow a successor (`grok-4.5` must not hide `grok-4.5-turbo`). An id that no longer ships matches nothing and needs no cleanup. `modelsForProvider` and `generateProviders` both take the list as a defaulted parameter so projection tests can pin behaviour against an empty one.
-- **A model that can emit an image is not an agent model.** `isAgentModel` rejects any entry declaring an `image` output, not merely image-only ones: an image-generating Gemini declares `["text", "image"]`, so a check for text let `gemini-3-pro-image` and friends into the picker and the Orchestrator's cast pool, where every phase would fail on them. A model declaring no modalities at all is kept — CLIProxyAPI omits the field for some entries, and hiding a working text model is the worse error.
-- **Anthropic gets the root base URL, everything else `/v1`.** pi's Anthropic SDK appends `/v1/messages` itself, so an `anthropic-messages` entry pointing at `/v1` requests `/v1/v1/messages` and 404s.
-
-## Scope
-
-- **GitHub Copilot is out of scope.** The vendored CLIProxyAPI has no Copilot login flow. Listing it would offer a login that cannot happen.
-- **No request-body rewriting.** The Bridge passes requests through; thinking-budget and tool-schema rewrites are not this layer's concern.
-
-## Testing Instructions
+Tests use a scripted child and fixtures, never the real vendored binary or an account. Serialized account assertions must prove tokens do not escape.
 
 ```bash
-npx vitest run apps/desktop/tests/main/bridge/bridge-manager.test.ts
-npx vitest run apps/desktop/tests/main/bridge/bridge-models.test.ts
-npx vitest run apps/desktop/tests/main/bridge/bridge-catalog.test.ts
-npx vitest run apps/desktop/tests/main/bridge/bridge-service.test.ts
+npx vitest run -t "bridge"
 npx vitest run apps/desktop/tests/main/bridge/bridge-process-row.test.ts
-npx vitest run apps/desktop/tests/main/system/procs-terminate.test.ts
-npx vitest run apps/desktop/tests/main/pi/pi-catalog.test.ts
 ```
-
-- The child under test is a **scripted stand-in** that reads the same generated config the real binary is given and binds the port it names. The vendored binary is not required to run the suite (and a real one would want an account).
-- Auth fixtures are written the way CLIProxyAPI writes them, tokens included, because the parser's job is to read that format without carrying a secret out of it. `tests/bridge-models.test.ts` asserts no token appears in a serialized account.
-- Port assertions stay inside `37700–37799`, the band this app claims for the Bridge.
-
-## Code Style
-
-- This directory may not import `@earendil-works/pi-*` (ESLint `no-restricted-imports`). It reaches pi through `../pi/catalog.ts`, loaded lazily so constructing a service does not build a runtime.
-- No `eslint-disable`; use `@main/*` / `@shared/*` aliases.
-
-## Additional Notes
-
-- Provider ids are prefixed `bridge-` in `models.json` so a Bridge entry cannot collide with, or silently override, a built-in pi provider: `anthropic` stays the operator's own key and `bridge-claude` is the subscription.
-- The Gemini flow is Antigravity's and is routed as `openai-completions`, not `google-generative-ai`, which would build v1beta URLs the Bridge does not serve.

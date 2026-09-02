@@ -1,66 +1,24 @@
 # AGENTS.md — src/main/trace
 
-`Tracer` is the sole SQLite writer for a project's WAL database. No other main module writes SQLite directly. WAL lets renderer reads proceed while the writer commits.
-
-## Project Overview
-
-- Each project has its own `trace.db` (under `~/Library/Application Support/foundry/`). Schema lives in `db.ts`; event/process persistence lives in `tracer.ts`.
-- One **app-scoped** store sits beside them (`appDbPath()` → `app/trace.db`), same schema, for children that outlive every run and belong to no project. Today that is the Bridge and nothing else; its `runs` table stays empty, which is what lets a `processes` row carry a null `run_id`. `RunRegistry.appTracer()` opens it on first use and `sweepAppProcesses()` reclaims what a crash left behind.
-- Events are pulled by the renderer via `run_id = ? AND change_id > ? ORDER BY rowid` — a polling cursor merge (see `src/renderer/stores/run.tsx`).
-- Tool results patch their opening span and thinking deltas append in place — both require a new `change_id`.
-- Usage, duration, and model are **derived** from events (in `src/renderer/derive.ts`), not denormalized, so retries remain visible.
-
-## Setup Commands
-
-```bash
-npm ci
-npm run dev    # Tracer opens WAL databases for each project on demand
-```
-
-No separate trace setup. `better-sqlite3` is a native dep (allow‑listed in `.npmrc`); if missing after install, run `node node_modules/electron/install.js`.
-
-## Development Workflow
-
-- All writes go through `Tracer`. Open questions: check `tracer.ts` for the allowed tables/methods.
-- Adding a new event: update `src/shared/types.ts` (shape), `tracer.ts` (writer), `src/renderer/derive.ts` (usage/duration/model derivation), and `src/renderer/inspector/entries.tsx` (`TranscriptEntry` switch — default silently drops unknown events).
-- Do not add a denormalized cost column. Usage is derived from events.
-
-## Testing Instructions
-
-```bash
-npm test
-npx vitest run -t "trace|tracer"
-npx vitest run apps/desktop/tests/main/trace/trace-cursor.test.ts
-```
-
-- Trace tests use real SQLite databases (temp files). Assert on rows and `change_id` advancement, not mocks.
-- When patching spans (tool result, thinking delta), assert that `change_id` increments.
+`Tracer` is the sole SQLite writer. Each project has a WAL database; one app-scoped database stores processes, currently the Bridge, that belong to no run or project.
 
 ## Invariants
 
-- **Single writer, WAL mode.** Second writer (e.g. second Electron instance) would corrupt — hence the single-instance lock in `src/main/main.ts`.
-- **Cursor semantics:**
-  - `change_id` = polling cursor. `Tracer` seeds its in-memory high-water mark from `MAX(change_id)`, not row count.
-  - `rowid` = display ordering (insertion order).
-  - Caller advances to `max(change_id)` observed and merges by `eventId`.
-- **In‑place patching:** every insert AND update must stamp a new `change_id`, otherwise the renderer's poll misses the patch.
-- **No denormalized totals.** Usage/duration/model are event-derived so retries remain inspectable.
+- **Single writer, WAL mode.** No other module writes SQLite.
+- **Cursor semantics.** `change_id` is the polling cursor; `rowid` is display order. Seed the high-water mark from `MAX(change_id)`.
+- **Every insert and update advances `change_id`.** Otherwise polling misses in-place tool-result or thinking patches.
+- **Merge events by `eventId`.** The caller advances to the maximum observed cursor.
+- **No denormalized totals.** Usage, duration, and model are derived from events so retries remain inspectable.
+- App-scoped process rows use a null `run_id` and live in `appDbPath()`.
 
-## Code Style
+Use prepared statements and keep synchronous `better-sqlite3` access focused in `tracer.ts`.
 
-- `tracer.ts` is the narrow write surface — keep it focused and transaction-safe.
-- Use prepared statements; keep DB access synchronous (WAL + `better-sqlite3` is sync).
-- No `eslint-disable`; use `@main/*` / `@shared/*` aliases.
+Adding an event usually requires its shared shape, Tracer write path, renderer derivation, and an Inspector `TranscriptEntry` branch. Unknown events are otherwise silently omitted.
 
-## Build and Deployment
+## Validation
 
 ```bash
-npm run typecheck && npm run lint && npm run build
+npx vitest run apps/desktop/tests/main/trace/trace-cursor.test.ts
 ```
 
-Trace code bundles into `out/main/main.js`; `better-sqlite3` stays externalized (native).
-
-## Additional Notes
-
-- Renderer cursor merge lives in `src/renderer/stores/run.tsx`; Inspector rendering in `inspector/entries.tsx`.
-- `finish()` in the engine runner is the only caller that settles run-level status against traced events.
+Use real temporary SQLite files and assert both row content and cursor advancement.
