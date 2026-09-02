@@ -48,94 +48,96 @@ function ArtifactBody({
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
-  if (artifact.kind === 'pipeline_design') {
-    return <PipelineDesign pipeline={artifact.pipeline} compact={compact} />;
+  switch (artifact.kind) {
+    case 'pipeline_design':
+      return <PipelineDesign pipeline={artifact.pipeline} compact={compact} />;
+    case 'agent_design':
+      return <AgentDesign agent={artifact.agent} compact={compact} />;
+    case 'envelope_design':
+      return (
+        <EnvelopeDesign
+          envelope={artifact.envelope}
+          usage={artifact.usage}
+          sampleOutput={artifact.sampleOutput}
+          compact={compact}
+        />
+      );
+    case 'checklist':
+      return <ChecklistDesign checklist={artifact.checklist} compact={compact} />;
+    case 'run_summary':
+      return (
+        <RunSummaryDesign artifact={artifact} compact={compact} onOpenInspector={onOpenInspector} />
+      );
+    case 'entity_comparison':
+      return <EntityComparisonDesign artifact={artifact} compact={compact} />;
+    case 'change_receipt':
+      return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
+    case 'project_card':
+      return <ProjectCardDesign project={artifact.project} compact={compact} />;
+    case 'settings_diff':
+      return <SettingsDiffDesign diff={artifact.diff} compact={compact} />;
+    case 'diagnostics':
+      return <DiagnosticsDesign diagnostics={artifact.diagnostics} compact={compact} />;
+    case 'data_table':
+      return <DataTableDesign table={artifact.table} compact={compact} />;
+    case 'evidence_disclosure':
+      return <EvidenceDisclosureDesign evidence={artifact.evidence} compact={compact} />;
+    case 'readiness_journey':
+      return <ReadinessJourneyDesign journey={artifact.journey} compact={compact} />;
+    case 'provider_status':
+      return <ProviderStatusDesign status={artifact.status} compact={compact} />;
+    case 'pr_card':
+      return <PrCardDesign pr={artifact.pr} compact={compact} />;
+    case 'action_receipt':
+      return (
+        <SmithActionReceiptBody
+          receipt={artifact.receipt}
+          compact={compact}
+          onOpenLink={onOpenReceiptLink}
+        />
+      );
   }
-  if (artifact.kind === 'agent_design') {
-    return <AgentDesign agent={artifact.agent} compact={compact} />;
-  }
-  if (artifact.kind === 'envelope_design') {
-    return (
-      <EnvelopeDesign
-        envelope={artifact.envelope}
-        usage={artifact.usage}
-        sampleOutput={artifact.sampleOutput}
-        compact={compact}
-      />
-    );
-  }
-  if (artifact.kind === 'checklist') {
-    return <ChecklistDesign checklist={artifact.checklist} compact={compact} />;
-  }
-  if (artifact.kind === 'run_summary') {
-    return (
-      <RunSummaryDesign artifact={artifact} compact={compact} onOpenInspector={onOpenInspector} />
-    );
-  }
-  if (artifact.kind === 'entity_comparison') {
-    return <EntityComparisonDesign artifact={artifact} compact={compact} />;
-  }
-  if (artifact.kind === 'change_receipt') {
-    return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
-  }
-  if (artifact.kind === 'project_card') {
-    return <ProjectCardDesign project={artifact.project} compact={compact} />;
-  }
-  if (artifact.kind === 'settings_diff') {
-    return <SettingsDiffDesign diff={artifact.diff} compact={compact} />;
-  }
-  if (artifact.kind === 'diagnostics') {
-    return <DiagnosticsDesign diagnostics={artifact.diagnostics} compact={compact} />;
-  }
-  if (artifact.kind === 'data_table') {
-    return <DataTableDesign table={artifact.table} compact={compact} />;
-  }
-  if (artifact.kind === 'evidence_disclosure') {
-    return <EvidenceDisclosureDesign evidence={artifact.evidence} compact={compact} />;
-  }
-  if (artifact.kind === 'readiness_journey') {
-    return <ReadinessJourneyDesign journey={artifact.journey} compact={compact} />;
-  }
-  if (artifact.kind === 'provider_status') {
-    return <ProviderStatusDesign status={artifact.status} compact={compact} />;
-  }
-  if (artifact.kind === 'pr_card') {
-    return <PrCardDesign pr={artifact.pr} compact={compact} />;
-  }
-  return (
-    <SmithActionReceiptBody
-      receipt={artifact.receipt}
-      compact={compact}
-      {...(onOpenReceiptLink ? { onOpenLink: onOpenReceiptLink } : {})}
-    />
-  );
 }
 
 /** The JSON an audit reader wants: the definition, or the record of what ran. */
 function auditValue(artifact: SmithArtifact): unknown {
-  if (artifact.kind === 'pipeline_design') return artifact.pipeline;
-  if (artifact.kind === 'agent_design') return artifact.agent;
-  if (artifact.kind === 'envelope_design') {
-    return {
-      ...artifact.envelope,
-      ...(artifact.usage ? { usage: artifact.usage } : {}),
-      ...(artifact.sampleOutput ? { sampleOutput: artifact.sampleOutput } : {}),
-    };
+  switch (artifact.kind) {
+    case 'pipeline_design':
+      return artifact.pipeline;
+    case 'agent_design':
+      return artifact.agent;
+    case 'envelope_design':
+      return {
+        ...artifact.envelope,
+        ...(artifact.usage ? { usage: artifact.usage } : {}),
+        ...(artifact.sampleOutput ? { sampleOutput: artifact.sampleOutput } : {}),
+      };
+    case 'checklist':
+      return artifact.checklist;
+    case 'run_summary':
+      return artifact;
+    case 'change_receipt':
+    case 'action_receipt':
+      return artifact.receipt;
+    case 'project_card':
+      return artifact.project;
+    case 'pr_card':
+      return artifact.pr;
+    case 'readiness_journey':
+      return artifact.journey;
+    case 'provider_status':
+      return artifact.status;
+    case 'settings_diff':
+      return artifact.diff;
+    case 'diagnostics':
+      return artifact.diagnostics;
+    case 'data_table':
+      return artifact.table;
+    case 'evidence_disclosure':
+      return artifact.evidence;
+    case 'entity_comparison':
+      return { before: artifact.before, after: artifact.after };
   }
-  if (artifact.kind === 'checklist') return artifact.checklist;
-  if (artifact.kind === 'run_summary') return artifact;
-  if (artifact.kind === 'change_receipt' || artifact.kind === 'action_receipt') {
-    return artifact.receipt;
-  }
-  if (artifact.kind === 'project_card') return artifact.project;
-  if (artifact.kind === 'pr_card') return artifact.pr;
-  if (artifact.kind === 'readiness_journey') return artifact.journey;
-  if (artifact.kind === 'provider_status') return artifact.status;
-  if (artifact.kind === 'settings_diff') return artifact.diff;
-  if (artifact.kind === 'diagnostics') return artifact.diagnostics;
-  if (artifact.kind === 'data_table') return artifact.table;
-  if (artifact.kind === 'evidence_disclosure') return artifact.evidence;
-  return { before: artifact.before, after: artifact.after };
 }
 
 export default function SmithArtifactCard({
@@ -176,8 +178,8 @@ export default function SmithArtifactCard({
       <ArtifactBody
         artifact={artifact}
         compact={compact}
-        {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
-        {...(onOpenInspector ? { onOpenInspector } : {})}
+        onOpenReceiptLink={onOpenReceiptLink}
+        onOpenInspector={onOpenInspector}
       />
       {artifact.warnings.length > 0 && (
         <ul className={styles.warnings}>

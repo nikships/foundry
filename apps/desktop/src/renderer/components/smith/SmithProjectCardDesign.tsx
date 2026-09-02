@@ -5,7 +5,6 @@
  * command/setup readiness, scopes, and repository health.
  */
 
-import { useMemo } from 'react';
 import type { ProjectCardDef } from '@shared/types.js';
 import {
   projectCardDivergenceLabel,
@@ -61,14 +60,10 @@ export function ProjectCardDesign({
   project: ProjectCardDef;
   compact?: boolean;
 }): React.JSX.Element {
-  const summary = useMemo(() => projectCardSummary(project), [project]);
-  const divergenceLabel = useMemo(
-    () => projectCardDivergenceLabel(project.divergence),
-    [project.divergence],
-  );
-  const healthLabel = useMemo(() => projectCardHealthLabel(project.health), [project.health]);
-  const scopesLabel = useMemo(() => projectCardScopesLabel(project.scopes), [project.scopes]);
-
+  const summary = projectCardSummary(project);
+  const divergenceLabel = projectCardDivergenceLabel(project.divergence);
+  const healthLabel = projectCardHealthLabel(project.health);
+  const scopesLabel = projectCardScopesLabel(project.scopes);
   const isHealthy = project.health ? project.health.ok : true;
 
   return (
@@ -164,5 +159,3 @@ export function ProjectCardDesign({
     </div>
   );
 }
-
-export default ProjectCardDesign;

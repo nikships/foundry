@@ -25,6 +25,7 @@ import {
   issuePhaseIndex,
   phaseEnvelopeChip,
 } from '../../view-models/pipeline-view.js';
+import { cx } from '../ui/cx.js';
 import { EnvelopeGlyph, PhaseGlyph } from './PhaseGlyphs.js';
 import styles from './PipelineCanvas.module.css';
 
@@ -68,12 +69,19 @@ function canvasState(canvas: PipelineCanvasState | undefined): CanvasState {
   };
 }
 
-function nodeHeight(_phase: PhaseDef): number {
-  return WORK_NODE_HEIGHT;
-}
-
 function clampZoom(zoom: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+function panFrom(
+  active: Extract<Interaction, { kind: 'pan' }>,
+  event: { clientX: number; clientY: number },
+): Viewport {
+  return {
+    ...active.viewport,
+    x: active.viewport.x + event.clientX - active.startX,
+    y: active.viewport.y + event.clientY - active.startY,
+  };
 }
 
 function Chip({
@@ -159,14 +167,12 @@ function NodeCard({
     <article
       data-pipeline-node={phase.name}
       data-testid={`pipeline-phase-${phase.name}`}
-      className={[
+      className={cx(
         styles.node,
-        selected ? styles.nodeSelected : '',
-        hasError ? styles.nodeError : '',
-        hasWarning && !hasError ? styles.nodeWarning : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+        selected && styles.nodeSelected,
+        hasError && styles.nodeError,
+        hasWarning && !hasError && styles.nodeWarning,
+      )}
       style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
     >
       <span className={styles.inputPort} aria-hidden="true" />
@@ -393,14 +399,7 @@ export default function PipelineCanvas({
         setState(nextNodeState(active, event));
         return;
       }
-      setState((current) => ({
-        ...current,
-        viewport: {
-          ...active.viewport,
-          x: active.viewport.x + event.clientX - active.startX,
-          y: active.viewport.y + event.clientY - active.startY,
-        },
-      }));
+      setState((current) => ({ ...current, viewport: panFrom(active, event) }));
     },
     [nextNodeState],
   );
@@ -426,14 +425,7 @@ export default function PipelineCanvas({
         commit(nextNodeState(active, event));
         return;
       }
-      commit({
-        nodes: state.nodes,
-        viewport: {
-          ...active.viewport,
-          x: active.viewport.x + event.clientX - active.startX,
-          y: active.viewport.y + event.clientY - active.startY,
-        },
-      });
+      commit({ nodes: state.nodes, viewport: panFrom(active, event) });
     },
     [commit, nextNodeState, onSelectPhase, phases, state.nodes],
   );
@@ -515,7 +507,9 @@ export default function PipelineCanvas({
     return true;
   }, []);
 
-  if (phases.length === 0) {
+  const resetView = (): void => commit({ nodes: state.nodes, viewport: DEFAULT_VIEWPORT });
+
+  if (isEmpty) {
     return (
       <div className={styles.emptyCanvas}>
         <div className={styles.emptyCard}>
@@ -577,9 +571,9 @@ export default function PipelineCanvas({
             const source = positions[index]!;
             const target = positions[index + 1]!;
             const sourceX = source.x + NODE_WIDTH;
-            const sourceY = source.y + nodeHeight(phase) / 2;
+            const sourceY = source.y + WORK_NODE_HEIGHT / 2;
             const targetX = target.x;
-            const targetY = target.y + nodeHeight(phases[index + 1]!) / 2;
+            const targetY = target.y + WORK_NODE_HEIGHT / 2;
             const bend = Math.max(76, Math.min(180, Math.abs(targetX - sourceX) * 0.42));
             return (
               <path
@@ -628,17 +622,14 @@ export default function PipelineCanvas({
           data-canvas-control
           className={styles.zoomReadout}
           title="Reset pan and zoom"
-          onClick={() => commit({ nodes: state.nodes, viewport: DEFAULT_VIEWPORT })}
+          onClick={resetView}
         >
           {Math.round(state.viewport.zoom * 100)}%
         </button>
         <IconButton label="Zoom in" onClick={() => zoomAt(state.viewport.zoom * 1.2)}>
           <ZoomIn size={14} strokeWidth={1.7} aria-hidden="true" />
         </IconButton>
-        <IconButton
-          label="Reset pan and zoom"
-          onClick={() => commit({ nodes: state.nodes, viewport: DEFAULT_VIEWPORT })}
-        >
+        <IconButton label="Reset pan and zoom" onClick={resetView}>
           <RotateCcw size={13} strokeWidth={1.7} aria-hidden="true" />
         </IconButton>
       </div>
@@ -677,7 +668,7 @@ export default function PipelineCanvas({
                         type="button"
                         role="option"
                         aria-selected={active}
-                        className={`${styles.pipelineOption} ${active ? styles.pipelineOptionActive : ''}`}
+                        className={cx(styles.pipelineOption, active && styles.pipelineOptionActive)}
                         data-testid={`pipeline-option-${p.id}`}
                         onClick={() => {
                           setPickerOpen(false);

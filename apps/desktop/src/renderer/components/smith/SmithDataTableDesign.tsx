@@ -9,6 +9,12 @@ import { dataTableSummary, formatCellValue } from '../../view-models/smith-artif
 import { cx } from '../ui/cx.js';
 import styles from './SmithDataTableDesign.module.css';
 
+function columnAlign(align: TableColumnDef['align']): string {
+  if (align === 'center') return styles.alignCenter;
+  if (align === 'right') return styles.alignRight;
+  return styles.alignLeft;
+}
+
 function TableCell({
   column,
   row,
@@ -19,12 +25,7 @@ function TableCell({
   const rawValue = row.cells[column.key];
   const { text, status } = formatCellValue(rawValue);
 
-  const alignClass =
-    column.align === 'center'
-      ? styles.alignCenter
-      : column.align === 'right'
-        ? styles.alignRight
-        : styles.alignLeft;
+  const alignClass = columnAlign(column.align);
 
   if (status) {
     return (
@@ -86,13 +87,7 @@ export function DataTableDesign({
                     key={column.key}
                     scope="col"
                     style={column.width ? { width: column.width } : undefined}
-                    className={
-                      column.align === 'center'
-                        ? styles.alignCenter
-                        : column.align === 'right'
-                          ? styles.alignRight
-                          : styles.alignLeft
-                    }
+                    className={columnAlign(column.align)}
                   >
                     {column.label}
                   </th>

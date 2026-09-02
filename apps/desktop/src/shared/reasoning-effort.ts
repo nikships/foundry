@@ -48,13 +48,16 @@ export function isReasoningEffort(value: unknown): value is ReasoningEffort {
  * another model's levels would be a lie. Null means the picker has nothing
  * to filter against and offers every known level.
  */
+function chosenModelId(value: string | null | undefined): string | null {
+  return value && value !== 'inherit' ? value : null;
+}
+
 export function modelForEffortPicker<T extends { id: string }>(
   chosen: string | null | undefined,
   models: readonly T[],
   fallback?: string | null,
 ): T | null {
-  const id =
-    chosen && chosen !== 'inherit' ? chosen : fallback && fallback !== 'inherit' ? fallback : null;
+  const id = chosenModelId(chosen) ?? chosenModelId(fallback);
   if (!id) return null;
   return models.find((model) => model.id === id) ?? null;
 }

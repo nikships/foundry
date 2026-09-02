@@ -31,16 +31,16 @@ export async function refExists(cwd: string, ref: string): Promise<boolean> {
 }
 
 export async function currentBranch(cwd: string): Promise<string> {
-  const branch = await git(cwd, ['branch', '--show-current']);
-  if (branch.ok && branch.stdout.trim()) {
-    return branch.stdout.trim();
+  for (const args of [
+    ['branch', '--show-current'],
+    ['symbolic-ref', '--short', 'HEAD'],
+    ['rev-parse', '--abbrev-ref', 'HEAD'],
+  ]) {
+    const result = await git(cwd, args);
+    const name = result.ok ? result.stdout.trim() : '';
+    if (name) return name;
   }
-  const sym = await git(cwd, ['symbolic-ref', '--short', 'HEAD']);
-  if (sym.ok && sym.stdout.trim()) {
-    return sym.stdout.trim();
-  }
-  const r = await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
-  return r.ok ? r.stdout.trim() : '';
+  return '';
 }
 
 export async function headSha(cwd: string): Promise<string> {

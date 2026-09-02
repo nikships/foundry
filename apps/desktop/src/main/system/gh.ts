@@ -93,10 +93,6 @@ function numberFromUrl(url: string | undefined, kind: 'pull' | 'issues'): number
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/**
- * Whether PR features can work for this repo, checked in the order the fixes
- * differ: install gh, sign in, then have a remote GitHub can resolve.
- */
 /** Installed and signed in, or the reason not. Checked from `cwd`. */
 async function ghUsable(bin: string, cwd: string): Promise<string | null> {
   const version = await gh(bin, cwd, ['--version'], 10_000);

@@ -44,6 +44,14 @@ export function lastAssistantStop(session: PiAgentSession): {
   return null;
 }
 
+export function subscribeSessionEvents(
+  session: PiAgentSession,
+  reader: VendorEventReader,
+  onEvent?: (event: TransportEvent) => void,
+): () => void {
+  return session.subscribe((event) => reader.absorb(event, (e) => onEvent?.(e)));
+}
+
 export class VendorEventReader {
   /** Distinguishes text blocks of different messages in the folded trace. */
   private messageSeq = 0;
@@ -89,28 +97,35 @@ export class VendorEventReader {
       case 'message_update': {
         const inner = event.assistantMessageEvent;
         const messageId = String(this.messageSeq);
-        if (inner.type === 'text_delta') {
-          emit({
-            type: 'text_delta',
-            messageId,
-            blockIndex: inner.contentIndex,
-            delta: inner.delta,
-          });
-        } else if (inner.type === 'text_end') {
-          const content =
-            'content' in inner && typeof inner.content === 'string' ? inner.content : undefined;
-          emit({
-            type: 'text_end',
-            messageId,
-            blockIndex: inner.contentIndex,
-            ...(content ? { content } : {}),
-          });
-        } else if (inner.type === 'thinking_delta') {
-          emit({ type: 'thinking_delta', messageId, delta: inner.delta });
-        } else if (inner.type === 'thinking_end') {
-          emit({ type: 'thinking_end', messageId });
+        switch (inner.type) {
+          case 'text_delta':
+            emit({
+              type: 'text_delta',
+              messageId,
+              blockIndex: inner.contentIndex,
+              delta: inner.delta,
+            });
+            return;
+          case 'text_end': {
+            const content =
+              'content' in inner && typeof inner.content === 'string' ? inner.content : undefined;
+            emit({
+              type: 'text_end',
+              messageId,
+              blockIndex: inner.contentIndex,
+              ...(content ? { content } : {}),
+            });
+            return;
+          }
+          case 'thinking_delta':
+            emit({ type: 'thinking_delta', messageId, delta: inner.delta });
+            return;
+          case 'thinking_end':
+            emit({ type: 'thinking_end', messageId });
+            return;
+          default:
+            return;
         }
-        return;
       }
       case 'message_end': {
         const message = event.message;

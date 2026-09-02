@@ -15,27 +15,39 @@
  * same history file.
  */
 
-import {
-  SessionManager,
-  type AgentSession as PiAgentSession,
-  type ToolDefinition,
+import type {
+  AgentSession as PiAgentSession,
+  ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import {
   clampEffortToModel,
+  modelKey,
   pickModel,
   requireModel,
   thinkingLevelFor,
   toTransportModel,
   type PiModel,
 } from './model.js';
-import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
+import {
+  closeLiveSession,
+  compactSession,
+  foundryResourceLoader,
+  foundrySettings,
+  lastAssistantText,
+  lastUserMessageId,
+  openFoundrySession,
+  openOrCreateSessionManager,
+  promptUntilIdle,
+  sessionContextBreakdown,
+  sessionContextStats,
+} from './open-session.js';
 import { smithExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { BUILTIN_TOOLS } from './tool-names.js';
-import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
+import { subscribeSessionEvents, VendorEventReader } from './vendor-events.js';
 import { ModelNotChosen } from './transport.js';
 import type {
   AgentTransport,
@@ -101,14 +113,7 @@ export class SmithPiTransport implements AgentTransport {
   }
 
   get lastUserMessageId(): string | null {
-    const session = this.session;
-    if (!session) return null;
-    const entries = session.sessionManager.getBranch();
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const entry = entries[i];
-      if (entry?.type === 'message' && entry.message.role === 'user') return entry.id;
-    }
-    return null;
+    return lastUserMessageId(this.session);
   }
 
   get availableModels(): TransportModel[] {
@@ -117,7 +122,7 @@ export class SmithPiTransport implements AgentTransport {
 
   get activeModel(): string {
     const model = this.session?.model ?? this.resolvedModel;
-    return model ? `${model.provider}/${model.id}` : this.opts.model;
+    return model ? modelKey(model) : this.opts.model;
   }
 
   get activeReasoningEffort(): ReasoningEffort {
@@ -147,7 +152,11 @@ export class SmithPiTransport implements AgentTransport {
     this.effort = clampEffortToModel(this.opts.reasoningEffort, picked.model);
 
     mkdirSync(this.opts.sessionDir, { recursive: true });
-    const sessionManager = await this.openSessionManager(existingSessionId);
+    const sessionManager = await openOrCreateSessionManager(
+      this.opts.cwd,
+      this.opts.sessionDir,
+      existingSessionId,
+    );
     const agentDir = join(this.opts.supportDir, 'pi');
     const settingsManager = foundrySettings();
     const resourceLoader = foundryResourceLoader({
@@ -173,11 +182,8 @@ export class SmithPiTransport implements AgentTransport {
     });
     if (opened.modelFallbackMessage) this.opts.onModelWarning?.(opened.modelFallbackMessage);
 
-    const session = opened.session;
-    this.session = session;
-    this.unsubscribe = session.subscribe((event) =>
-      this.events.absorb(event, (e) => this.opts.onEvent?.(e)),
-    );
+    this.session = opened.session;
+    this.unsubscribe = subscribeSessionEvents(opened.session, this.events, this.opts.onEvent);
   }
 
   async send(text: string, opts: TurnOptions = {}): Promise<TurnResult> {
@@ -191,16 +197,10 @@ export class SmithPiTransport implements AgentTransport {
 
     // No turn deadline: Smith is interactive, the operator is present, and
     // cancel is the interrupt (deadlines were removed repo-wide with #171).
-    await session.prompt(text, { expandPromptTemplates: false, source: 'extension' });
-    await session.waitForIdle();
-
-    const last = lastAssistantStop(session);
-    if (last?.stopReason === 'error') {
-      throw new Error(last.errorMessage || 'the model ended the turn with an error');
-    }
+    const last = await promptUntilIdle(session, text);
 
     return {
-      text: (session.getLastAssistantText() ?? '').trim(),
+      text: lastAssistantText(session),
       usage: this.events.turnUsage,
       reason: last?.stopReason ?? 'stop',
       interrupted: last?.stopReason === 'aborted',
@@ -213,36 +213,17 @@ export class SmithPiTransport implements AgentTransport {
   }
 
   contextStats(): Promise<ContextStats | null> {
-    const usage = this.session?.getContextUsage();
-    if (!usage) return Promise.resolve(null);
-    const used = usage.tokens ?? 0;
-    return Promise.resolve({
-      used,
-      limit: usage.contextWindow,
-      remaining: Math.max(0, usage.contextWindow - used),
-    });
+    return Promise.resolve(sessionContextStats(this.session));
   }
 
   contextBreakdown(): Promise<ContextBreakdown | null> {
-    const usage = this.session?.getContextUsage();
-    if (!usage) return Promise.resolve(null);
-    const model = this.session?.model ?? this.resolvedModel;
-    const used = usage.tokens ?? 0;
-    return Promise.resolve({
-      modelId: this.activeModel,
-      modelDisplayName: model?.name ?? this.activeModel,
-      contextBudget: usage.contextWindow,
-      usedTokens: used,
-      freeTokens: Math.max(0, usage.contextWindow - used),
-    });
+    return Promise.resolve(
+      sessionContextBreakdown(this.session, this.resolvedModel, this.activeModel),
+    );
   }
 
-  async compact(): Promise<{ removedCount: number } | null> {
-    const session = this.session;
-    if (!session) return null;
-    const before = session.messages.length;
-    await session.compact();
-    return { removedCount: Math.max(0, before - session.messages.length) };
+  compact(): Promise<{ removedCount: number } | null> {
+    return compactSession(this.session);
   }
 
   /** A chat never rewinds; correcting Smith is just the next message. */
@@ -264,36 +245,11 @@ export class SmithPiTransport implements AgentTransport {
     this.unsubscribe = null;
     const session = this.session;
     this.session = null;
-    if (!session) return;
-    try {
-      await session.abort();
-    } catch {
-      // Nothing was running; disposal is what matters.
-    }
-    session.dispose();
+    await closeLiveSession(session);
   }
 
   kill(): void {
     this.closed = true;
     void this.close();
-  }
-
-  /**
-   * Resume the chat's own session file when there is one, otherwise start a
-   * new session in the chat's directory. A missing file is a fresh chat, not
-   * a failure — losing the transcript costs context, refusing to start costs
-   * the conversation.
-   */
-  private async openSessionManager(existingSessionId?: string | null): Promise<SessionManager> {
-    if (existingSessionId) {
-      try {
-        const listed = await SessionManager.list(this.opts.cwd, this.opts.sessionDir);
-        const match = listed.find((entry) => entry.id === existingSessionId);
-        if (match) return SessionManager.open(match.path, this.opts.sessionDir, this.opts.cwd);
-      } catch {
-        // Fall through to a fresh session.
-      }
-    }
-    return SessionManager.create(this.opts.cwd, this.opts.sessionDir);
   }
 }

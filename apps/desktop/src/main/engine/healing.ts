@@ -24,7 +24,7 @@ import type {
 } from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
-import { enforce, snapshot } from './boundary.js';
+import { enforce, snapshot, type Snapshot } from './boundary.js';
 
 /** The one method a healing turn needs; a one-shot session satisfies it. */
 export interface HealingAgent {
@@ -186,16 +186,7 @@ export function healPrompt(input: {
   return lines.join('\n');
 }
 
-/**
- * One bounded heal-then-verify loop.
- *
- * Each pass is a turn, a boundary check, and the same command again. The
- * command is `rerun`'s business rather than this function's, so the caller
- * keeps its own tracing and this stays testable without a tracer. A cancelled
- * run stops at the next boundary: the turn in flight is aborted and no further
- * attempt starts.
- */
-export async function heal(input: {
+interface HealInput {
   phase: string;
   request: string;
   cwd: string;
@@ -208,7 +199,18 @@ export async function heal(input: {
   cancelled: () => boolean;
   /** Reported per pass, so the caller can trace an attempt as it lands. */
   onAttempt?: (attempt: HealAttempt) => void;
-}): Promise<HealOutcome> {
+}
+
+/**
+ * One bounded heal-then-verify loop.
+ *
+ * Each pass is a turn, a boundary check, and the same command again. The
+ * command is `rerun`'s business rather than this function's, so the caller
+ * keeps its own tracing and this stays testable without a tracer. A cancelled
+ * run stops at the next boundary: the turn in flight is aborted and no further
+ * attempt starts.
+ */
+export async function heal(input: HealInput): Promise<HealOutcome> {
   // Every exit aborts the session, including the ones this function does not
   // model: a boundary check, a trace write, or the re-run itself can throw, and
   // an agent left un-aborted on the way out would outlive the phase.
@@ -219,20 +221,29 @@ export async function heal(input: {
   }
 }
 
-async function healLoop(input: {
-  phase: string;
-  request: string;
-  cwd: string;
-  failure: CommandResult;
-  attempts: number;
-  protectedPaths: string[];
-  agent: HealingAgent;
-  rerun: () => Promise<CommandResult>;
-  cancelled: () => boolean;
-  onAttempt?: (attempt: HealAttempt) => void;
-}): Promise<HealOutcome> {
+async function checkHealBoundary(
+  cwd: string,
+  before: Snapshot,
+  protectedPaths: string[],
+): Promise<BoundaryViolation[]> {
+  return (
+    await enforce({
+      cwd,
+      before,
+      writes: null,
+      projectProtected: protectedPaths,
+    })
+  ).violations;
+}
+
+async function healLoop(input: HealInput): Promise<HealOutcome> {
   const attempts: HealAttempt[] = [];
   let last = input.failure;
+
+  const recordAttempt = (record: HealAttempt): void => {
+    attempts.push(record);
+    input.onAttempt?.(record);
+  };
 
   for (let attempt = 1; attempt <= input.attempts; attempt += 1) {
     if (input.cancelled()) {
@@ -260,16 +271,12 @@ async function healLoop(input: {
     } catch (e) {
       // A turn that never answered still may have written; the boundary is
       // enforced either way so a protected path cannot survive on a failure.
-      const violations = (
-        await enforce({
-          cwd: input.cwd,
-          before,
-          writes: null,
-          projectProtected: input.protectedPaths,
-        })
-      ).violations;
-      attempts.push({ attempt, reply: '', result: last, violations });
-      input.onAttempt?.(attempts[attempts.length - 1]!);
+      recordAttempt({
+        attempt,
+        reply: '',
+        result: last,
+        violations: await checkHealBoundary(input.cwd, before, input.protectedPaths),
+      });
       return {
         healed: false,
         attempts,
@@ -278,23 +285,15 @@ async function healLoop(input: {
       };
     }
 
-    const { violations } = await enforce({
-      cwd: input.cwd,
-      before,
-      writes: null,
-      projectProtected: input.protectedPaths,
-    });
+    const violations = await checkHealBoundary(input.cwd, before, input.protectedPaths);
 
     if (input.cancelled()) {
-      attempts.push({ attempt, reply, result: last, violations });
-      input.onAttempt?.(attempts[attempts.length - 1]!);
+      recordAttempt({ attempt, reply, result: last, violations });
       return { healed: false, attempts, result: last, detail: 'cancelled' };
     }
 
     last = await input.rerun();
-    const record: HealAttempt = { attempt, reply, result: last, violations };
-    attempts.push(record);
-    input.onAttempt?.(record);
+    recordAttempt({ attempt, reply, result: last, violations });
 
     if (last.passed) {
       return {

@@ -100,14 +100,12 @@ export function smithListTool(deps: SmithEntityToolDeps): ToolDefinition {
       required: ['kind'],
       additionalProperties: false,
     },
-    execute: (_id, params) => {
+    execute: async (_id, params) => {
       const kind = parseKind(field(params, 'kind'));
-      if (!kind) return Promise.resolve(json({ ok: false, error: 'unknown kind' }));
+      if (!kind) return json({ ok: false, error: 'unknown kind' });
       const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
-      if (!scope.ok) return Promise.resolve(json(scope));
-      return Promise.resolve(
-        json({ ok: true, kind, entities: listEntities(deps.stores, kind, scope.projectId) }),
-      );
+      if (!scope.ok) return json(scope);
+      return json({ ok: true, kind, entities: listEntities(deps.stores, kind, scope.projectId) });
     },
   });
 }
@@ -135,19 +133,17 @@ export function smithShowTool(deps: SmithEntityToolDeps): ToolDefinition {
       required: ['kind', 'name'],
       additionalProperties: false,
     },
-    execute: (_id, params) => {
+    execute: async (_id, params) => {
       const kind = parseKind(field(params, 'kind'));
-      if (!kind) return Promise.resolve(json({ ok: false, error: 'unknown kind' }));
+      if (!kind) return json({ ok: false, error: 'unknown kind' });
       const rawName = field(params, 'name');
       const name = typeof rawName === 'string' ? rawName : '';
-      if (!name) return Promise.resolve(json({ ok: false, error: 'show needs a name' }));
+      if (!name) return json({ ok: false, error: 'show needs a name' });
       const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
-      if (!scope.ok) return Promise.resolve(json(scope));
+      if (!scope.ok) return json(scope);
       const entity = showEntity(deps.stores, kind, name, scope.projectId);
-      if (!entity) {
-        return Promise.resolve(json({ ok: false, error: `no ${kind} named "${name}"` }));
-      }
-      return Promise.resolve(json({ ok: true, kind, entity }));
+      if (!entity) return json({ ok: false, error: `no ${kind} named "${name}"` });
+      return json({ ok: true, kind, entity });
     },
   });
 }

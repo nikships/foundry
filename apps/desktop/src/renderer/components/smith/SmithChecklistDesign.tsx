@@ -218,5 +218,3 @@ export function ChecklistDesign({
     </div>
   );
 }
-
-export default ChecklistDesign;

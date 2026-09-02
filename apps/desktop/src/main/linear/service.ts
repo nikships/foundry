@@ -14,9 +14,10 @@ export class LinearService {
   ) {}
 
   state(): LinearConnectionState {
+    const keySet = this.credentials.has();
     return {
-      keySet: this.credentials.has(),
-      detail: this.credentials.has()
+      keySet,
+      detail: keySet
         ? 'A Linear API key is stored securely on this Mac.'
         : 'No Linear API key is stored.',
     };

@@ -660,24 +660,28 @@ export default function SettingsScreen({
     },
   );
 
+  const runMaintenance = async (work: () => Promise<string>): Promise<void> => {
+    setMaintenanceBusy(true);
+    try {
+      setMaintenanceNote(await work());
+      setErrors([]);
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    } finally {
+      setMaintenanceBusy(false);
+    }
+  };
+
   const applyRetentionAction = useConfirmAction(
     () => {
       const days = settings?.retentionDays;
       return `Apply retention now? This permanently deletes run history older than ${days} day${days === 1 ? '' : 's'}. Trace data cannot be restored.`;
     },
     async (): Promise<void> => {
-      setMaintenanceBusy(true);
-      try {
+      await runMaintenance(async () => {
         const report = await api.maintenance.applyRetention();
-        setMaintenanceNote(
-          `Deleted ${report.runsDeleted} run${report.runsDeleted === 1 ? '' : 's'}.`,
-        );
-        setErrors([]);
-      } catch (e) {
-        setErrors([(e as Error).message]);
-      } finally {
-        setMaintenanceBusy(false);
-      }
+        return `Deleted ${report.runsDeleted} run${report.runsDeleted === 1 ? '' : 's'}.`;
+      });
     },
   );
 
@@ -695,16 +699,10 @@ export default function SettingsScreen({
     'Compact trace databases now? This rewrites SQLite files and can take a moment; leave Foundry open until it finishes.',
     async (): Promise<void> => {
       if (maintenanceBusy) return;
-      setMaintenanceBusy(true);
-      try {
+      await runMaintenance(async () => {
         await api.maintenance.compact();
-        setMaintenanceNote('Trace databases compacted.');
-        setErrors([]);
-      } catch (e) {
-        setErrors([(e as Error).message]);
-      } finally {
-        setMaintenanceBusy(false);
-      }
+        return 'Trace databases compacted.';
+      });
     },
   );
 

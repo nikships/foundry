@@ -7,6 +7,25 @@ import { Button } from '../ui/Button.js';
 import { Dropdown } from '../ui/Dropdown.js';
 import styles from './ManualComposer.module.css';
 
+function IssueList({
+  issues,
+  className,
+}: {
+  issues: ValidationIssue[];
+  className?: string;
+}): React.JSX.Element | null {
+  if (!issues.length) return null;
+  return (
+    <ul className={className ?? styles.issues}>
+      {issues.map((issue, i) => (
+        <li key={i}>
+          <strong>{issue.where}</strong> {issue.message}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function startAvailability(input: {
   hasProject: boolean;
   hasPipeline: boolean;
@@ -206,25 +225,9 @@ export default function ManualComposer({
           </Button>
         </div>
       )}
-      {blockingPreflight.length > 0 && (
-        <ul className={`${styles.issues} ${styles.warn}`}>
-          {blockingPreflight.map((issue, i) => (
-            <li key={i}>
-              <strong>{issue.where}</strong> {issue.message}
-            </li>
-          ))}
-        </ul>
-      )}
+      <IssueList issues={blockingPreflight} className={`${styles.issues} ${styles.warn}`} />
       {startNote && <p className={`${styles.hintLine} faint`}>{startNote}</p>}
-      {issues.length > 0 && (
-        <ul className={styles.issues}>
-          {issues.map((issue, i) => (
-            <li key={i}>
-              <strong>{issue.where}</strong> {issue.message}
-            </li>
-          ))}
-        </ul>
-      )}
+      <IssueList issues={issues} />
       {issues.some((i) => i.message.includes('project command')) && (
         <Button size="sm" className={styles.fix} onClick={openProjectCommands}>
           Open project commands

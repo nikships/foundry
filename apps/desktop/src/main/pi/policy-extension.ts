@@ -74,35 +74,44 @@ export interface FoundryExtensionHandle {
   useSystemPrompt(text: string | null): void;
 }
 
-export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensionHandle {
-  let api: ExtensionAPI | null = null;
-  let pending: SubmissionTool | null = null;
+function makePolicyExtension(
+  decide: FoundryExtensionOptions['decide'],
+  bind?: (pi: ExtensionAPI) => void,
+): {
+  factory: ExtensionFactory;
+  useSystemPrompt(text: string | null): void;
+} {
   const system = systemPromptSlot();
-
-  const install = (tool: SubmissionTool | null): void => {
-    if (!api || !tool) return;
-    api.registerTool(tool.definition);
-  };
-
-  const factory: ExtensionFactory = (pi) => {
-    api = pi;
-    pi.registerTool(reportProgressTool(opts.tools));
-    pi.registerTool(readPhaseContextTool(opts.tools));
-    pi.registerTool(gitDiffTool(opts.tools));
-    install(pending);
-    installPolicy(pi, opts.decide);
-    system.apply(pi);
-  };
-
   return {
-    factory,
-    useEnvelopeTool(tool) {
-      pending = tool;
-      install(tool);
+    factory: (pi) => {
+      bind?.(pi);
+      installPolicy(pi, decide);
+      system.apply(pi);
     },
     useSystemPrompt(text) {
       system.useSystemPrompt(text);
     },
+  };
+}
+
+export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensionHandle {
+  let api: ExtensionAPI | null = null;
+  let pending: SubmissionTool | null = null;
+  const base = makePolicyExtension(opts.decide, (pi) => {
+    api = pi;
+    pi.registerTool(reportProgressTool(opts.tools));
+    pi.registerTool(readPhaseContextTool(opts.tools));
+    pi.registerTool(gitDiffTool(opts.tools));
+    if (pending) pi.registerTool(pending.definition);
+  });
+
+  return {
+    factory: base.factory,
+    useEnvelopeTool(tool) {
+      pending = tool;
+      if (api && tool) api.registerTool(tool.definition);
+    },
+    useSystemPrompt: base.useSystemPrompt,
   };
 }
 
@@ -117,17 +126,9 @@ export function policyOnlyExtension(
   factory: ExtensionFactory;
   useSystemPrompt(text: string | null): void;
 } {
-  const system = systemPromptSlot();
-  return {
-    factory: (pi) => {
-      if (outputTool) pi.registerTool(outputTool.definition);
-      installPolicy(pi, decide);
-      system.apply(pi);
-    },
-    useSystemPrompt(text) {
-      system.useSystemPrompt(text);
-    },
-  };
+  return makePolicyExtension(decide, (pi) => {
+    if (outputTool) pi.registerTool(outputTool.definition);
+  });
 }
 
 /**
@@ -143,17 +144,9 @@ export function smithExtension(opts: {
   factory: ExtensionFactory;
   useSystemPrompt(text: string | null): void;
 } {
-  const system = systemPromptSlot();
-  return {
-    factory: (pi) => {
-      for (const tool of opts.tools) pi.registerTool(tool);
-      installPolicy(pi, opts.decide);
-      system.apply(pi);
-    },
-    useSystemPrompt(text) {
-      system.useSystemPrompt(text);
-    },
-  };
+  return makePolicyExtension(opts.decide, (pi) => {
+    for (const tool of opts.tools) pi.registerTool(tool);
+  });
 }
 
 /**

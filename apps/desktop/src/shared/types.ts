@@ -274,17 +274,12 @@ export function resolveAgentExecution(
   agent: Pick<AgentDef, 'model' | 'reasoningEffort' | 'inheritDefaults'>,
   defaults: { model?: string; reasoningEffort: ReasoningEffort },
 ): { model: string; reasoningEffort: ReasoningEffort } {
+  const defaultModel = defaults.model && defaults.model !== 'inherit' ? defaults.model : 'inherit';
   if (agent.inheritDefaults) {
-    return {
-      model: defaults.model && defaults.model !== 'inherit' ? defaults.model : 'inherit',
-      reasoningEffort: defaults.reasoningEffort,
-    };
+    return { model: defaultModel, reasoningEffort: defaults.reasoningEffort };
   }
   return {
-    model:
-      agent.model === 'inherit' && defaults.model && defaults.model !== 'inherit'
-        ? defaults.model
-        : agent.model,
+    model: agent.model === 'inherit' ? defaultModel : agent.model,
     reasoningEffort: agent.reasoningEffort,
   };
 }

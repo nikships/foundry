@@ -546,14 +546,7 @@ export default function RosterScreen({
           <div className={styles.rosterPage}>
             {/* ── title row ── */}
             <div className={styles.rosterHead}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 'var(--s4)',
-                  minWidth: 0,
-                }}
-              >
+              <div className={styles.rosterHeadLead}>
                 <MarkTrigger draft={draft} size={52} onClick={() => setShowIconPicker(true)} />
                 <div className={styles.rosterHeadMain}>
                   <div className={styles.rosterHeadTitlerow}>

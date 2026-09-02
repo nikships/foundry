@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
-  AgentDef,
-  EnvelopeDef,
-  PipelineDef,
+  SmithActionProposal,
   SmithEntityProposal,
   SmithPrivateDisplay,
   SmithProposal,
@@ -13,7 +11,7 @@ import { api } from '../../api.js';
 import { compareEntities } from '../../view-models/smith-artifact-view.js';
 import QrCode from '../media/QrCode.js';
 import { Button } from '../ui/Button.js';
-import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
+import { EntitySpecDesign, ViewJson } from './SmithEntityDesign.js';
 import styles from './SmithProposalCard.module.css';
 
 export interface SmithNavTarget {
@@ -123,6 +121,10 @@ export default function SmithProposalCard({
     ) : null;
   }
 
+  const onAnswer = (verdict: 'approve' | 'reject' | 'request-changes'): void => {
+    void answer(verdict);
+  };
+
   return proposal.type === 'entity' ? (
     <EntityCard
       proposal={proposal}
@@ -130,50 +132,17 @@ export default function SmithProposalCard({
       error={error}
       compact={compact}
       requestChanges={!!onRequestChanges}
-      onAnswer={(verdict) => void answer(verdict)}
+      onAnswer={onAnswer}
     />
   ) : (
-    <section
-      className={styles.card}
-      aria-labelledby="smith-proposal-title"
-      data-testid="smith-proposal-card"
-    >
-      <header className={styles.header}>
-        <span className={styles.kind}>action</span>
-        <span className={`${styles.mode} ${styles.risk}`}>{proposal.risk}</span>
-        <h2 className={styles.title} id="smith-proposal-title">
-          {proposal.title}
-        </h2>
-      </header>
-      <p className={styles.summary}>{proposal.summary}</p>
-      <p className={styles.scopeNote}>
-        Scope: {proposal.projectId ? `project ${proposal.projectId}` : 'All projects'} · Operation:{' '}
-        <code>{proposal.operation}</code>
-      </p>
-      <pre className={`${styles.spec} selectable`}>{JSON.stringify(proposal.args, null, 2)}</pre>
-      {proposal.secretRequest && (
-        <label className={styles.secretField}>
-          <span>{proposal.secretRequest.label}</span>
-          <input
-            type="password"
-            autoComplete="off"
-            value={secret}
-            placeholder={proposal.secretRequest.placeholder}
-            onChange={(event) => setSecret(event.currentTarget.value)}
-            data-testid="smith-proposal-secret"
-          />
-        </label>
-      )}
-      <CardFooter
-        sending={sending}
-        error={error}
-        approveDisabled={!!proposal.secretRequest && !secret.trim()}
-        approveLabel={
-          proposal.risk === 'destructive' ? 'Approve destructive action' : 'Approve action'
-        }
-        onAnswer={(verdict) => void answer(verdict)}
-      />
-    </section>
+    <ActionCard
+      proposal={proposal}
+      sending={sending}
+      error={error}
+      secret={secret}
+      onSecretChange={setSecret}
+      onAnswer={onAnswer}
+    />
   );
 }
 
@@ -232,21 +201,64 @@ function PrivateDisplayCard({
   );
 }
 
-/** The same read-only design bodies the artifact cards draw — one renderer per concept. */
-function EntityDesignBody({
+function ActionCard({
   proposal,
-  compact,
+  sending,
+  error,
+  secret,
+  onSecretChange,
+  onAnswer,
 }: {
-  proposal: SmithEntityProposal;
-  compact?: boolean;
+  proposal: SmithActionProposal;
+  sending: boolean;
+  error: string;
+  secret: string;
+  onSecretChange: (secret: string) => void;
+  onAnswer: (verdict: 'approve' | 'reject' | 'request-changes') => void;
 }): React.JSX.Element {
-  if (proposal.kind === 'pipeline') {
-    return <PipelineDesign pipeline={proposal.spec as PipelineDef} compact={compact} />;
-  }
-  if (proposal.kind === 'agent') {
-    return <AgentDesign agent={proposal.spec as AgentDef} compact={compact} />;
-  }
-  return <EnvelopeDesign envelope={proposal.spec as EnvelopeDef} compact={compact} />;
+  return (
+    <section
+      className={styles.card}
+      aria-labelledby="smith-proposal-title"
+      data-testid="smith-proposal-card"
+    >
+      <header className={styles.header}>
+        <span className={styles.kind}>action</span>
+        <span className={`${styles.mode} ${styles.risk}`}>{proposal.risk}</span>
+        <h2 className={styles.title} id="smith-proposal-title">
+          {proposal.title}
+        </h2>
+      </header>
+      <p className={styles.summary}>{proposal.summary}</p>
+      <p className={styles.scopeNote}>
+        Scope: {proposal.projectId ? `project ${proposal.projectId}` : 'All projects'} · Operation:{' '}
+        <code>{proposal.operation}</code>
+      </p>
+      <pre className={`${styles.spec} selectable`}>{JSON.stringify(proposal.args, null, 2)}</pre>
+      {proposal.secretRequest && (
+        <label className={styles.secretField}>
+          <span>{proposal.secretRequest.label}</span>
+          <input
+            type="password"
+            autoComplete="off"
+            value={secret}
+            placeholder={proposal.secretRequest.placeholder}
+            onChange={(event) => onSecretChange(event.currentTarget.value)}
+            data-testid="smith-proposal-secret"
+          />
+        </label>
+      )}
+      <CardFooter
+        sending={sending}
+        error={error}
+        approveDisabled={!!proposal.secretRequest && !secret.trim()}
+        approveLabel={
+          proposal.risk === 'destructive' ? 'Approve destructive action' : 'Approve action'
+        }
+        onAnswer={onAnswer}
+      />
+    </section>
+  );
 }
 
 function EntityCard({
@@ -291,7 +303,7 @@ function EntityCard({
           Approving replaces its current definition.
         </p>
       )}
-      <EntityDesignBody proposal={proposal} compact={compact} />
+      <EntitySpecDesign kind={proposal.kind} spec={proposal.spec} compact={compact} />
       {changes.length > 0 && (
         <div className={styles.changes} data-testid="smith-proposal-changes">
           <span className={styles.changesTitle}>What changes</span>

@@ -60,8 +60,8 @@ function proseOf(event: EventRow): string | null {
 }
 
 function EventPayload({ event }: { event: EventRow }): React.JSX.Element | null {
-  const prose = useMemo(() => proseOf(event), [event]);
   if (!Object.keys(event.payload).length) return null;
+  const prose = proseOf(event);
   if (prose === null) return <JsonView value={event.payload} />;
   return (
     <div className={styles.prose}>
@@ -70,6 +70,15 @@ function EventPayload({ event }: { event: EventRow }): React.JSX.Element | null 
         <p className={`faint ${styles.truncated}`}>truncated here, full text in stream.jsonl</p>
       )}
     </div>
+  );
+}
+
+function SectionLabel({ children }: { children: string }): React.JSX.Element {
+  return (
+    <p className={`eyebrow ${styles.sectionLabel}`}>
+      <span className="index">02</span>
+      {children}
+    </p>
   );
 }
 
@@ -222,9 +231,7 @@ export default function PhaseDrawer({
       <div className={`${styles.body} scroll`}>
         {tab === 'timeline' && (
           <>
-            <p className={`eyebrow ${styles.sectionLabel}`}>
-              <span className="index">02</span>Timeline
-            </p>
+            <SectionLabel>Timeline</SectionLabel>
             {liveTailError && (
               <p className={styles.inlineError} role="alert">
                 Live tail: {liveTailError}
@@ -267,17 +274,13 @@ export default function PhaseDrawer({
         )}
         {tab === 'document' && (
           <>
-            <p className={`eyebrow ${styles.sectionLabel}`}>
-              <span className="index">02</span>Document
-            </p>
+            <SectionLabel>Document</SectionLabel>
             <PhaseDocument projectId={projectId} phaseId={phase.phaseId} />
           </>
         )}
         {tab === 'envelope' && (
           <>
-            <p className={`eyebrow ${styles.sectionLabel}`}>
-              <span className="index">02</span>Report
-            </p>
+            <SectionLabel>Report</SectionLabel>
             {envelopes.map((envelope) => (
               <div key={envelope.envelopeId} className={styles.blockCard}>
                 <div className={`spread ${styles.blockHead}`}>
@@ -299,9 +302,7 @@ export default function PhaseDrawer({
         )}
         {tab === 'gates' && (
           <>
-            <p className={`eyebrow ${styles.sectionLabel}`}>
-              <span className="index">02</span>Checks
-            </p>
+            <SectionLabel>Checks</SectionLabel>
             {gates.map((gate) => (
               <div key={gate.id} className={styles.blockCard}>
                 <div className={`spread ${styles.blockHead}`}>
@@ -331,9 +332,7 @@ export default function PhaseDrawer({
         )}
         {tab === 'prompt' && (
           <>
-            <p className={`eyebrow ${styles.sectionLabel}`}>
-              <span className="index">02</span>Prompt
-            </p>
+            <SectionLabel>Prompt</SectionLabel>
             {promptLoading && <p className={`faint ${styles.padded}`}>Loading prompt…</p>}
             {promptError && (
               <p className={`${styles.inlineError} ${styles.padded}`} role="alert">

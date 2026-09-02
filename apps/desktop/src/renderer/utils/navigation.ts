@@ -76,13 +76,17 @@ export const MENU_DESIGN_TABS: Record<string, DesignTab> = {
   'menu:design-envelopes': 'envelopes',
 };
 
+const DESIGN_TAB_FOR_ENTITY = {
+  pipeline: 'pipelines',
+  agent: 'agents',
+  envelope: 'envelopes',
+} as const satisfies Record<'pipeline' | 'agent' | 'envelope', DesignTab>;
+
 /**
  * The Design tab that edits a given entity kind. Smith approves a proposal by
  * kind, and every kind it can write now has a tab, so a deep link stays inside
  * Design instead of routing an envelope into Settings.
  */
 export function designTabForEntity(kind: 'agent' | 'pipeline' | 'envelope'): DesignTab {
-  if (kind === 'pipeline') return 'pipelines';
-  if (kind === 'agent') return 'agents';
-  return 'envelopes';
+  return DESIGN_TAB_FOR_ENTITY[kind];
 }

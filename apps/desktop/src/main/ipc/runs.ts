@@ -32,7 +32,7 @@ import { exportRunPlan } from '../store/export-plan.js';
 import { enabledModelIds } from '../pi/enabled-models.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
-import { notifyRuns, notifySettings, restoreScope, settleHooks } from './shared.js';
+import { notifyRuns, notifySettings, projectTracer, restoreScope, settleHooks } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
@@ -87,10 +87,7 @@ export function runStartDeps(ctx: RunStartContext): StartRunDeps {
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
-  const tracerOf = (projectId: string) => {
-    const project = projectOf(projectId);
-    return project ? { project, tracer: ctx.registry.tracerFor(project) } : null;
-  };
+  const tracerOf = (projectId: string) => projectTracer(ctx, projectId);
 
   // The start path lives in `engine/operations.ts`, shared verbatim with the
   // companion host so a phone-started run is the same run in every respect.

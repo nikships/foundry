@@ -271,6 +271,12 @@
   padding: var(--s8) 0;
   flex-wrap: wrap;
 }
+.roster-head-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+  min-width: 0;
+}
 .avatar-trigger {
   position: relative;
   display: inline-flex;

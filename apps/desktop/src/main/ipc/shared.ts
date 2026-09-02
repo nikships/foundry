@@ -1,4 +1,4 @@
-import type { ValidationIssue } from '@shared/types.js';
+import type { ProjectDef, ValidationIssue } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import type { RestoreScope, RestoreTracer } from '../engine/restore.js';
@@ -45,6 +45,16 @@ export const notifySettings = (ctx: Pick<AppContext, 'broadcast'>): void =>
 
 export const notifyRuns = (ctx: Pick<AppContext, 'broadcast'>): void =>
   ctx.broadcast(IPC.eventRunsChanged);
+
+/** Project plus its tracer, or null when the id is unknown. */
+export function projectTracer(
+  ctx: Pick<AppContext, 'projects' | 'registry'>,
+  projectId: string,
+): { project: ProjectDef; tracer: ReturnType<AppContext['registry']['tracerFor']> } | null {
+  const project = ctx.projects.get(projectId);
+  if (!project) return null;
+  return { project, tracer: ctx.registry.tracerFor(project) };
+}
 
 /**
  * What `listRestorableCheckpoints` / `restoreRun` need from the app.

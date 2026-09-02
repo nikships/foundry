@@ -80,10 +80,11 @@ export function smithProvidersTool(deps: SmithActionToolDeps): ToolDefinition {
       const name = stringField(params, nameField);
       if (!name) return json({ ok: false, error: `${nameField} is required` });
       const channel = ACTION_CHANNELS[op];
+      const label = op.replaceAll('_', ' ');
       return proposeAction(deps, {
         operation: op,
-        title: `${op.replaceAll('_', ' ')} provider`,
-        summary: `${op.replaceAll('_', ' ')} ${name}.`,
+        title: `${label} provider`,
+        summary: `${label} ${name}.`,
         args: { [nameField]: name },
         risk: RISKS[op],
         ...(op === 'set_api_key'
@@ -118,10 +119,11 @@ function linearProviderOperation(
     linear_set_api_key: IPC.linearSetApiKey,
     linear_clear_api_key: IPC.linearClearApiKey,
   }[op];
+  const label = op.replaceAll('_', ' ');
   return proposeAction(deps, {
     operation: op,
-    title: `${op.replaceAll('_', ' ')}`,
-    summary: `${op.replaceAll('_', ' ')}.`,
+    title: label,
+    summary: `${label}.`,
     args: {},
     risk: op === 'linear_test' ? 'external' : 'credential',
     ...(op === 'linear_set_api_key'

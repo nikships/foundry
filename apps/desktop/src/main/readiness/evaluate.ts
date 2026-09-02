@@ -99,6 +99,13 @@ function filesMatching(index: RepoFileIndex, test: (rel: string) => boolean): st
   return [...index.files].filter(test);
 }
 
+function someFile(index: RepoFileIndex, test: (rel: string) => boolean): boolean {
+  for (const rel of index.files) {
+    if (test(rel)) return true;
+  }
+  return false;
+}
+
 function parseJson(text: string | null): Record<string, unknown> | null {
   if (!text) return null;
   try {
@@ -321,7 +328,7 @@ function build(root: string, index: RepoFileIndex, stack: AgentReadyStack): Read
   if (
     stack.languages.includes('swift') &&
     (index.files.has('Package.swift') ||
-      filesMatching(index, (r) => r.endsWith('.xcodeproj/project.pbxproj')).length)
+      someFile(index, (r) => r.endsWith('.xcodeproj/project.pbxproj')))
   ) {
     return criterion('build', 'pass', 'Swift package / Xcode project can be built.', {
       command: 'swift build',
@@ -441,14 +448,14 @@ function templates(index: RepoFileIndex): ReadinessCriterion {
     index.dirs.has('.github/ISSUE_TEMPLATE') ||
     index.files.has('.github/ISSUE_TEMPLATE.md') ||
     index.files.has('ISSUE_TEMPLATE.md') ||
-    filesMatching(index, (rel) => rel.startsWith('.github/ISSUE_TEMPLATE/')).length > 0;
+    someFile(index, (rel) => rel.startsWith('.github/ISSUE_TEMPLATE/'));
   const pr =
     index.files.has('.github/pull_request_template.md') ||
     index.files.has('.github/PULL_REQUEST_TEMPLATE.md') ||
     index.files.has('pull_request_template.md') ||
     index.files.has('PULL_REQUEST_TEMPLATE.md') ||
     index.dirs.has('.github/PULL_REQUEST_TEMPLATE') ||
-    filesMatching(index, (rel) => rel.startsWith('.github/PULL_REQUEST_TEMPLATE/')).length > 0;
+    someFile(index, (rel) => rel.startsWith('.github/PULL_REQUEST_TEMPLATE/'));
   if (issue && pr) {
     return criterion(
       'templates',

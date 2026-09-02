@@ -20,14 +20,20 @@ import {
 import { join } from 'node:path';
 import { pickModel, thinkingLevelFor } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
-import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
+import {
+  foundryResourceLoader,
+  foundrySettings,
+  lastAssistantText,
+  openFoundrySession,
+  promptUntilIdle,
+} from './open-session.js';
 import { evaluate } from './policy.js';
 import { policyOnlyExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { FOUNDRY_ONESHOT_HARNESS } from './system-prompt.js';
 import { BUILTIN_TOOLS, ONESHOT_OUTPUT_TOOL_NAME, READ_ONLY_TOOLS } from './tool-names.js';
 import { submitResultTool, type SubmissionTool } from './tools.js';
-import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
+import { subscribeSessionEvents, VendorEventReader } from './vendor-events.js';
 import type { OneShotFactory, OneShotOptions, OneShotResult, OneShotSession } from './oneshot.js';
 import type { PermissionAsk, PermissionDecision } from './transport.js';
 
@@ -71,23 +77,18 @@ class PiOneShot implements OneShotSession {
       this.extension.useSystemPrompt(this.opts.systemPrompt ?? null);
       this.events.startTurn();
 
-      await session.prompt(prompt, { expandPromptTemplates: false, source: 'extension' });
-      // prompt() already waits through retries. waitForIdle() is the settle API.
-      await session.waitForIdle();
-      await continueWithModelFailover({
-        session,
-        events: this.events,
-        availableModelCount: this.availableModelCount,
-        hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
-        onWarning: (warning) => this.opts.onWarning?.(warning),
-      });
+      const last = await promptUntilIdle(session, prompt, () =>
+        continueWithModelFailover({
+          session,
+          events: this.events,
+          availableModelCount: this.availableModelCount,
+          hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+          onWarning: (warning) => this.opts.onWarning?.(warning),
+        }),
+      );
 
-      const last = lastAssistantStop(session);
-      if (last?.stopReason === 'error') {
-        throw new Error(last.errorMessage || 'the model ended the turn with an error');
-      }
       return {
-        text: (session.getLastAssistantText() ?? '').trim(),
+        text: lastAssistantText(session),
         usage: this.events.turnUsage,
         reason: last?.stopReason ?? 'stop',
         interrupted: last?.stopReason === 'aborted' || this.aborted,
@@ -143,9 +144,7 @@ class PiOneShot implements OneShotSession {
 
     const session = opened.session;
     this.session = session;
-    this.unsubscribe = session.subscribe((event) =>
-      this.events.absorb(event, (e) => this.opts.onEvent?.(e)),
-    );
+    this.unsubscribe = subscribeSessionEvents(session, this.events, this.opts.onEvent);
     return session;
   }
 

@@ -1,6 +1,7 @@
 import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
 import { useApp } from '../../stores/app.js';
 import { resolveAgentMark } from '../../data/emblems.js';
+import { cx } from '../ui/cx.js';
 import { Emblem } from './Emblem.js';
 import styles from './AgentAvatar.module.css';
 
@@ -28,7 +29,7 @@ export default function AgentAvatar({
 
   return (
     <span
-      className={`${styles.avatar} ${showImage ? styles.portrait : ''} ${showGlyph ? styles.glyph : ''}`}
+      className={cx(styles.avatar, showImage && styles.portrait, showGlyph && styles.glyph)}
       style={{
         width: `${size}px`,
         height: `${size}px`,

@@ -11,7 +11,6 @@
  * card, the transcript, or persisted chat state.
  */
 
-import { useMemo } from 'react';
 import type { ProviderStatusDef, ProviderStatusEntry } from '@shared/types.js';
 import {
   bridgeStatusLine,
@@ -78,8 +77,8 @@ export function ProviderStatusDesign({
   status: ProviderStatusDef;
   compact?: boolean;
 }): React.JSX.Element {
-  const summary = useMemo(() => providerStatusSummary(status), [status]);
-  const bridgeLine = useMemo(() => bridgeStatusLine(status), [status]);
+  const summary = providerStatusSummary(status);
+  const bridgeLine = bridgeStatusLine(status);
   const providers = status.providers ?? [];
   const devices = status.companion?.devices ?? [];
 
@@ -174,5 +173,3 @@ export function ProviderStatusDesign({
     </div>
   );
 }
-
-export default ProviderStatusDesign;

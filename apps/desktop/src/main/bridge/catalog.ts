@@ -99,11 +99,9 @@ export function parseCliproxyCatalog(value: unknown): CliproxyCatalog {
   const out: CliproxyCatalog = {};
   for (const [channel, entries] of Object.entries(value)) {
     if (!Array.isArray(entries)) continue;
-    const models: CliproxyModel[] = [];
-    for (const entry of entries) {
-      const model = asCliproxyModel(entry);
-      if (model) models.push(model);
-    }
+    const models = entries
+      .map(asCliproxyModel)
+      .filter((model): model is CliproxyModel => model !== null);
     if (models.length) out[channel] = models;
   }
   return out;

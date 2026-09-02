@@ -118,7 +118,7 @@ export function Dropdown({
 
   const selected = useMemo(() => options.find((o) => o.value === value) ?? null, [options, value]);
   const enabledIndexes = useMemo(
-    () => options.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0),
+    () => options.flatMap((option, index) => (option.disabled ? [] : [index])),
     [options],
   );
 
@@ -358,21 +358,13 @@ export function Dropdown({
                     data-index={index}
                     aria-selected={isSelected}
                     aria-disabled={option.disabled || undefined}
-                    className={
-                      option.render
-                        ? cx(
-                            styles.customOption,
-                            isActive && styles.active,
-                            option.disabled && styles.disabled,
-                          )
-                        : cx(
-                            styles.option,
-                            isSelected && styles.selected,
-                            isActive && styles.active,
-                            option.disabled && styles.disabled,
-                            Boolean(option.description) && styles.rich,
-                          )
-                    }
+                    className={cx(
+                      option.render ? styles.customOption : styles.option,
+                      isActive && styles.active,
+                      option.disabled && styles.disabled,
+                      !option.render && isSelected && styles.selected,
+                      !option.render && Boolean(option.description) && styles.rich,
+                    )}
                     onMouseEnter={() => {
                       if (!option.disabled) setActiveIndex(index);
                     }}

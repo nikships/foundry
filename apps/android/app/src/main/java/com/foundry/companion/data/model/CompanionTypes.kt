@@ -105,6 +105,11 @@ data class RunRow(
     val isRunning: Boolean get() = status.equals("running", ignoreCase = true)
     val effectiveStartedAt: String get() = startedAt.ifEmpty { createdAt }
     val effectiveEndedAt: String? get() = endedAt ?: finishedAt
+    val sourceBadges: List<String>
+        get() = buildList {
+            if (orchestrated) add("ORCH")
+            source?.snapshot?.let { add(it.identifier) }
+        }
 }
 
 @Serializable
@@ -130,6 +135,12 @@ data class PhaseRunSummary(
     val resolvedId: String get() = id.ifBlank { phaseId }
 
     val isRunning: Boolean get() = status.equals("running", ignoreCase = true)
+
+    val accessibilityLabel: String
+        get() {
+            val attemptSuffix = if (attempt > 1) ", attempt $attempt" else ""
+            return "Phase $name, $status$attemptSuffix"
+        }
 }
 
 @Serializable
@@ -190,6 +201,12 @@ data class EventRow(
         }
     }
 
+    private val nameColonSplit: Pair<String, String>? get() {
+        val colon = name.indexOf(": ")
+        if (colon <= 0) return null
+        return name.substring(0, colon) to name.substring(colon + 2)
+    }
+
     val commandString: String get() {
         val fromArgs = payload.objOrNull("args")?.stringOrNull("command")
         if (!fromArgs.isNullOrBlank()) return fromArgs
@@ -197,18 +214,13 @@ data class EventRow(
         if (argv != null) {
             return argv.joinToString(" ") { (it as? JsonPrimitive)?.contentOrNull.orEmpty() }
         }
-        val colon = name.indexOf(": ")
-        return if (colon > 0) name.substring(colon + 2) else name
+        return nameColonSplit?.second ?: name
     }
 
-    val toolName: String get() {
-        val colon = name.indexOf(": ")
-        return if (colon > 0) name.substring(0, colon) else name
-    }
+    val toolName: String get() = nameColonSplit?.first ?: name
 
     val toolSummary: String get() {
-        val colon = name.indexOf(": ")
-        if (colon > 0) return name.substring(colon + 2)
+        nameColonSplit?.second?.let { return it }
         val argsObj = payload.objOrNull("args")
         if (argsObj != null) {
             val parts = mutableListOf<String>()
@@ -419,6 +431,19 @@ data class TranscriptEvent(
     val isSuccess: Boolean? = null,
     val toolArgs: String? = null,
     val toolOutput: String? = null
+)
+
+internal fun EventRow.toTranscriptEvent(): TranscriptEvent = TranscriptEvent(
+    id = eventId.ifBlank { "ev_$rowid" },
+    phaseId = phaseId.orEmpty(),
+    type = type,
+    timestamp = startedAt,
+    content = textContent.ifBlank { name },
+    toolName = toolName,
+    durationMs = null,
+    isSuccess = !isError,
+    toolArgs = payload["args"]?.toString(),
+    toolOutput = resultText
 )
 
 @Serializable
@@ -938,11 +963,6 @@ internal fun JsonObject.longOrNull(key: String): Long? {
 }
 
 internal fun JsonObject.intOrNull(key: String): Int? = longOrNull(key)?.toInt()
-
-internal fun JsonObject.doubleOrNull(key: String): Double? {
-    val el = this[key] as? JsonPrimitive ?: return null
-    return el.doubleOrNull ?: el.contentOrNull?.toDoubleOrNull()
-}
 
 internal fun JsonObject.arrayOrEmpty(key: String): List<JsonElement> =
     (this[key] as? JsonArray)?.toList().orEmpty()

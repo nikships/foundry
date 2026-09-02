@@ -64,8 +64,6 @@ export interface StartRunDeps {
   };
 }
 
-const noIssues: ValidationIssue[] = [];
-
 function startError(where: string, message: string): StartRunOutcome {
   return { ok: false, issues: [{ level: 'error', where, message }] };
 }
@@ -163,13 +161,14 @@ export async function startRun(
         scaffold: project.scaffold === true,
       })
     : null;
-  const issues = checkedPlan
-    ? checkedPlan.ok
-      ? checkedPlan.warnings
-      : checkedPlan.issues
-    : preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
-        scaffold: project.scaffold === true,
-      });
+  let issues: ValidationIssue[];
+  if (checkedPlan) {
+    issues = checkedPlan.ok ? checkedPlan.warnings : checkedPlan.issues;
+  } else {
+    issues = preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
+      scaffold: project.scaffold === true,
+    });
+  }
   if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
   const runId = deps.registry.start({
     project,
@@ -180,7 +179,7 @@ export async function startRun(
     plan,
     source,
   });
-  return { ok: true, runId, issues: noIssues };
+  return { ok: true, runId, issues: [] };
 }
 
 export const emptyRunDetail: RunDetail = {

@@ -7,6 +7,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -159,6 +161,13 @@ class HttpCompanionRepository(
         startAutoReconnect(session)
     }
 
+    private fun noteReconnectFailure(session: PairedSession) {
+        consecutiveFailures++
+        if (consecutiveFailures >= 3) {
+            _connectionStatus.value = ConnectionStatus.Offline(session.desktopName, session.hostOrigin)
+        }
+    }
+
     private fun startAutoReconnect(session: PairedSession) {
         if (reconnectJob?.isActive == true) return
         reconnectJob = coroutineScope.launch {
@@ -177,492 +186,217 @@ class HttpCompanionRepository(
                         handleUnauthorized()
                         break
                     } else {
-                        consecutiveFailures++
-                        if (consecutiveFailures >= 3) {
-                            _connectionStatus.value = ConnectionStatus.Offline(session.desktopName, session.hostOrigin)
-                        }
+                        noteReconnectFailure(session)
                     }
                 } catch (_: Exception) {
-                    consecutiveFailures++
-                    if (consecutiveFailures >= 3) {
-                        _connectionStatus.value = ConnectionStatus.Offline(session.desktopName, session.hostOrigin)
-                    }
+                    noteReconnectFailure(session)
                 }
                 backoffDelay = minOf(15000L, backoffDelay * 2)
             }
         }
     }
 
-    override suspend fun getSessionInfo(): Result<CompanionSessionInfo> = withContext(Dispatchers.IO) {
+    private fun Request.Builder.postJson(body: String = "{}"): Request.Builder =
+        post(body.toRequestBody(jsonMediaType))
+
+    private suspend fun <T> authenticatedCall(
+        path: String,
+        configure: (Request.Builder) -> Request.Builder,
+        decode: (String) -> T
+    ): Result<T> = withContext(Dispatchers.IO) {
         try {
-            val request = authenticatedRequestBuilder("/v1/session").get().build()
+            val request = configure(authenticatedRequestBuilder(path)).build()
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(handleResponseError(response.code, body))
+            }
             consecutiveFailures = 0
+            Result.success(decode(body))
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun <T> getJson(path: String, serializer: KSerializer<T>): Result<T> =
+        authenticatedCall(path, { it.get() }) { json.decodeFromString(serializer, it) }
+
+    private suspend fun <T> postJson(
+        path: String,
+        serializer: KSerializer<T>,
+        body: String = "{}"
+    ): Result<T> =
+        authenticatedCall(path, { it.postJson(body) }) { json.decodeFromString(serializer, it) }
+
+    private fun <T> encode(serializer: KSerializer<T>, value: T): String =
+        json.encodeToString(serializer, value)
+
+    private fun scopedProjectId(projectId: String?): String? =
+        projectId?.takeIf { it.isNotBlank() }
+
+    override suspend fun getSessionInfo(): Result<CompanionSessionInfo> {
+        val result = getJson("/v1/session", CompanionSessionInfo.serializer())
+        if (result.isSuccess) {
             val session = _activeSession.value
             if (session != null && _connectionStatus.value !is ConnectionStatus.Connected) {
                 _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
             }
-            Result.success(json.decodeFromString(CompanionSessionInfo.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
         }
+        return result
     }
 
-    override suspend fun getProjects(): Result<List<CompanionProjectSummary>> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/projects").get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val projects = json.decodeFromString<List<CompanionProjectSummary>>(body)
-            Result.success(projects)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    override suspend fun getProjects(): Result<List<CompanionProjectSummary>> =
+        getJson("/v1/projects", ListSerializer(CompanionProjectSummary.serializer()))
 
-    override suspend fun getRuns(projectId: String): Result<List<RunRow>> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs").get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val runs = json.decodeFromString<List<RunRow>>(body)
-            Result.success(runs)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    override suspend fun getRuns(projectId: String): Result<List<RunRow>> =
+        getJson("/v1/projects/$projectId/runs", ListSerializer(RunRow.serializer()))
 
-    override suspend fun getRunDetail(projectId: String, runId: String): Result<RunDetail> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId").get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val host = json.decodeFromString(HostRunDetail.serializer(), body)
-            // The desktop answers 200 with `run: null` for a run it does not have,
-            // so a missing run is a body shape rather than a status code.
-            val detail = RunDetailMapper.map(host)
-                ?: return@withContext Result.failure(RunNotFoundException(runId))
-            Result.success(detail)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
+    override suspend fun getRunDetail(projectId: String, runId: String): Result<RunDetail> {
+        val result = getJson("/v1/projects/$projectId/runs/$runId", HostRunDetail.serializer())
+        val host = result.getOrElse { return Result.failure(it) }
+        // The desktop answers 200 with `run: null` for a run it does not have,
+        // so a missing run is a body shape rather than a status code.
+        val detail = RunDetailMapper.map(host) ?: return Result.failure(RunNotFoundException(runId))
+        return Result.success(detail)
     }
 
     override suspend fun getEventPage(
         projectId: String,
         runId: String,
         after: Long
-    ): Result<EventPage> = withContext(Dispatchers.IO) {
-        try {
-            val url = if (after > 0) "/v1/projects/$projectId/runs/$runId/events?after=$after"
-            else "/v1/projects/$projectId/runs/$runId/events"
-            val request = authenticatedRequestBuilder(url).get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val eventPage = json.decodeFromString(EventPage.serializer(), body)
-            Result.success(eventPage)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
+    ): Result<EventPage> {
+        val url = if (after > 0) "/v1/projects/$projectId/runs/$runId/events?after=$after"
+        else "/v1/projects/$projectId/runs/$runId/events"
+        return getJson(url, EventPage.serializer())
     }
 
     override suspend fun getTranscriptEvents(
         projectId: String,
         runId: String,
         phaseId: String
-    ): Result<List<TranscriptEvent>> = withContext(Dispatchers.IO) {
-        try {
-            val res = getEventPage(projectId, runId, 0L)
-            if (res.isSuccess) {
-                val page = res.getOrThrow()
-                val phaseEvents = if (phaseId.isBlank()) page.events else page.events.filter { it.phaseId == phaseId }
-                val transcriptEvents = phaseEvents.map { ev ->
-                    TranscriptEvent(
-                        id = ev.eventId.ifBlank { "ev_${ev.rowid}" },
-                        phaseId = ev.phaseId.orEmpty(),
-                        type = ev.type,
-                        timestamp = ev.startedAt,
-                        content = ev.textContent.ifBlank { ev.name },
-                        toolName = ev.toolName,
-                        durationMs = null,
-                        isSuccess = !ev.isError,
-                        toolArgs = ev.payload["args"]?.toString(),
-                        toolOutput = ev.resultText
-                    )
-                }
-                Result.success(transcriptEvents)
-            } else {
-                Result.failure(res.exceptionOrNull() ?: IOException("Failed to fetch events"))
-            }
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
+    ): Result<List<TranscriptEvent>> {
+        return getEventPage(projectId, runId, 0L).map { page ->
+            val phaseEvents = if (phaseId.isBlank()) page.events else page.events.filter { it.phaseId == phaseId }
+            phaseEvents.map { it.toTranscriptEvent() }
         }
     }
 
-    override suspend fun startRun(input: StartRunInput): Result<CompanionStartResult> = withContext(Dispatchers.IO) {
-        try {
-            val reqBody = json.encodeToString(StartRunInput.serializer(), input).toRequestBody(jsonMediaType)
-            val request = authenticatedRequestBuilder("/v1/runs").post(reqBody).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val res = json.decodeFromString(CompanionStartResult.serializer(), body)
-            Result.success(res)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    override suspend fun startRun(input: StartRunInput): Result<CompanionStartResult> =
+        postJson("/v1/runs", CompanionStartResult.serializer(), encode(StartRunInput.serializer(), input))
 
     override suspend fun getOrchestratorOptions(): Result<OrchestratorOptions> =
-        withContext(Dispatchers.IO) {
-            try {
-                val request = authenticatedRequestBuilder("/v1/orchestrator/options").get().build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(handleResponseError(response.code, body))
-                }
-                consecutiveFailures = 0
-                Result.success(json.decodeFromString(OrchestratorOptions.serializer(), body))
-            } catch (e: Exception) {
-                handleNetworkError(e)
-                Result.failure(e)
-            }
-        }
+        getJson("/v1/orchestrator/options", OrchestratorOptions.serializer())
 
     override suspend fun startOrchestratorPlan(
         request: OrchestratorStartRequest
-    ): Result<OrchestratorStartResult> = withContext(Dispatchers.IO) {
-        try {
-            val requestBody = json.encodeToString(
-                OrchestratorStartRequest.serializer(),
-                request
-            ).toRequestBody(jsonMediaType)
-            val httpRequest = authenticatedRequestBuilder("/v1/orchestrator/plans")
-                .post(requestBody)
-                .build()
-            val response = client.newCall(httpRequest).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(handleResponseError(response.code, body))
-            }
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(OrchestratorStartResult.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    ): Result<OrchestratorStartResult> =
+        postJson(
+            "/v1/orchestrator/plans",
+            OrchestratorStartResult.serializer(),
+            encode(OrchestratorStartRequest.serializer(), request)
+        )
 
     override suspend fun getOrchestratorPlan(planId: String): Result<OrchestratorState> =
-        withContext(Dispatchers.IO) {
-            try {
-                val request = authenticatedRequestBuilder("/v1/orchestrator/plans/$planId")
-                    .get()
-                    .build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(handleResponseError(response.code, body))
-                }
-                consecutiveFailures = 0
-                Result.success(json.decodeFromString(OrchestratorState.serializer(), body))
-            } catch (e: Exception) {
-                handleNetworkError(e)
-                Result.failure(e)
-            }
-        }
+        getJson("/v1/orchestrator/plans/$planId", OrchestratorState.serializer())
 
     override suspend fun cancelOrchestratorPlan(planId: String): Result<Boolean> =
-        withContext(Dispatchers.IO) {
-            try {
-                val request = authenticatedRequestBuilder(
-                    "/v1/orchestrator/plans/$planId/cancel"
-                ).post("{}".toRequestBody(jsonMediaType)).build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(handleResponseError(response.code, body))
-                }
-                consecutiveFailures = 0
-                Result.success(json.decodeFromString(CompanionKillResult.serializer(), body).ok)
-            } catch (e: Exception) {
-                handleNetworkError(e)
-                Result.failure(e)
-            }
-        }
+        authenticatedCall(
+            "/v1/orchestrator/plans/$planId/cancel",
+            { it.postJson() }
+        ) { json.decodeFromString(CompanionKillResult.serializer(), it).ok }
 
     override suspend fun getLinearState(): Result<LinearConnectionState> =
-        withContext(Dispatchers.IO) {
-            try {
-                val request = authenticatedRequestBuilder("/v1/linear").get().build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(handleResponseError(response.code, body))
-                }
-                consecutiveFailures = 0
-                Result.success(json.decodeFromString(LinearConnectionState.serializer(), body))
-            } catch (e: Exception) {
-                handleNetworkError(e)
-                Result.failure(e)
-            }
-        }
+        getJson("/v1/linear", LinearConnectionState.serializer())
 
     override suspend fun searchLinearIssues(
         query: String
-    ): Result<List<LinearIssueSnapshot>> = withContext(Dispatchers.IO) {
-        try {
-            val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
-            val request = authenticatedRequestBuilder("/v1/linear/issues?query=$encoded")
-                .get()
-                .build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(handleResponseError(response.code, body))
-            }
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString<List<LinearIssueSnapshot>>(body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
+    ): Result<List<LinearIssueSnapshot>> {
+        val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
+        return getJson("/v1/linear/issues?query=$encoded", ListSerializer(LinearIssueSnapshot.serializer()))
     }
 
     override suspend fun getLinearWorkflowStates(
         teamId: String
-    ): Result<List<LinearWorkflowState>> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder(
-                "/v1/linear/teams/$teamId/workflow-states"
-            ).get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(handleResponseError(response.code, body))
-            }
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString<List<LinearWorkflowState>>(body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    ): Result<List<LinearWorkflowState>> =
+        getJson(
+            "/v1/linear/teams/$teamId/workflow-states",
+            ListSerializer(LinearWorkflowState.serializer())
+        )
 
     override suspend fun startLinearRun(
         input: LinearStartRunInput
-    ): Result<CompanionStartResult> = withContext(Dispatchers.IO) {
-        try {
-            val requestBody = json.encodeToString(
-                LinearStartRunInput.serializer(),
-                input
-            ).toRequestBody(jsonMediaType)
-            val request = authenticatedRequestBuilder("/v1/linear/runs")
-                .post(requestBody)
-                .build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(handleResponseError(response.code, body))
-            }
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(CompanionStartResult.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    ): Result<CompanionStartResult> =
+        postJson(
+            "/v1/linear/runs",
+            CompanionStartResult.serializer(),
+            encode(LinearStartRunInput.serializer(), input)
+        )
 
-    override suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId/kill")
-                .post("{}".toRequestBody(jsonMediaType))
-                .build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val res = json.decodeFromString(CompanionKillResult.serializer(), body)
-            Result.success(res)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    override suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult> =
+        postJson("/v1/projects/$projectId/runs/$runId/kill", CompanionKillResult.serializer())
 
-    override suspend fun continueRun(projectId: String, runId: String): Result<CompanionContinueResult> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId/continue")
-                .post("{}".toRequestBody(jsonMediaType))
-                .build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(CompanionContinueResult.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    override suspend fun continueRun(projectId: String, runId: String): Result<CompanionContinueResult> =
+        postJson("/v1/projects/$projectId/runs/$runId/continue", CompanionContinueResult.serializer())
 
     override suspend fun getRestorableCheckpoints(
         projectId: String,
         runId: String
-    ): Result<RestorableCheckpointList> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder(
-                "/v1/projects/$projectId/runs/$runId/checkpoints"
-            ).get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(handleResponseError(response.code, body))
-            }
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(RestorableCheckpointList.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    ): Result<RestorableCheckpointList> =
+        getJson(
+            "/v1/projects/$projectId/runs/$runId/checkpoints",
+            RestorableCheckpointList.serializer()
+        )
 
     override suspend fun restoreCheckpoint(
         projectId: String,
         runId: String,
         request: RestoreCheckpointRequest
-    ): Result<RestoreResult> = withContext(Dispatchers.IO) {
-        try {
-            val requestBody = json.encodeToString(
-                RestoreCheckpointRequest.serializer(),
-                request
-            ).toRequestBody(jsonMediaType)
-            val httpRequest = authenticatedRequestBuilder(
-                "/v1/projects/$projectId/runs/$runId/restore"
-            ).post(requestBody).build()
-            val response = client.newCall(httpRequest).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(handleResponseError(response.code, body))
-            }
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(RestoreResult.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    ): Result<RestoreResult> =
+        postJson(
+            "/v1/projects/$projectId/runs/$runId/restore",
+            RestoreResult.serializer(),
+            encode(RestoreCheckpointRequest.serializer(), request)
+        )
 
-    override suspend fun getPrStatus(projectId: String): Result<GhStatus> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/projects/$projectId/pr-status").get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val res = json.decodeFromString(GhStatus.serializer(), body)
-            Result.success(res)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    override suspend fun getPrStatus(projectId: String): Result<GhStatus> =
+        getJson("/v1/projects/$projectId/pr-status", GhStatus.serializer())
 
     override suspend fun getPrDraft(
         projectId: String,
         runId: String
-    ): Result<CompanionPrDraft> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId/pr-draft")
-                .get()
-                .build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val res = json.decodeFromString(CompanionPrDraft.serializer(), body)
-            Result.success(res)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    ): Result<CompanionPrDraft> =
+        getJson("/v1/projects/$projectId/runs/$runId/pr-draft", CompanionPrDraft.serializer())
 
     override suspend fun createPr(
         projectId: String,
         runId: String,
         request: CompanionPrCreateRequest
-    ): Result<PrAction> = withContext(Dispatchers.IO) {
-        try {
-            val reqBody = json.encodeToString(CompanionPrCreateRequest.serializer(), request).toRequestBody(jsonMediaType)
-            val req = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId/pr").post(reqBody).build()
-            val response = client.newCall(req).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val res = json.decodeFromString(PrAction.serializer(), body)
-            Result.success(res)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    ): Result<PrAction> =
+        postJson(
+            "/v1/projects/$projectId/runs/$runId/pr",
+            PrAction.serializer(),
+            encode(CompanionPrCreateRequest.serializer(), request)
+        )
 
-    override suspend fun getSmithState(projectId: String?): Result<SmithChatState> = withContext(Dispatchers.IO) {
-        try {
-            val path = if (projectId.isNullOrBlank()) "/v1/smith" else "/v1/smith?projectId=$projectId"
-            val request = authenticatedRequestBuilder(path).get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(SmithChatState.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
+    override suspend fun getSmithState(projectId: String?): Result<SmithChatState> {
+        val path = if (projectId.isNullOrBlank()) "/v1/smith" else "/v1/smith?projectId=$projectId"
+        return getJson(path, SmithChatState.serializer())
     }
 
     override suspend fun sendSmith(
         projectId: String?,
         text: String,
         screen: SmithScreenContext
-    ): Result<SmithChatState> = withContext(Dispatchers.IO) {
-        try {
-            val reqBody = json.encodeToString(
+    ): Result<SmithChatState> =
+        postJson(
+            "/v1/smith/send",
+            SmithChatState.serializer(),
+            encode(
                 SmithSendRequest.serializer(),
-                SmithSendRequest(projectId = projectId?.takeIf { it.isNotBlank() }, text = text, screen = screen)
-            ).toRequestBody(jsonMediaType)
-            val request = authenticatedRequestBuilder("/v1/smith/send").post(reqBody).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(SmithChatState.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+                SmithSendRequest(projectId = scopedProjectId(projectId), text = text, screen = screen)
+            )
+        )
 
     override suspend fun cancelSmith(projectId: String?): Result<SmithChatState> =
         postSmithScope("/v1/smith/cancel", projectId)
@@ -671,115 +405,53 @@ class HttpCompanionRepository(
         postSmithScope("/v1/smith/new", projectId)
 
     private suspend fun postSmithScope(path: String, projectId: String?): Result<SmithChatState> =
-        withContext(Dispatchers.IO) {
-            try {
-                val reqBody = json.encodeToString(
-                    SmithScopeRequest.serializer(),
-                    SmithScopeRequest(projectId = projectId?.takeIf { it.isNotBlank() })
-                ).toRequestBody(jsonMediaType)
-                val request = authenticatedRequestBuilder(path).post(reqBody).build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-                consecutiveFailures = 0
-                Result.success(json.decodeFromString(SmithChatState.serializer(), body))
-            } catch (e: Exception) {
-                handleNetworkError(e)
-                Result.failure(e)
-            }
-        }
+        postJson(
+            path,
+            SmithChatState.serializer(),
+            encode(
+                SmithScopeRequest.serializer(),
+                SmithScopeRequest(projectId = scopedProjectId(projectId))
+            )
+        )
 
-    override suspend fun getSmithProposals(): Result<List<SmithProposal>> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/smith/proposals").get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(SmithProposal.serializer()), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+    override suspend fun getSmithProposals(): Result<List<SmithProposal>> =
+        getJson("/v1/smith/proposals", ListSerializer(SmithProposal.serializer()))
 
     override suspend fun answerSmithProposal(
         id: String,
         answer: SmithProposalAnswer
-    ): Result<SmithProposalAnswerResult> = withContext(Dispatchers.IO) {
-        try {
-            val reqBody = json.encodeToString(
+    ): Result<SmithProposalAnswerResult> =
+        postJson(
+            "/v1/smith/proposals/answer",
+            SmithProposalAnswerResult.serializer(),
+            encode(
                 SmithProposalAnswerRequest.serializer(),
                 SmithProposalAnswerRequest(id = id, answer = answer)
-            ).toRequestBody(jsonMediaType)
-            val request = authenticatedRequestBuilder("/v1/smith/proposals/answer").post(reqBody).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            Result.success(json.decodeFromString(SmithProposalAnswerResult.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun getSmithModels(): Result<List<SmithModelInfo>> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/smith/models").get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            Result.success(
-                json.decodeFromString(
-                    kotlinx.serialization.builtins.ListSerializer(SmithModelInfo.serializer()),
-                    body
-                )
             )
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
+        )
+
+    override suspend fun getSmithModels(): Result<List<SmithModelInfo>> =
+        getJson("/v1/smith/models", ListSerializer(SmithModelInfo.serializer()))
 
     override suspend fun setSmithModel(projectId: String?, model: String): Result<SmithChatState> =
-        withContext(Dispatchers.IO) {
-            try {
-                val reqBody = json.encodeToString(
-                    SmithModelRequest.serializer(),
-                    SmithModelRequest(projectId = projectId?.takeIf { it.isNotBlank() }, model = model)
-                ).toRequestBody(jsonMediaType)
-                val request = authenticatedRequestBuilder("/v1/smith/model").post(reqBody).build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-                consecutiveFailures = 0
-                Result.success(json.decodeFromString(SmithChatState.serializer(), body))
-            } catch (e: Exception) {
-                handleNetworkError(e)
-                Result.failure(e)
-            }
-        }
+        postJson(
+            "/v1/smith/model",
+            SmithChatState.serializer(),
+            encode(
+                SmithModelRequest.serializer(),
+                SmithModelRequest(projectId = scopedProjectId(projectId), model = model)
+            )
+        )
 
     override suspend fun setSmithEffort(projectId: String?, effort: String): Result<SmithChatState> =
-        withContext(Dispatchers.IO) {
-            try {
-                val reqBody = json.encodeToString(
-                    SmithEffortRequest.serializer(),
-                    SmithEffortRequest(projectId = projectId?.takeIf { it.isNotBlank() }, effort = effort)
-                ).toRequestBody(jsonMediaType)
-                val request = authenticatedRequestBuilder("/v1/smith/effort").post(reqBody).build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-                consecutiveFailures = 0
-                Result.success(json.decodeFromString(SmithChatState.serializer(), body))
-            } catch (e: Exception) {
-                handleNetworkError(e)
-                Result.failure(e)
-            }
-        }
+        postJson(
+            "/v1/smith/effort",
+            SmithChatState.serializer(),
+            encode(
+                SmithEffortRequest.serializer(),
+                SmithEffortRequest(projectId = scopedProjectId(projectId), effort = effort)
+            )
+        )
 
     override suspend fun retryConnection() {
         val session = _activeSession.value ?: return

@@ -130,17 +130,20 @@ function AppInner(): React.JSX.Element {
     });
   }, [showToast]);
 
+  const openDesignTarget = useCallback((target: SmithNavTarget): void => {
+    setSmithNav({ ...target, nonce: Date.now() });
+    setDesignTab(designTabForEntity(target.kind));
+    setView('design');
+  }, []);
+
   // Refresh all registries after any Smith action. Entity completions also open
   // the saved item after refreshAll has loaded its current scope.
   const onSmithCompleted = useCallback(
     async (target?: SmithNavTarget): Promise<void> => {
       await refreshAll();
-      if (!target) return;
-      setSmithNav({ ...target, nonce: Date.now() });
-      setDesignTab(designTabForEntity(target.kind));
-      setView('design');
+      if (target) openDesignTarget(target);
     },
-    [refreshAll],
+    [openDesignTarget, refreshAll],
   );
 
   /**
@@ -162,11 +165,9 @@ function AppInner(): React.JSX.Element {
         setView('runs');
         return;
       }
-      setSmithNav({ kind: link.entity, name: link.name, nonce: Date.now() });
-      setDesignTab(designTabForEntity(link.entity));
-      setView('design');
+      openDesignTarget({ kind: link.entity, name: link.name });
     },
-    [projects, selectProject],
+    [openDesignTarget, projects, selectProject],
   );
 
   const handleUpdateRetry = useCallback(async (): Promise<void> => {

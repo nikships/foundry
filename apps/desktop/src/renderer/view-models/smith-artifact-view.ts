@@ -75,6 +75,10 @@ export function isRenderableArtifact(artifact: SmithArtifact): boolean {
   );
 }
 
+function trimmed(value: string | undefined | null): string {
+  return value?.trim() ?? '';
+}
+
 export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   pipeline_design: 'pipeline design',
   agent_design: 'agent design',
@@ -199,9 +203,8 @@ export function projectCardScopesLabel(scopes?: ProjectCardScopes): string {
 }
 
 export function projectCardSummary(project: ProjectCardDef): string {
-  if (project.summary && project.summary.trim()) {
-    return project.summary.trim();
-  }
+  const summary = trimmed(project.summary);
+  if (summary) return summary;
   const parts: string[] = [project.baseRef];
   if (project.commands && project.commands.length > 0) {
     parts.push(`${project.commands.length} command${project.commands.length === 1 ? '' : 's'}`);
@@ -282,9 +285,8 @@ export function changeReceiptStatusLabel(status: ChangeReceiptStatus): string {
 }
 
 export function changeReceiptSummary(receipt: ChangeReceiptDef): string {
-  if (receipt.summary && receipt.summary.trim()) {
-    return receipt.summary.trim();
-  }
+  const summary = trimmed(receipt.summary);
+  if (summary) return summary;
   const parts: string[] = [];
   if (receipt.filesChanged && receipt.filesChanged.length > 0) {
     parts.push(
@@ -393,13 +395,14 @@ export function criterionLabel(id: string): string {
  */
 export function journeyMarkerVerdict(journey: ReadinessJourneyDef): string {
   if (journey.marker.valid) {
-    return journey.marker.summary?.trim() || 'The committed marker says this repository is ready.';
+    return trimmed(journey.marker.summary) || 'The committed marker says this repository is ready.';
   }
-  return journey.marker.detail?.trim() || 'No valid marker on the base ref.';
+  return trimmed(journey.marker.detail) || 'No valid marker on the base ref.';
 }
 
 export function journeySummary(journey: ReadinessJourneyDef): string {
-  if (journey.detail && journey.detail.trim()) return journey.detail.trim();
+  const detail = trimmed(journey.detail);
+  if (detail) return detail;
   const groups = groupJourneyCriteria(journey.criteria);
   const parts: string[] = [];
   if (groups.fail.length > 0) parts.push(`${groups.fail.length} failing`);
@@ -433,7 +436,8 @@ export function providerKeyLabel(keyPresent: boolean | undefined): string {
 }
 
 export function providerStatusSummary(status: ProviderStatusDef): string {
-  if (status.summary && status.summary.trim()) return status.summary.trim();
+  const summary = trimmed(status.summary);
+  if (summary) return summary;
   const parts: string[] = [];
   const providers = status.providers ?? [];
   if (providers.length > 0) {
@@ -465,7 +469,7 @@ export function bridgeStatusLine(status: ProviderStatusDef): string {
         ? `Serving on port ${bridge.port}`
         : 'Serving';
   }
-  return bridge.detail?.trim() || bridge.reason?.trim() || 'Not running';
+  return trimmed(bridge.detail) || trimmed(bridge.reason) || 'Not running';
 }
 
 // ── Checklist helpers ────────────────────────────────────────────────────────
@@ -479,19 +483,13 @@ export interface GroupedChecklistItems {
 
 export function groupChecklistItems(items: ChecklistItem[]): GroupedChecklistItems {
   const groups: GroupedChecklistItems = { fail: [], warn: [], pass: [], info: [] };
-  for (const item of items) {
-    if (item.status === 'fail') groups.fail.push(item);
-    else if (item.status === 'warn') groups.warn.push(item);
-    else if (item.status === 'pass') groups.pass.push(item);
-    else groups.info.push(item);
-  }
+  for (const item of items) groups[item.status].push(item);
   return groups;
 }
 
 export function checklistSummary(checklist: ChecklistDef): string {
-  if (checklist.summary && checklist.summary.trim()) {
-    return checklist.summary.trim();
-  }
+  const summary = trimmed(checklist.summary);
+  if (summary) return summary;
   const counts = { pass: 0, warn: 0, fail: 0, info: 0 };
   for (const item of checklist.items) {
     if (item.status in counts) {
@@ -535,9 +533,8 @@ export function checklistStatusGlyph(status: ChecklistItemStatus): string {
 // ── Settings diff helpers ───────────────────────────────────────────────────
 
 export function settingsDiffSummary(diff: SettingsDiffDef): string {
-  if (diff.summary && diff.summary.trim()) {
-    return diff.summary.trim();
-  }
+  const summary = trimmed(diff.summary);
+  if (summary) return summary;
   const totalChanges = diff.sections.reduce((acc, sec) => acc + sec.changes.length, 0);
   const sectionCount = diff.sections.length;
   return `${totalChanges} ${totalChanges === 1 ? 'change' : 'changes'} across ${sectionCount} ${
@@ -564,9 +561,8 @@ export function formatBytes(bytes: number): string {
 }
 
 export function diagnosticsSummary(diagnostics: DiagnosticsDef): string {
-  if (diagnostics.summary && diagnostics.summary.trim()) {
-    return diagnostics.summary.trim();
-  }
+  const summary = trimmed(diagnostics.summary);
+  if (summary) return summary;
   const parts: string[] = [];
   if (diagnostics.doctor && diagnostics.doctor.length > 0) {
     const failed = diagnostics.doctor.filter((d) => !d.ok).length;
@@ -603,9 +599,8 @@ export function diagnosticsSummary(diagnostics: DiagnosticsDef): string {
 // ── Data table helpers ──────────────────────────────────────────────────────
 
 export function dataTableSummary(table: DataTableDef): string {
-  if (table.summary && table.summary.trim()) {
-    return table.summary.trim();
-  }
+  const summary = trimmed(table.summary);
+  if (summary) return summary;
   const total = table.totalCount ?? table.rows.length;
   const kindLabel = table.catalogKind ? `${table.catalogKind} · ` : '';
   return `${kindLabel}${total} ${total === 1 ? 'item' : 'items'}`;
@@ -623,9 +618,8 @@ export function formatCellValue(value: TableCellValue): { text: string; status?:
 // ── Evidence disclosure helpers ─────────────────────────────────────────────
 
 export function evidenceSummary(evidence: EvidenceDisclosureDef): string {
-  if (evidence.summary && evidence.summary.trim()) {
-    return evidence.summary.trim();
-  }
+  const summary = trimmed(evidence.summary);
+  if (summary) return summary;
   const parts: string[] = [];
   if (evidence.occupancy && evidence.occupancy.percent !== undefined) {
     parts.push(`${Math.round(evidence.occupancy.percent)}% context`);

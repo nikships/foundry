@@ -71,6 +71,54 @@ function TranscriptRows({
   );
 }
 
+function TranscriptTurn({
+  group,
+  compact,
+  onOpenReceiptLink,
+  onOpenInspector,
+}: {
+  group: SmithTranscriptGroup;
+  compact?: boolean;
+  onOpenReceiptLink?: (link: SmithReceiptLink) => void;
+  onOpenInspector?: (runId: string) => void;
+}): React.JSX.Element {
+  if (group.source === 'operator') {
+    return (
+      <div className={styles.operatorTurn}>
+        {group.entries.map((entry) =>
+          entry.kind === 'artifact' ? null : (
+            <div key={entry.id} className={cx(styles.operatorBubble, 'selectable')}>
+              {entry.text}
+            </div>
+          ),
+        )}
+      </div>
+    );
+  }
+
+  const rows = (
+    <TranscriptRows
+      group={group}
+      compact={compact}
+      onOpenInspector={onOpenInspector}
+      onOpenReceiptLink={onOpenReceiptLink}
+    />
+  );
+
+  if (group.source === 'readiness') {
+    return (
+      <section className={styles.readinessBlock}>
+        <header className={styles.readinessHead}>
+          <span className={styles.readinessTag}>Readiness agent</span>
+        </header>
+        {rows}
+      </section>
+    );
+  }
+
+  return <div className={styles.smithTurn}>{rows}</div>;
+}
+
 export default function SmithTranscript({
   entries,
   running,
@@ -107,40 +155,15 @@ export default function SmithTranscript({
       data-testid="smith-transcript"
     >
       {entries.length === 0 && !running && emptyState}
-      {groups.map((group) =>
-        group.source === 'operator' ? (
-          <div key={group.id} className={styles.operatorTurn}>
-            {group.entries.map((entry) =>
-              entry.kind === 'artifact' ? null : (
-                <div key={entry.id} className={cx(styles.operatorBubble, 'selectable')}>
-                  {entry.text}
-                </div>
-              ),
-            )}
-          </div>
-        ) : group.source === 'readiness' ? (
-          <section key={group.id} className={styles.readinessBlock}>
-            <header className={styles.readinessHead}>
-              <span className={styles.readinessTag}>Readiness agent</span>
-            </header>
-            <TranscriptRows
-              group={group}
-              compact={compact}
-              onOpenInspector={onOpenInspector}
-              {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
-            />
-          </section>
-        ) : (
-          <div key={group.id} className={styles.smithTurn}>
-            <TranscriptRows
-              group={group}
-              compact={compact}
-              onOpenInspector={onOpenInspector}
-              {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
-            />
-          </div>
-        ),
-      )}
+      {groups.map((group) => (
+        <TranscriptTurn
+          key={group.id}
+          group={group}
+          compact={compact}
+          onOpenReceiptLink={onOpenReceiptLink}
+          onOpenInspector={onOpenInspector}
+        />
+      ))}
       {running && <div className={cx(styles.line, styles.note, styles.pulse)}>…</div>}
       {tail}
     </div>

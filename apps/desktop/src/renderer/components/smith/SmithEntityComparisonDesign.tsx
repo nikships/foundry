@@ -8,35 +8,11 @@
  */
 
 import { useMemo, useState } from 'react';
-import type {
-  AgentDef,
-  EntityComparisonKind,
-  EnvelopeDef,
-  PipelineDef,
-  SmithEntityComparisonArtifact,
-} from '@shared/types.js';
+import type { SmithEntityComparisonArtifact } from '@shared/types.js';
 import { compareEntities } from '../../view-models/smith-artifact-view.js';
-import { AgentDesign, EnvelopeDesign, PipelineDesign } from './SmithEntityDesign.js';
+import { EntitySpecDesign } from './SmithEntityDesign.js';
 import { cx } from '../ui/cx.js';
 import styles from './SmithEntityComparisonDesign.module.css';
-
-function ComparisonEntityBody({
-  kind,
-  spec,
-  compact,
-}: {
-  kind: EntityComparisonKind;
-  spec: AgentDef | PipelineDef | EnvelopeDef;
-  compact?: boolean;
-}): React.JSX.Element {
-  if (kind === 'pipeline') {
-    return <PipelineDesign pipeline={spec as PipelineDef} compact={compact} />;
-  }
-  if (kind === 'agent') {
-    return <AgentDesign agent={spec as AgentDef} compact={compact} />;
-  }
-  return <EnvelopeDesign envelope={spec as EnvelopeDef} compact={compact} />;
-}
 
 export function EntityComparisonDesign({
   artifact,
@@ -126,11 +102,7 @@ export function EntityComparisonDesign({
           )}
           <div className={styles.unifiedBody}>
             <h4 className={styles.sectionHeader}>Proposed definition ({artifact.name})</h4>
-            <ComparisonEntityBody
-              kind={artifact.entityKind}
-              spec={artifact.after}
-              compact={compact}
-            />
+            <EntitySpecDesign kind={artifact.entityKind} spec={artifact.after} compact={compact} />
           </div>
         </>
       ) : (
@@ -140,27 +112,17 @@ export function EntityComparisonDesign({
               <span className={styles.paneBadgeBefore}>Current (stored)</span>
               <span className={styles.paneName}>{artifact.name}</span>
             </div>
-            <ComparisonEntityBody
-              kind={artifact.entityKind}
-              spec={artifact.before}
-              compact={compact}
-            />
+            <EntitySpecDesign kind={artifact.entityKind} spec={artifact.before} compact={compact} />
           </div>
           <div className={styles.splitPane} data-testid="comparison-pane-after">
             <div className={styles.paneHeader}>
               <span className={styles.paneBadgeAfter}>Proposed (edit)</span>
               <span className={styles.paneName}>{artifact.name}</span>
             </div>
-            <ComparisonEntityBody
-              kind={artifact.entityKind}
-              spec={artifact.after}
-              compact={compact}
-            />
+            <EntitySpecDesign kind={artifact.entityKind} spec={artifact.after} compact={compact} />
           </div>
         </div>
       )}
     </div>
   );
 }
-
-export default EntityComparisonDesign;

@@ -40,6 +40,61 @@ function nowIso(offsetMs = 0): string {
 
 const UNAVAILABLE = 'Not available in web preview.';
 const NO_AGENT_CLI = 'no agent CLI in the web preview';
+const WEB_PREVIEW = 'Web preview';
+const PREVIEW_SHA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+function unavailable(detail = UNAVAILABLE): { ok: false; detail: string } {
+  return { ok: false, detail };
+}
+
+function unavailableStart(message: string): {
+  ok: false;
+  issues: { level: 'error'; where: 'web-preview'; message: string }[];
+} {
+  return { ok: false, issues: [{ level: 'error', where: 'web-preview', message }] };
+}
+
+const ENVELOPE_EXAMPLE = {
+  status: 'success',
+  summary: 'one sentence on what you did',
+  artifacts: ['relative/path/you/created.md'],
+  notes_for_next_agent: 'what the next phase needs to know',
+};
+
+function envelopeExampleJson(extra?: Record<string, string>): string {
+  return JSON.stringify({ ...ENVELOPE_EXAMPLE, ...extra }, null, 2);
+}
+
+function previewTry(durationMs = 42): {
+  exitCode: number;
+  passed: boolean;
+  outputTail: string;
+  durationMs: number;
+} {
+  return { exitCode: 0, passed: true, outputTail: '(web preview)', durationMs };
+}
+
+function mockBaseSync(projectId: string): BaseSyncStatus {
+  return {
+    projectId,
+    baseRef: MOCK_PROJECTS[0]?.baseRef ?? 'main',
+    remote: 'origin',
+    localSha: PREVIEW_SHA,
+    remoteSha: PREVIEW_SHA,
+    ahead: 0,
+    behind: 0,
+    state: 'current',
+    fetched: true,
+    detail: 'main matches origin/main',
+  };
+}
+
+const COMPANION_OFF = {
+  running: false,
+  origin: null,
+  protocolVersion: 1,
+  devices: [] as [],
+};
 
 const MOCK_PROJECTS: ProjectDef[] = [
   {
@@ -282,6 +337,10 @@ export function createMockFoundryApi(): FoundryApi {
     return () => set.delete(handler);
   }
 
+  const notify = (channel: string, data?: unknown): void => {
+    listeners.get(channel)?.forEach((handler) => handler(data));
+  };
+
   const smithKey = (projectId?: string): string => projectId ?? 'global';
   /** The global scope always exists; a named project must be one we know. */
   const smithScopeExists = (projectId?: string): boolean =>
@@ -305,8 +364,7 @@ export function createMockFoundryApi(): FoundryApi {
   };
 
   const emitSmith = (projectId?: string): void => {
-    const state = smithSnapshot(projectId);
-    listeners.get('smith-progress')?.forEach((handler) => handler(state));
+    notify('smith-progress', smithSnapshot(projectId));
   };
 
   /** Store a patched Smith state, push it, and hand back the fresh snapshot. */
@@ -325,8 +383,7 @@ export function createMockFoundryApi(): FoundryApi {
       patch: async (patch): Promise<SaveResult<AppSettings>> => {
         mockSettings = { ...mockSettings, ...patch };
         if (patch.onboarded !== undefined) onboardingDone = !!patch.onboarded;
-        // Notify listeners (app.tsx refreshAll)
-        listeners.get('settings-changed')?.forEach((h) => h(undefined));
+        notify('settings-changed');
         return { ok: true, issues: [], value: { ...mockSettings, onboarded: onboardingDone } };
       },
     },
@@ -338,7 +395,7 @@ export function createMockFoundryApi(): FoundryApi {
         detail: 'creating a repository needs the gh CLI, which the web preview cannot reach',
       }),
       chooseParentDir: async () => null,
-      createGithub: async () => ({ ok: false, detail: UNAVAILABLE }),
+      createGithub: async () => unavailable(),
       save: async (project): Promise<SaveResult<ProjectDef[]>> => {
         const idx = MOCK_PROJECTS.findIndex((p) => p.id === project.id);
         if (idx >= 0) MOCK_PROJECTS[idx] = project;
@@ -346,12 +403,7 @@ export function createMockFoundryApi(): FoundryApi {
       },
       remove: async () => [...MOCK_PROJECTS],
       export: async () => null,
-      tryCommand: async () => ({
-        exitCode: 0,
-        passed: true,
-        outputTail: '(web preview)',
-        durationMs: 42,
-      }),
+      tryCommand: async () => previewTry(),
       sniffCommands: async () => ({ commands: [], via: 'none', detail: '(web preview)' }),
       askAgentCommands: async () => ({ error: NO_AGENT_CLI }),
       cancelDetection: async () => false,
@@ -359,12 +411,7 @@ export function createMockFoundryApi(): FoundryApi {
       setupScriptGet: async () => '',
       setupScriptSave: async () => ({ ok: true, issues: [], value: [...MOCK_PROJECTS] }),
       setupScriptSniff: async () => ({ script: '', detail: '(web preview)', sources: [] }),
-      setupScriptTry: async () => ({
-        exitCode: 0,
-        passed: true,
-        outputTail: '(web preview)',
-        durationMs: 0,
-      }),
+      setupScriptTry: async () => previewTry(0),
       setupScriptAskAgent: async () => ({ error: NO_AGENT_CLI }),
       setupProgress: async () => null,
       setupCancel: async () => false,
@@ -378,33 +425,8 @@ export function createMockFoundryApi(): FoundryApi {
       ],
       reveal: async () => {},
       scopeCopies: async () => ({ roster: false, pipelines: false }),
-      baseSyncInspect: async (id): Promise<BaseSyncStatus | null> => ({
-        projectId: id,
-        baseRef: MOCK_PROJECTS[0]?.baseRef ?? 'main',
-        remote: 'origin',
-        localSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        remoteSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        ahead: 0,
-        behind: 0,
-        state: 'current',
-        fetched: true,
-        detail: 'main matches origin/main',
-      }),
-      baseSync: async (id) => ({
-        ok: true,
-        status: {
-          projectId: id,
-          baseRef: MOCK_PROJECTS[0]?.baseRef ?? 'main',
-          remote: 'origin',
-          localSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          remoteSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          ahead: 0,
-          behind: 0,
-          state: 'current' as const,
-          fetched: true,
-          detail: 'main matches origin/main',
-        },
-      }),
+      baseSyncInspect: async (id): Promise<BaseSyncStatus | null> => mockBaseSync(id),
+      baseSync: async (id) => ({ ok: true, status: mockBaseSync(id) }),
     },
     readiness: {
       inspect: async (projectId): Promise<ReadinessInspectResult | null> => ({
@@ -460,18 +482,10 @@ export function createMockFoundryApi(): FoundryApi {
       },
       validate: async () => [],
       preview: async (agent) =>
-        JSON.stringify(
-          {
-            status: 'success',
-            summary: 'one sentence on what you did',
-            artifacts: ['relative/path/you/created.md'],
-            notes_for_next_agent: 'what the next phase needs to know',
-            ...Object.fromEntries(
-              (agent.customFields ?? []).map((f) => [f.name, f.description || 'value']),
-            ),
-          },
-          null,
-          2,
+        envelopeExampleJson(
+          Object.fromEntries(
+            (agent.customFields ?? []).map((f) => [f.name, f.description || 'value']),
+          ),
         ),
       reset: async (name) => {
         const shipped = BUILTIN_AGENTS.find((agent) => agent.name === name);
@@ -509,28 +523,9 @@ export function createMockFoundryApi(): FoundryApi {
       usage: async () => ({ agents: [], phases: [] }),
       validate: async () => ({
         issues: [],
-        example: JSON.stringify(
-          {
-            status: 'success',
-            summary: 'one sentence on what you did',
-            artifacts: ['relative/path/you/created.md'],
-            notes_for_next_agent: 'what the next phase needs to know',
-          },
-          null,
-          2,
-        ),
+        example: envelopeExampleJson(),
       }),
-      preview: async () =>
-        JSON.stringify(
-          {
-            status: 'success',
-            summary: 'one sentence on what you did',
-            artifacts: ['relative/path/you/created.md'],
-            notes_for_next_agent: 'what the next phase needs to know',
-          },
-          null,
-          2,
-        ),
+      preview: async () => envelopeExampleJson(),
     },
     pipelines: {
       list: async (): Promise<PipelineDef[]> => [...mockPipelines],
@@ -630,18 +625,18 @@ export function createMockFoundryApi(): FoundryApi {
           },
         ],
       }),
-      connect: async () => ({ ok: false, detail: 'Web preview cannot open a login.' }),
-      disconnect: async () => ({ ok: false, detail: 'Web preview' }),
+      connect: async () => unavailable('Web preview cannot open a login.'),
+      disconnect: async () => unavailable(WEB_PREVIEW),
       cancelLogin: async () => false,
-      setApiKey: async () => ({ ok: false, detail: 'Web preview' }),
-      clearApiKey: async () => ({ ok: false, detail: 'Web preview' }),
+      setApiKey: async () => unavailable(WEB_PREVIEW),
+      clearApiKey: async () => unavailable(WEB_PREVIEW),
       storedKeys: async () => [{ providerId: 'anthropic', type: 'api_key' }],
     },
     linear: {
       state: async () => ({ keySet: true, detail: 'Web preview uses fixture Linear data.' }),
-      setApiKey: async () => ({ ok: false, detail: 'Web preview' }),
+      setApiKey: async () => unavailable(WEB_PREVIEW),
       test: async () => ({ ok: true, detail: 'Connected to Linear (fixture).' }),
-      clearApiKey: async () => ({ ok: false, detail: 'Web preview' }),
+      clearApiKey: async () => unavailable(WEB_PREVIEW),
       issues: async (query) => {
         const needle = query.trim().toLowerCase();
         if (!needle) return [...MOCK_LINEAR_ISSUES];
@@ -657,23 +652,14 @@ export function createMockFoundryApi(): FoundryApi {
         { id: 'linear-state-done', name: 'Done', type: 'completed' },
         { id: 'linear-state-failed', name: 'Canceled', type: 'canceled' },
       ],
-      startRun: async () => ({
-        ok: false as const,
-        issues: [{ level: 'error' as const, where: 'web-preview', message: UNAVAILABLE }],
-      }),
+      startRun: async () => unavailableStart(UNAVAILABLE),
     },
     runs: {
-      start: async () => ({
-        ok: false as const,
-        issues: [
-          {
-            level: 'error' as const,
-            where: 'web-preview',
-            message: 'Runs cannot be started in web preview. Use the Electron app (npm run dev).',
-          },
-        ],
-      }),
-      resume: async () => ({ ok: false, detail: UNAVAILABLE }),
+      start: async () =>
+        unavailableStart(
+          'Runs cannot be started in web preview. Use the Electron app (npm run dev).',
+        ),
+      resume: async () => unavailable(),
       list: async () => [...MOCK_RUNS],
       detail: async (_projectId, runId): Promise<RunDetail> => {
         const run = MOCK_RUNS.find((r) => r.runId === runId) ?? null;
@@ -724,16 +710,13 @@ export function createMockFoundryApi(): FoundryApi {
       }),
       kill: async () => false,
       archive: async () => {},
-      mergeWorktree: async () => ({ ok: false, detail: UNAVAILABLE }),
-      fixMerge: async () => ({ ok: false, detail: UNAVAILABLE }),
-      discardWorktree: async () => ({ ok: false, detail: UNAVAILABLE }),
+      mergeWorktree: async () => unavailable(),
+      fixMerge: async () => unavailable(),
+      discardWorktree: async () => unavailable(),
       openWorktree: async () => {},
       revealFiles: async () => {},
       plan: async () => null,
-      exportPlan: async () => ({
-        ok: false,
-        issues: [{ level: 'error', where: 'web-preview', message: UNAVAILABLE }],
-      }),
+      exportPlan: async () => unavailableStart(UNAVAILABLE),
       restorableCheckpoints: async (_projectId, runId) => ({
         runId,
         refusal: 'no_checkpoints' as const,
@@ -765,22 +748,20 @@ export function createMockFoundryApi(): FoundryApi {
         };
         const startedAt = Date.now();
         const emit = (status: 'running' | 'done', detail: string): void => {
-          listeners.get('orchestrator-progress')?.forEach((handler) =>
-            handler({
-              planId,
-              projectId,
-              status,
-              model,
-              reasoningEffort,
-              prompt,
-              entries: [],
-              plan: status === 'done' ? plan : null,
-              rawReply: '',
-              detail,
-              startedAt,
-              ...(status === 'done' ? { endedAt: Date.now() } : {}),
-            }),
-          );
+          notify('orchestrator-progress', {
+            planId,
+            projectId,
+            status,
+            model,
+            reasoningEffort,
+            prompt,
+            entries: [],
+            plan: status === 'done' ? plan : null,
+            rawReply: '',
+            detail,
+            startedAt,
+            ...(status === 'done' ? { endedAt: Date.now() } : {}),
+          });
         };
         const timers = [
           window.setTimeout(() => emit('running', 'Reading the issue and choosing phases…'), 40),
@@ -839,9 +820,9 @@ export function createMockFoundryApi(): FoundryApi {
           },
         ],
       }),
-      create: async () => ({ ok: false, detail: UNAVAILABLE }),
-      merge: async () => ({ ok: false, detail: UNAVAILABLE }),
-      fixConflicts: async () => ({ ok: false, detail: UNAVAILABLE }),
+      create: async () => unavailable(),
+      merge: async () => unavailable(),
+      fixConflicts: async () => unavailable(),
     },
     smith: {
       send: async (projectId, text) => {
@@ -904,21 +885,9 @@ export function createMockFoundryApi(): FoundryApi {
     },
     companion: {
       // The web preview has no network host to bind; the pane renders "off".
-      state: async () => ({
-        running: false,
-        origin: null,
-        protocolVersion: 1,
-        devices: [],
-        detail: UNAVAILABLE,
-      }),
-      start: async () => ({
-        running: false,
-        origin: null,
-        protocolVersion: 1,
-        devices: [],
-        detail: UNAVAILABLE,
-      }),
-      stop: async () => ({ running: false, origin: null, protocolVersion: 1, devices: [] }),
+      state: async () => ({ ...COMPANION_OFF, detail: UNAVAILABLE }),
+      start: async () => ({ ...COMPANION_OFF, detail: UNAVAILABLE }),
+      stop: async () => ({ ...COMPANION_OFF }),
       pairingPayload: async () => null,
       unpair: async () => false,
     },
@@ -979,7 +948,7 @@ export function createMockFoundryApi(): FoundryApi {
     },
     maintenance: {
       orphanWorktrees: async () => [],
-      removeWorktree: async () => ({ ok: false, detail: 'Web preview' }),
+      removeWorktree: async () => unavailable(WEB_PREVIEW),
       applyRetention: async () => ({ runsDeleted: 0, bytesReclaimed: 0, worktreesRemoved: 0 }),
       compact: async () => {},
     },

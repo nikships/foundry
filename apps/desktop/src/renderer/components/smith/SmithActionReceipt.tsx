@@ -78,8 +78,14 @@ export default function SmithActionReceiptBody({
  * fallback is the kind itself rather than an undefined field.
  */
 function linkText(link: SmithReceiptLink): string {
-  if (link.kind === 'url') return link.url;
-  if (link.kind === 'run') return link.runId;
-  if (link.kind === 'entity') return link.name;
-  return (link as { kind: string }).kind;
+  switch (link.kind) {
+    case 'url':
+      return link.url;
+    case 'run':
+      return link.runId;
+    case 'entity':
+      return link.name;
+    default:
+      return (link as { kind: string }).kind;
+  }
 }

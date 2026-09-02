@@ -122,10 +122,9 @@ export default function Waterfall({
     for (const event of events) {
       if (isAutoAllowPolicy(event)) continue;
       const at = new Date(event.startedAt).getTime() - t0;
+      const flagStyle = FLAG_STYLE[event.type];
       if (event.type === 'tool_call') tools.push(at);
-      else if (FLAG_STYLE[event.type]) {
-        flags.push({ at, style: FLAG_STYLE[event.type]!, label: event.name });
-      }
+      else if (flagStyle) flags.push({ at, style: flagStyle, label: event.name });
     }
     return { tools, flags };
   };

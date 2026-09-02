@@ -29,6 +29,10 @@ export function register(ctx: Ctx, handle: Handle): void {
         persist({ ...(projectOf(next.id) ?? next), contextSummary: next.contextSummary });
       },
     });
+  const loadProject = async (projectId: string): Promise<ProjectDef | null> => {
+    const found = projectOf(projectId);
+    return found ? withContext(found) : null;
+  };
 
   handle(
     IPC.readinessInspect,
@@ -57,8 +61,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       projectId: string,
       opts?: { model?: string; reasoningEffort?: ReasoningEffort; saveAsDefault?: boolean },
     ): Promise<{ sessionId: string } | { error: string }> => {
-      const found = projectOf(projectId);
-      const project = found ? await withContext(found) : null;
+      const project = await loadProject(projectId);
       if (!project) return { error: 'project not found' };
       if (opts?.saveAsDefault) {
         const patch: { helperModel?: string; helperReasoningEffort?: ReasoningEffort } = {};
@@ -83,8 +86,7 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(
     IPC.readinessMakeReady,
     async (projectId: string): Promise<{ sessionId: string } | { error: string }> => {
-      const found = projectOf(projectId);
-      const project = found ? await withContext(found) : null;
+      const project = await loadProject(projectId);
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
       const session = ctx.readiness.open(project, settings, persist);
@@ -111,8 +113,7 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(
     IPC.readinessRetry,
     async (projectId: string): Promise<{ sessionId: string } | { error: string }> => {
-      const found = projectOf(projectId);
-      const project = found ? await withContext(found) : null;
+      const project = await loadProject(projectId);
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
       const session = ctx.readiness.open(project, settings, persist);

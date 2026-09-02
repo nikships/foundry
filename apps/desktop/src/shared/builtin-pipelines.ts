@@ -52,13 +52,11 @@ function planPhase(refined = false): PhaseDef {
 }
 
 function commitPlanPhase(): PhaseDef {
-  return {
-    name: 'commit_plan',
-    kind: 'code',
-    description:
-      'Record the spec as its own commit so the plan has a history separate from the work.',
-    command: { builtin: 'git_commit', messageFrom: 'envelope:plan.commit_message' },
-  };
+  return commitPhase(
+    'commit_plan',
+    'plan',
+    'Record the spec as its own commit so the plan has a history separate from the work.',
+  );
 }
 
 function refinedRequest(inputs: string[]): string[] {
@@ -95,12 +93,17 @@ function testPhase(feedbackTo: string, name = 'test'): PhaseDef {
   };
 }
 
-function commitPhase(name: string, from: string, description: string): PhaseDef {
+function commitPhase(
+  name: string,
+  from: string,
+  description: string,
+  field = 'commit_message',
+): PhaseDef {
   return {
     name,
     kind: 'code',
     description,
-    command: { builtin: 'git_commit', messageFrom: `envelope:${from}.commit_message` },
+    command: { builtin: 'git_commit', messageFrom: `envelope:${from}.${field}` },
   };
 }
 
@@ -131,13 +134,12 @@ function productionCheckPhase(): PhaseDef {
 }
 
 function commitPolishPhase(): PhaseDef {
-  return {
-    name: 'commit_polish',
-    kind: 'code',
-    description:
-      'Commit the production-check fixes separately from the implementation they polish.',
-    command: { builtin: 'git_commit', messageFrom: 'envelope:production_check.summary' },
-  };
+  return commitPhase(
+    'commit_polish',
+    'production_check',
+    'Commit the production-check fixes separately from the implementation they polish.',
+    'summary',
+  );
 }
 
 /**
@@ -173,12 +175,12 @@ function documentPhase(): PhaseDef {
 }
 
 function commitDocsPhase(): PhaseDef {
-  return {
-    name: 'commit_docs',
-    kind: 'code',
-    description: 'Commit the documentation separately so docs churn stays out of the code diff.',
-    command: { builtin: 'git_commit', messageFrom: 'envelope:document.summary' },
-  };
+  return commitPhase(
+    'commit_docs',
+    'document',
+    'Commit the documentation separately so docs churn stays out of the code diff.',
+    'summary',
+  );
 }
 
 /**
@@ -212,6 +214,30 @@ function issuePhase(inputs: string[]): PhaseDef {
     description:
       'File the GitHub issue that tracks the diagnosed problem, grounded in the located evidence.',
     prompt: { inputs: ['request', ...inputs] },
+  };
+}
+
+function scoutPhase(name: string, description: string): PhaseDef {
+  return {
+    name,
+    kind: 'agent',
+    agent: 'scout',
+    retries: 2,
+    description,
+    gates: ['artifacts_exist'],
+    prompt: { inputs: ['request'] },
+  };
+}
+
+function specPhase(inputs: string[], description: string): PhaseDef {
+  return {
+    name: 'spec',
+    kind: 'agent',
+    agent: 'planner',
+    retries: 2,
+    description,
+    gates: ['artifacts_exist', 'files_non_empty'],
+    prompt: { inputs },
   };
 }
 
@@ -255,16 +281,10 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
     acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
     phases: [
-      {
-        name: 'diagnose',
-        kind: 'agent',
-        agent: 'scout',
-        retries: 2,
-        description:
-          'Locate the fault in the real tree — paths, symbols, and the failing behaviour — before anything changes.',
-        gates: ['artifacts_exist'],
-        prompt: { inputs: ['request'] },
-      },
+      scoutPhase(
+        'diagnose',
+        'Locate the fault in the real tree — paths, symbols, and the failing behaviour — before anything changes.',
+      ),
       {
         name: 'fix',
         kind: 'agent',
@@ -286,26 +306,14 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
     acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
     phases: [
-      {
-        name: 'survey',
-        kind: 'agent',
-        agent: 'scout',
-        retries: 2,
-        description:
-          'Map the code the spec will touch — current behaviour, owners, and constraints — with located evidence.',
-        gates: ['artifacts_exist'],
-        prompt: { inputs: ['request'] },
-      },
-      {
-        name: 'spec',
-        kind: 'agent',
-        agent: 'planner',
-        retries: 2,
-        description:
-          'Write the implementable spec under specs/, grounded in what the survey actually found.',
-        gates: ['artifacts_exist', 'files_non_empty'],
-        prompt: { inputs: ['request', 'envelope:survey'] },
-      },
+      scoutPhase(
+        'survey',
+        'Map the code the spec will touch — current behaviour, owners, and constraints — with located evidence.',
+      ),
+      specPhase(
+        ['request', 'envelope:survey'],
+        'Write the implementable spec under specs/, grounded in what the survey actually found.',
+      ),
       commitPhase(
         'commit_spec',
         'spec',
@@ -322,27 +330,15 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
     acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
     phases: [
-      {
-        name: 'diagnose',
-        kind: 'agent',
-        agent: 'scout',
-        retries: 2,
-        description:
-          'Locate the fault in the real tree — paths, symbols, and the failing behaviour — before anything is filed.',
-        gates: ['artifacts_exist'],
-        prompt: { inputs: ['request'] },
-      },
+      scoutPhase(
+        'diagnose',
+        'Locate the fault in the real tree — paths, symbols, and the failing behaviour — before anything is filed.',
+      ),
       issuePhase(['envelope:diagnose']),
-      {
-        name: 'spec',
-        kind: 'agent',
-        agent: 'planner',
-        retries: 2,
-        description:
-          'Write the implementable fix spec under specs/, grounded in the diagnosed evidence.',
-        gates: ['artifacts_exist', 'files_non_empty'],
-        prompt: { inputs: ['request', 'envelope:diagnose'] },
-      },
+      specPhase(
+        ['request', 'envelope:diagnose'],
+        'Write the implementable fix spec under specs/, grounded in the diagnosed evidence.',
+      ),
       commitPhase(
         'commit_spec',
         'spec',

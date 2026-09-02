@@ -149,31 +149,7 @@ fun PairScreen(
             return
         }
         try {
-            val payload = if (trimmed.startsWith("{")) {
-                jsonParser.decodeFromString<CompanionPairingPayload>(trimmed)
-            } else if (trimmed.startsWith("foundry://") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-                val uri = android.net.Uri.parse(trimmed)
-                val origin = uri.getQueryParameter("origin")
-                    ?: (if (trimmed.startsWith("http")) "${uri.scheme}://${uri.authority}" else "")
-                val secret = uri.getQueryParameter("secret")
-                    ?: uri.fragment?.removePrefix("secret=")
-                    ?: ""
-                val version = uri.getQueryParameter("v")?.toIntOrNull() ?: COMPANION_PROTOCOL_VERSION
-                val desktopId = uri.getQueryParameter("desktopId").orEmpty()
-                val desktopName = uri.getQueryParameter("desktopName").orEmpty()
-                val expiresAt = uri.getQueryParameter("expiresAt").orEmpty()
-                CompanionPairingPayload(
-                    protocolVersion = version,
-                    origin = origin,
-                    desktopId = desktopId,
-                    desktopName = desktopName,
-                    secret = secret,
-                    expiresAt = expiresAt
-                )
-            } else {
-                jsonParser.decodeFromString<CompanionPairingPayload>(trimmed)
-            }
-
+            val payload = parseCompanionPairingPayload(trimmed, jsonParser)
             if (payload.origin.isBlank() || payload.secret.isBlank()) {
                 localValidationIssue = "Invalid pairing payload: missing origin or secret."
                 return
@@ -185,7 +161,7 @@ fun PairScreen(
             }
             localValidationIssue = null
             onPairScanned(payload)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             localValidationIssue =
                 "Could not parse pairing code. Ensure you copied or scanned the payload from Foundry Settings → Companion."
         }
@@ -576,6 +552,27 @@ private fun CameraQrScannerView(
         },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+internal fun parseCompanionPairingPayload(raw: String, jsonParser: Json): CompanionPairingPayload {
+    val trimmed = raw.trim()
+    if (trimmed.startsWith("foundry://") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        val uri = Uri.parse(trimmed)
+        val origin = uri.getQueryParameter("origin")
+            ?: (if (trimmed.startsWith("http")) "${uri.scheme}://${uri.authority}" else "")
+        val secret = uri.getQueryParameter("secret")
+            ?: uri.fragment?.removePrefix("secret=")
+            ?: ""
+        return CompanionPairingPayload(
+            protocolVersion = uri.getQueryParameter("v")?.toIntOrNull() ?: COMPANION_PROTOCOL_VERSION,
+            origin = origin,
+            desktopId = uri.getQueryParameter("desktopId").orEmpty(),
+            desktopName = uri.getQueryParameter("desktopName").orEmpty(),
+            secret = secret,
+            expiresAt = uri.getQueryParameter("expiresAt").orEmpty()
+        )
+    }
+    return jsonParser.decodeFromString(trimmed)
 }
 
 private fun openAppSettings(context: Context) {

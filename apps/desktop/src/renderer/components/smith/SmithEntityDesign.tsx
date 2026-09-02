@@ -254,10 +254,10 @@ export function EnvelopeDesign({
   sampleOutput?: Record<string, unknown>;
   compact?: boolean;
 }): React.JSX.Element {
-  const hasAgents = usage?.agents && usage.agents.length > 0;
-  const hasPhases = usage?.phases && usage.phases.length > 0;
-  const hasPipelines = usage?.pipelines && usage.pipelines.length > 0;
-  const hasUsage = hasAgents || hasPhases || hasPipelines;
+  const agents = usage?.agents ?? [];
+  const phases = usage?.phases ?? [];
+  const pipelines = usage?.pipelines ?? [];
+  const hasUsage = agents.length > 0 || phases.length > 0 || pipelines.length > 0;
 
   return (
     <div className={cx(styles.design, compact && styles.compact)}>
@@ -290,29 +290,26 @@ export function EnvelopeDesign({
         <div className={styles.usageSection} data-testid="envelope-usage">
           <span className={styles.usageHeading}>Usage in agents & pipelines</span>
           <div className={styles.usageChips}>
-            {hasAgents &&
-              usage.agents!.map((agent, i) => {
-                const name = typeof agent === 'string' ? agent : agent.name;
-                const role = typeof agent === 'object' && agent.role ? ` (${agent.role})` : '';
-                return (
-                  <span key={`agent-${i}`} className={styles.usageChip}>
-                    Agent: {name}
-                    {role}
-                  </span>
-                );
-              })}
-            {hasPhases &&
-              usage.phases!.map((phase, i) => (
-                <span key={`phase-${i}`} className={styles.usageChip}>
-                  Phase: {phase.pipelineName ?? phase.pipelineId} → {phase.phaseName}
+            {agents.map((agent, i) => {
+              const name = typeof agent === 'string' ? agent : agent.name;
+              const role = typeof agent === 'object' && agent.role ? ` (${agent.role})` : '';
+              return (
+                <span key={`agent-${i}`} className={styles.usageChip}>
+                  Agent: {name}
+                  {role}
                 </span>
-              ))}
-            {hasPipelines &&
-              usage.pipelines!.map((pipeline, i) => (
-                <span key={`pipeline-${i}`} className={styles.usageChip}>
-                  Pipeline: {pipeline}
-                </span>
-              ))}
+              );
+            })}
+            {phases.map((phase, i) => (
+              <span key={`phase-${i}`} className={styles.usageChip}>
+                Phase: {phase.pipelineName ?? phase.pipelineId} → {phase.phaseName}
+              </span>
+            ))}
+            {pipelines.map((pipeline, i) => (
+              <span key={`pipeline-${i}`} className={styles.usageChip}>
+                Pipeline: {pipeline}
+              </span>
+            ))}
           </div>
         </div>
       )}
@@ -329,13 +326,24 @@ export function EnvelopeDesign({
   );
 }
 
-export { ChecklistDesign } from './SmithChecklistDesign.js';
-export { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
-export { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
-export { ProjectCardDesign } from './SmithProjectCardDesign.js';
-export { PrCardDesign } from './SmithPrCardDesign.js';
-export { ReadinessJourneyDesign } from './SmithReadinessJourneyDesign.js';
-export { ProviderStatusDesign } from './SmithProviderStatusDesign.js';
+/** One design body per entity kind — shared by proposal cards and comparisons. */
+export function EntitySpecDesign({
+  kind,
+  spec,
+  compact,
+}: {
+  kind: 'agent' | 'pipeline' | 'envelope';
+  spec: unknown;
+  compact?: boolean;
+}): React.JSX.Element {
+  if (kind === 'pipeline') {
+    return <PipelineDesign pipeline={spec as PipelineDef} compact={compact} />;
+  }
+  if (kind === 'agent') {
+    return <AgentDesign agent={spec as AgentDef} compact={compact} />;
+  }
+  return <EnvelopeDesign envelope={spec as EnvelopeDef} compact={compact} />;
+}
 
 export function RunSummaryDesign({
   artifact,
@@ -385,7 +393,7 @@ export function RunSummaryDesign({
               return (
                 <li
                   key={`${phase.name}-${index}`}
-                  className={cx(styles.miniPhase)}
+                  className={styles.miniPhase}
                   style={{ borderLeftColor: statusCol }}
                 >
                   <button

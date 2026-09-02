@@ -90,7 +90,7 @@ export default function UpdateBanner({
           <div className={styles.track}>
             <div className={styles.fill} style={{ width: `${percent}%` }} />
           </div>
-          <span className={`${styles.percent} mono`}>{Math.round(status.percent ?? 0)}%</span>
+          <span className={`${styles.percent} mono`}>{percent}%</span>
         </div>
       )}
 

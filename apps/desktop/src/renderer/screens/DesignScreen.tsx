@@ -53,9 +53,6 @@ export default function DesignScreen({
     [onTabChange, openNonce],
   );
 
-  /** Jump to another tab and select something there — the cross-link path. */
-  const crossLink = selectTab;
-
   const liveNonce = openNonce && openNonce !== consumedNonce ? openNonce : 0;
   const deepLink = liveNonce ? openTarget : undefined;
   const active = DESIGN_TABS.find((t) => t.id === tab) ?? DESIGN_TABS[0];
@@ -103,13 +100,13 @@ export default function DesignScreen({
       <div className={styles.designPanel} role="tabpanel" aria-label={active.label}>
         {tab === 'pipelines' && (
           <PipelinesScreen
-            onOpenDesignTab={crossLink}
+            onOpenDesignTab={selectTab}
             openPipeline={deepLink}
             openNonce={liveNonce}
           />
         )}
         {tab === 'agents' && (
-          <RosterScreen onOpenDesignTab={crossLink} openAgent={deepLink} openNonce={liveNonce} />
+          <RosterScreen onOpenDesignTab={selectTab} openAgent={deepLink} openNonce={liveNonce} />
         )}
         {tab === 'envelopes' && <EnvelopesEditor openEnvelope={deepLink} openNonce={liveNonce} />}
       </div>

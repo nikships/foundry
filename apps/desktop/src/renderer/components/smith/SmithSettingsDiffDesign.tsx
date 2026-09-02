@@ -72,14 +72,6 @@ export function SettingsDiffDesign({
 }): React.JSX.Element {
   const summary = settingsDiffSummary(diff);
 
-  const handleOpenSettings = (): void => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new KeyboardEvent('keydown', { key: ',', metaKey: true, bubbles: true }),
-      );
-    }
-  };
-
   return (
     <div
       className={cx(styles.settingsDiff, compact && styles.compact)}
@@ -100,7 +92,11 @@ export function SettingsDiffDesign({
         <button
           type="button"
           className={styles.openSettingsBtn}
-          onClick={handleOpenSettings}
+          onClick={() =>
+            window.dispatchEvent(
+              new KeyboardEvent('keydown', { key: ',', metaKey: true, bubbles: true }),
+            )
+          }
           data-testid="settings-diff-open-settings"
         >
           Open Settings

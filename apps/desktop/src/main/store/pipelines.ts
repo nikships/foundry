@@ -19,7 +19,7 @@ import {
 } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_PIPELINES } from '@shared/builtin-pipelines.js';
-import { uniqueCopyName, upsertBy } from './collections.js';
+import { seedBuiltins, uniqueCopyName, upsertBy } from './collections.js';
 import { GATES } from '../engine/gates.js';
 
 const commandSchema = z.union([
@@ -139,21 +139,12 @@ export class PipelineStore {
       join(appSupportDir, 'pipelines.json'),
       () => BUILTIN_PIPELINES.map((p) => ({ ...p })),
       (raw) => {
-        const list = Array.isArray(raw) ? (raw as PipelineDef[]) : [];
         // The flag says where a pipeline came from, so an id this build does
         // not ship cannot legitimately carry it. A leftover builtin becomes
         // an ordinary deletable pipeline rather than one a restore of missing
         // shipped ids would fight over; its content is user state and stays.
-        const shipped = new Set(BUILTIN_PIPELINES.map((p) => p.id));
-        const byId = new Map(
-          list
-            .map(normalizePipeline)
-            .map((p) => [p.id, shipped.has(p.id) ? p : { ...p, builtin: false }] as const),
-        );
-        for (const builtin of BUILTIN_PIPELINES) {
-          if (!byId.has(builtin.id)) byId.set(builtin.id, { ...builtin });
-        }
-        return [...byId.values()];
+        const list = Array.isArray(raw) ? (raw as PipelineDef[]).map(normalizePipeline) : [];
+        return seedBuiltins(list, BUILTIN_PIPELINES, (pipeline) => pipeline.id);
       },
     );
   }

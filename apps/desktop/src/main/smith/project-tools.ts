@@ -195,10 +195,11 @@ export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
       if (values.some((value) => value === null)) {
         return json({ ok: false, error: missingArgsError(specs) });
       }
+      const label = op.replaceAll('_', ' ');
       return proposeAction(deps, {
         operation: op,
-        title: `${op.replaceAll('_', ' ')} project`,
-        summary: `Perform ${op.replaceAll('_', ' ')}.`,
+        title: `${label} project`,
+        summary: `Perform ${label}.`,
         args: Object.fromEntries(specs.map((arg, index) => [arg.name, values[index]])),
         risk: action.risk,
         execute: () => deps.invoke(action.channel, ...values),

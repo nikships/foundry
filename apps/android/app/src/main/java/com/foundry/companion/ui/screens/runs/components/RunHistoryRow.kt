@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.RunRow
@@ -112,11 +113,7 @@ fun RunHistoryRow(
         )
 
         // Meta stays on its own line so a GitHub chip cannot clip the run id.
-        val badges = buildList {
-            if (run.orchestrated) add("ORCH")
-            run.source?.snapshot?.let { add(it.identifier) }
-        }
-        val sourceText = badges.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+        val sourceText = run.sourceBadges.takeIf { it.isNotEmpty() }?.joinToString(" · ")
         Text(
             text = listOfNotNull(sourceText, durationText, tokensText, branchTail)
                 .joinToString(" · "),
@@ -126,42 +123,43 @@ fun RunHistoryRow(
             overflow = TextOverflow.Ellipsis
         )
 
-        if (!run.prUrl.isNullOrBlank()) {
-            val prLabel = if (run.prNumber != null) "PR #${run.prNumber} ↗" else "PR ↗"
-            val prModifier = if (onOpenPr != null) {
-                Modifier
-                    .background(colors.statusAccepted.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
-                    .clickable { onOpenPr(run.prUrl) }
-                    .padding(horizontal = 5.dp, vertical = 1.dp)
-            } else {
-                Modifier
-                    .background(colors.statusAccepted.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
-                    .padding(horizontal = 5.dp, vertical = 1.dp)
-            }
-            Text(
-                text = prLabel,
-                style = typography.metaMono,
+        val prUrl = run.prUrl
+        val issueUrl = run.issueUrl
+        if (!prUrl.isNullOrBlank()) {
+            GitHubLinkChip(
+                label = if (run.prNumber != null) "PR #${run.prNumber} ↗" else "PR ↗",
                 color = colors.statusAccepted,
-                modifier = prModifier
+                background = colors.statusAccepted.copy(alpha = 0.12f),
+                onClick = onOpenPr?.let { handler -> { handler(prUrl) } }
             )
-        } else if (!run.issueUrl.isNullOrBlank()) {
-            val issueLabel = if (run.issueNumber != null) "Issue #${run.issueNumber} ↗" else "Issue ↗"
-            val issueModifier = if (onOpenIssue != null) {
-                Modifier
-                    .background(colors.bgRaised, RoundedCornerShape(3.dp))
-                    .clickable { onOpenIssue(run.issueUrl) }
-                    .padding(horizontal = 5.dp, vertical = 1.dp)
-            } else {
-                Modifier
-                    .background(colors.bgRaised, RoundedCornerShape(3.dp))
-                    .padding(horizontal = 5.dp, vertical = 1.dp)
-            }
-            Text(
-                text = issueLabel,
-                style = typography.metaMono,
+        } else if (!issueUrl.isNullOrBlank()) {
+            GitHubLinkChip(
+                label = if (run.issueNumber != null) "Issue #${run.issueNumber} ↗" else "Issue ↗",
                 color = colors.textDim,
-                modifier = issueModifier
+                background = colors.bgRaised,
+                onClick = onOpenIssue?.let { handler -> { handler(issueUrl) } }
             )
         }
     }
+}
+
+@Composable
+private fun GitHubLinkChip(
+    label: String,
+    color: Color,
+    background: Color,
+    onClick: (() -> Unit)?
+) {
+    val typography = FoundryTheme.typography
+    val chipModifier = Modifier.background(background, RoundedCornerShape(3.dp))
+    Text(
+        text = label,
+        style = typography.metaMono,
+        color = color,
+        modifier = if (onClick != null) {
+            chipModifier.clickable(onClick = onClick).padding(horizontal = 5.dp, vertical = 1.dp)
+        } else {
+            chipModifier.padding(horizontal = 5.dp, vertical = 1.dp)
+        }
+    )
 }
