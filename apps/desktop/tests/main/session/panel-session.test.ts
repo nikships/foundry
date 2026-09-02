@@ -122,6 +122,23 @@ describe('PanelSession', () => {
     expect(session.snapshot().entries.some((e) => e.text.includes('is not available'))).toBe(true);
   });
 
+  it('forwards ask images to the scripted one-shot', async () => {
+    const oneShots = scriptedOneShots([{ text: 'ok' }]);
+    const session = panel();
+    const images = [{ mediaType: 'image/png' as const, data: 'aaaa', name: 'shot.png' }];
+    await session.ask({
+      oneShot: oneShots.factory,
+      cwd: '/repo',
+      access: 'read',
+      model: 'inherit',
+      reasoningEffort: 'off',
+      prompt: 'look',
+      images,
+    });
+    expect(oneShots.prompts).toEqual(['look']);
+    expect(oneShots.images).toEqual([images]);
+  });
+
   it('cancels an in-flight turn and aborts the child', async () => {
     const oneShots = scriptedOneShots([{ hangUntilAbort: true }]);
     const session = panel();

@@ -1,0 +1,53 @@
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text-dim);
+}
+
+.thumb {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.remove {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--fast) var(--ease);
+}
+
+.remove:hover {
+  color: var(--red);
+}

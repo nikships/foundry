@@ -6,11 +6,17 @@ import type { LinearConnectionState } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
 import type { OrchestratorPlanController } from '../hooks/useOrchestratorPlan.js';
 import { useApp } from '../stores/app.js';
+import {
+  attachmentsFromClipboardSources,
+  imageSourcesFromFileList,
+  type ClipboardImageSource,
+} from '../utils/clipboard-images.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
 import EmptyState from '../components/common/EmptyState.js';
 import BaseSyncBar from '../components/project/BaseSyncBar.js';
 import PanelTranscript from '../components/readiness/PanelTranscript.js';
 import ManualComposer from '../components/run/ManualComposer.js';
+import OrchestratorAttachments from '../components/run/OrchestratorAttachments.js';
 import OrchestratorPicker, {
   type OrchestratorChoice,
 } from '../components/run/OrchestratorPicker.js';
@@ -138,6 +144,34 @@ function SourceTabs({
   );
 }
 
+function clipboardImageFiles(clipboardData: DataTransfer): File[] {
+  return Array.from(clipboardData.files ?? []).filter((file) => file.type.startsWith('image/'));
+}
+
+async function readClipboardImageSources(files: readonly File[]): Promise<ClipboardImageSource[]> {
+  const snapshots = await Promise.all(
+    files.map(async (file) => ({
+      type: file.type,
+      name: file.name,
+      size: file.size,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    })),
+  );
+  return imageSourcesFromFileList(snapshots);
+}
+
+function insertClipboardText(
+  request: string,
+  pasted: string,
+  target: HTMLTextAreaElement,
+  onRequestChange: (request: string) => void,
+): void {
+  if (!pasted) return;
+  const start = target.selectionStart ?? request.length;
+  const end = target.selectionEnd ?? request.length;
+  onRequestChange(request.slice(0, start) + pasted + request.slice(end));
+}
+
 function OrchestratedComposer({
   header,
   request,
@@ -160,9 +194,10 @@ function OrchestratedComposer({
   const { project, projectId, refreshAll } = useApp();
   const [starting, setStarting] = useState(false);
   const [startIssues, setStartIssues] = useState<ValidationIssue[]>([]);
+  const [attachError, setAttachError] = useState('');
   const composeBlocked = !project
     ? 'Add a project first'
-    : !request.trim()
+    : !request.trim() && orchestrator.images.length === 0
       ? 'Describe what to build'
       : baseSyncing
         ? `Updating ${project.baseRef} first`
@@ -208,6 +243,26 @@ function OrchestratedComposer({
     }
   };
 
+  const onRequestPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>): void => {
+    const clipboardData = event.clipboardData;
+    if (!clipboardData) return;
+    const files = clipboardImageFiles(clipboardData);
+    if (files.length === 0) return;
+    event.preventDefault();
+    const pastedText = clipboardData.getData('text/plain');
+    const target = event.currentTarget;
+    void (async () => {
+      const sources = await readClipboardImageSources(files);
+      const { attachments, errors } = attachmentsFromClipboardSources(
+        sources,
+        orchestrator.images.length,
+      );
+      if (attachments.length) orchestrator.addImages(attachments);
+      insertClipboardText(request, pastedText, target, onRequestChange);
+      setAttachError(errors[0] ?? '');
+    })();
+  };
+
   return (
     <div className={styles.composerColumn}>
       <section className={`${styles.composerCard} card`} data-testid="run-composer">
@@ -222,10 +277,12 @@ function OrchestratedComposer({
           rows={orchestrator.stage === 'compose' ? 4 : 2}
           placeholder="Describe the change. The Orchestrator rewrites it into a full brief and composes the pipeline."
           onKeyDown={onRequestKeyDown}
+          onPaste={onRequestPaste}
           aria-label="Run request"
           aria-keyshortcuts="Meta+Enter Control+Enter"
           data-testid="run-request"
         />
+        <OrchestratorAttachments images={orchestrator.images} onRemove={orchestrator.removeImage} />
         <div className={styles.composerControls}>
           <OrchestratorPicker
             choice={choice}
@@ -250,6 +307,11 @@ function OrchestratedComposer({
         </div>
         {composeBlocked && orchestrator.stage === 'compose' && (
           <p className={styles.hintLine}>{composeBlocked}</p>
+        )}
+        {attachError && (
+          <p className={styles.planError} role="alert" data-testid="run-request-attach-error">
+            {attachError}
+          </p>
         )}
         {orchestrator.planError && (
           <p className={styles.planError} role="alert">

@@ -46,6 +46,9 @@ ChatGPT/Gemini-home layout:
 
 - Vertically centered hero: a large prompt box (`textarea`, autosizing),
   placeholder like *"What should the factory build?"*. `⌘↵` submits.
+  Pasting PNG/JPEG/WebP/GIF images attaches compact removable chips; text in
+  the same paste still inserts as text. Image-only submits are allowed; empty
+  text with no images still blocks with "Describe what to build".
 - Directly beneath/beside it, the Orchestrator picker: model dropdown +
   reasoning dropdown, drawn from pi's catalog exactly like Smith's header
   picker. Both persist to `localStorage` (`foundry.orchestrator.model`,
@@ -147,7 +150,9 @@ New main-process module, modeled on `DetectSession`:
   project commands (names + argv), the full roster (name/purpose/envelope/
   boundary — not prompts, to keep context lean), the custom envelope library,
   the gate catalog with per-gate blurbs, the builtin pipeline shapes as
-  few-shot examples, and the rules below.
+  few-shot examples, and the rules below. Optional in-memory images live only
+  on the planning session deps and are forwarded on every ask, including
+  correction retries. They never appear on `OrchestratorState` / progress.
 - **Output:** strict JSON parsed with Zod (`GeneratedRunPlan` minus ids), same
   parse-or-correct loop as envelopes, `FIXED_ENGINE_DEFAULTS.envelopeRetries`
   budget.
@@ -228,9 +233,12 @@ Orchestrator composes review/finisher-style agent phases with
 
 ### 2.6 IPC surface (`ipc-contract.ts` → `ipc/` → `bridge.ts` → `api.ts`)
 
-- `orchestrator:plan (projectId, prompt, model, reasoningEffort) → { planId }`
-  — kicks off the session; result + progress push over `orchestrator-progress`
-  (new push channel; keep `mockFoundry.ts` in sync).
+- `orchestrator:plan (projectId, prompt, model, reasoningEffort, images?) →
+  { planId } | { error }` — kicks off the session; result + progress push over
+  `orchestrator-progress` (keep `mockFoundry.ts` in sync). `images` is an
+  optional list of `{ mediaType, data, name? }` (PNG/JPEG/WebP/GIF; at most 8;
+  4 MB each; 12 MB total decoded). Companion HTTP `POST /v1/orchestrator/plans`
+  stays text-only.
 - `orchestrator:cancel (planId)`
 - `runs:start` — existing channel, `StartRunInput` now carrying `plan?`.
 - `runs:plan (runId) → GeneratedRunPlan | null` — for retroactive export view.

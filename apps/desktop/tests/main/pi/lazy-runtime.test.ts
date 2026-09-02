@@ -107,6 +107,33 @@ describe('lazyOneShots', () => {
     expect(result.text).toBe('done');
   });
 
+  it('forwards images to the inner factory', async () => {
+    const received: unknown[] = [];
+    const factory = lazyOneShots(async () => () => ({
+      abort() {},
+      async send(prompt, images): Promise<OneShotResult> {
+        received.push({ prompt, images });
+        return {
+          text: 'seen',
+          usage: null,
+          reason: 'stop',
+          interrupted: false,
+          structuredOutput: null,
+        };
+      },
+    }));
+    const session = factory({
+      cwd: '/tmp',
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      access: 'read',
+    });
+    const images = [{ mediaType: 'image/png' as const, data: 'aaaa' }];
+    const result = await session.send('ask', images);
+    expect(result.text).toBe('seen');
+    expect(received).toEqual([{ prompt: 'ask', images }]);
+  });
+
   it('abort before send skips the paid turn', async () => {
     let sent = 0;
     const factory = lazyOneShots(async () => () => ({
