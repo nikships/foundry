@@ -1572,7 +1572,7 @@ describe('feedback re-entry into an already-prompted phase', () => {
     ).toEqual(['full', 'full']);
   });
 
-  it('renders the whole prompt again when the session was compacted in between', async () => {
+  it('does not re-send the full phase prompt after a successful compact', async () => {
     installCheck('#!/bin/sh\ntest -f fix.txt\n');
     const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
     const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt'], [], {
@@ -1580,17 +1580,55 @@ describe('feedback re-entry into an already-prompted phase', () => {
       contextUsedAfterCompaction: 8_500,
     });
 
-    const outcome = await run({ scripted, project, pipeline: repairPipeline() });
+    const outcome = await run({
+      scripted,
+      project: { ...project, contextSummary: '## Stack\nTypeScript' },
+      pipeline: repairPipeline(),
+    });
     expect(outcome.status).toBe('accepted');
     expect(wireLog(scripted).filter((l) => l === 'compact')).toHaveLength(1);
 
     const prompts = buildPrompts(scripted);
     expect(prompts).toHaveLength(2);
-    // A summarised conversation may no longer carry the prompt verbatim, so the
-    // re-entry cannot assume it is there.
-    expect(prompts[1]).toContain('do the thing');
-    expect(prompts[1]).toContain(exampleFor('build'));
+    // Constitution is pinned, so the re-entry stays a delta: no request, no
+    // envelope example, and not the full plan/build prompt again.
+    expect(prompts[1]).toContain('A check failed after your last attempt');
     expect(prompts[1]).toContain('./check.sh');
+    expect(prompts[1]).not.toContain('do the thing');
+    expect(prompts[1]).not.toContain(exampleFor('build'));
+    expect(
+      events(outcome.runId)
+        .filter((e) => e.type === 'log' && e.name === 'prompt')
+        .map((e) => e.payload.kind),
+    ).toEqual(['full', 'delta']);
+
+    // The project card stays in the standing role, which is re-injected every turn.
+    expect(turnRequests(scripted)[1]!.systemPrompt).toContain('## Stack\nTypeScript');
+  });
+
+  it('leaves the ledger intact when compact fails, so feedbackTo stays a delta', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt'], [], {
+      contextUsed: 85_000,
+      compactFails: true,
+    });
+
+    const outcome = await run({ scripted, project, pipeline: repairPipeline() });
+    expect(outcome.status).toBe('accepted');
+    // Occupancy never drops, so every inter-phase window retries compact.
+    expect(wireLog(scripted).filter((l) => l === 'compact').length).toBeGreaterThanOrEqual(1);
+
+    const prompts = buildPrompts(scripted);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain('A check failed after your last attempt');
+    expect(prompts[1]).not.toContain('do the thing');
+    expect(prompts[1]).not.toContain(exampleFor('build'));
+    expect(
+      events(outcome.runId)
+        .filter((e) => e.type === 'log' && e.name === 'prompt')
+        .map((e) => e.payload.kind),
+    ).toEqual(['full', 'delta']);
   });
 
   it('renders the whole prompt again when the agent session was replaced', async () => {
@@ -1678,29 +1716,31 @@ describe('feedback re-entry into an already-prompted phase', () => {
   it('carries the real evidence in the system role on the full path too', async () => {
     installCheck('#!/bin/sh\ntest -f fix.txt\n');
     const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
-    // Compaction between the phases forces the re-entry down the full path.
-    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt'], [], {
-      contextUsed: 85_000,
-      contextUsedAfterCompaction: 8_500,
-    });
+    // A rewind drops the phase prompt, which forces the re-entry down the full
+    // path. Compaction no longer does: the pin keeps the ledger.
+    const scripted = scriptedAgent(
+      ['prose, not JSON', envelope, envelope],
+      [null, null, 'fix.txt'],
+    );
 
     const outcome = await run({
       scripted,
       project,
       agents: [feedbackInRole()],
+      rewindAfterCorrections: 1,
       pipeline: repairPipeline(),
     });
     expect(outcome.status).toBe('accepted');
-    expect(wireLog(scripted).filter((l) => l === 'compact')).toHaveLength(1);
+    expect(wireLog(scripted)).toContain('rewind');
 
     const roles = buildRoles(scripted);
-    expect(roles).toHaveLength(2);
+    expect(roles).toHaveLength(3);
     expect(roles[0]).toContain('(no feedback)');
     // The full prompt went back on the wire, and the role carries the evidence
     // on this path as well — the two paths cannot disagree about the role.
-    expect(buildPrompts(scripted)[1]).toContain('do the thing');
-    expect(roles[1]).toContain('./check.sh');
-    expect(roles[1]).not.toContain('(no feedback)');
+    expect(buildPrompts(scripted)[2]).toContain('do the thing');
+    expect(roles[2]).toContain('./check.sh');
+    expect(roles[2]).not.toContain('(no feedback)');
   });
 
   /**
@@ -1714,8 +1754,8 @@ describe('feedback re-entry into an already-prompted phase', () => {
     const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
     const readOnly = buildAgent({ writes: ['fix.txt'], toolProfile: 'read-only' });
 
-    // The first run re-enters via the delta path; the second compacts in
-    // between, which forces the full path. The role must read the same way.
+    // The first run re-enters via the delta path; the second also compact-pins
+    // and stays on the delta path. The role must read the same way on both.
     for (const options of [
       {},
       { contextUsed: 85_000, contextUsedAfterCompaction: 8_500 },
@@ -2368,7 +2408,9 @@ describe('the agent transport under the executor', () => {
  *
  * Compaction is in place — the session keeps its identity and loses messages —
  * so what a test can assert is the occupancy either side of it and that the run
- * carried on. There is no successor id to name.
+ * carried on. There is no successor id to name. The Foundry summarizer, not
+ * Pi's chat template, is what compact receives, and the ledger is forgotten
+ * only after a compact that actually dropped messages.
  */
 describe('compaction between phases', () => {
   /** Two agent phases so there is an inter-phase window at all. */
@@ -2507,6 +2549,51 @@ describe('compaction between phases', () => {
     ).toBe(true);
     // Compaction is not a reopen, so the run never opens a second session.
     expect(handshakeCount(scripted)).toBe(1);
+  });
+
+  it('hands the Foundry summarizer request, artifacts, pins, and envelope fields', async () => {
+    const scripted = scriptedAgent(
+      [buildEnvelope({ artifacts: ['.foundry-handoff/build.json'] }), buildEnvelope()],
+      [],
+      [],
+      { contextUsed: 85_000, contextUsedAfterCompaction: 8_500 },
+    );
+    const outcome = await run({
+      scripted,
+      request: 'ship the widget',
+      project: { contextSummary: '## Stack\nTypeScript' },
+      pipeline: twoPhases(),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(scripted.compactFacts).toHaveLength(1);
+    const facts = scripted.compactFacts[0]!;
+    expect(facts.request).toBe('ship the widget');
+    expect(facts.phase).toBe('build');
+    expect(facts.artifactPaths).toContain('.foundry-handoff/build.json');
+    expect(facts.phaseUserPrompt).toContain('ship the widget');
+    expect(facts.phaseUserPrompt).not.toContain('## Report');
+    expect(facts.projectCard).toContain('## Stack\nTypeScript');
+    expect(facts.envelopeKind).toBe('build');
+    expect(facts.requiredFields).toContain('status');
+    expect(facts.requiredFields).toContain('commit_message');
+    // Standing role is re-injected, so the next turn still sees the project card.
+    expect(turnRequests(scripted)[1]!.systemPrompt).toContain('## Stack\nTypeScript');
+  });
+
+  it('forgets the ledger only after a compact that actually dropped messages', async () => {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
+      contextUsed: 85_000,
+      compactFails: true,
+    });
+    const outcome = await run({ scripted, pipeline: twoPhases() });
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(scripted).filter((l) => l === 'compact')).toHaveLength(1);
+    // Failure is traced; the compact still ran after the first phase, not before.
+    const log = wireLog(scripted);
+    const firstTurn = log.findIndex((l) => l.startsWith('turn_completed'));
+    const compactAt = log.indexOf('compact');
+    expect(firstTurn).toBeGreaterThanOrEqual(0);
+    expect(compactAt).toBeGreaterThan(firstTurn);
   });
 
   it('carries on with the run when the session refuses to compact', async () => {

@@ -88,6 +88,32 @@ function validReply(over: Record<string, unknown> = {}): string {
   });
 }
 
+function synthPrompt(purpose: string, boundary: string, fields: string[]): string {
+  return [
+    '## Purpose',
+    purpose,
+    '',
+    '## Write boundary',
+    boundary,
+    '',
+    '## Envelope fields',
+    `Fill ${fields.join(', ')}.`,
+  ].join('\n');
+}
+
+const BUILD_PROMPT = synthPrompt('write one document', 'Write boundary: only touch docs/**.', [
+  'status',
+  'summary',
+  'commit_message',
+  'artifacts',
+]);
+
+const REVIEW_PROMPT = synthPrompt(
+  'judge the result without editing it',
+  'You are read-only. Call git_diff for the patch. Do not edit files.',
+  ['approved', 'findings', 'blocking', 'status'],
+);
+
 function submitted(text: string): ScriptedTurn {
   return { structuredOutput: JSON.parse(text) as Record<string, unknown> };
 }
@@ -226,13 +252,15 @@ describe('PlanSession', () => {
     expect(ask).not.toContain('200k context');
     expect(ask).toContain('"model":"anthropic/claude-opus-4"');
     expect(ask).toContain('"model":"anthropic/claude-haiku-4"');
+    expect(ask).toContain('"reasoningEffort":"high"');
+    expect(ask).toContain('"reasoningEffort":"medium"');
     // Builtin pipelines ride along as few-shot examples of valid shapes.
     expect(ask).toContain('## Builtin pipelines');
     expect(oneShots.calls[0]!.systemPrompt).toContain('untrusted task data');
     expect(oneShots.calls[0]!.systemPrompt).toContain('Call submit_result exactly once');
   });
 
-  it('uses the Agent Defaults pin as the cast pool when the Orchestrator inherits', async () => {
+  it('lists the full enabled catalog even when pins are set, and names the pins as preferred', async () => {
     const extra = model('openai/gpt-5', 'GPT 5');
     const { state, prompts } = await run({
       turns: [submitted(validReply())],
@@ -242,14 +270,16 @@ describe('PlanSession', () => {
 
     expect(state.status).toBe('done');
     expect(prompts[0]).toContain('- anthropic/claude-opus-4 — Claude Opus 4');
-    expect(prompts[0]).not.toContain('anthropic/claude-haiku-4');
-    expect(prompts[0]).not.toContain('openai/gpt-5');
+    expect(prompts[0]).toContain('anthropic/claude-haiku-4');
+    expect(prompts[0]).toContain('openai/gpt-5');
+    expect(prompts[0]).toContain('Prefer "anthropic/claude-opus-4" for expensive phases');
+    expect(prompts[0]).toContain('pins, not the whole pool');
   });
 
-  it('unions distinct default and Orchestrator pins and rejects an off-pool cast', async () => {
-    const offPolicy = validReply().replace('anthropic/claude-opus-4', 'openai/gpt-5');
+  it('names both pins as preferred while still listing every enabled id', async () => {
+    const mixed = validReply().replace('anthropic/claude-opus-4', 'openai/gpt-5');
     const { state, oneShots, prompts } = await run({
-      turns: [submitted(offPolicy), submitted(validReply())],
+      turns: [submitted(mixed)],
       models: [...enabled, model('openai/gpt-5', 'GPT 5')],
       defaultModel: 'anthropic/claude-opus-4',
       orchestratorModel: 'anthropic/claude-haiku-4',
@@ -259,20 +289,20 @@ describe('PlanSession', () => {
     expect(oneShots.calls[0]!.model).toBe('anthropic/claude-haiku-4');
     expect(prompts[0]).toContain('anthropic/claude-opus-4');
     expect(prompts[0]).toContain('anthropic/claude-haiku-4');
-    expect(prompts[0]).not.toContain('openai/gpt-5');
-    expect(state.entries.some((entry) => entry.text.includes('not allowed'))).toBe(true);
+    expect(prompts[0]).toContain('openai/gpt-5');
+    expect(prompts[0]).toContain('Prefer "anthropic/claude-opus-4" and "anthropic/claude-haiku-4"');
   });
 
-  it('fails closed when a configured cast pin is unavailable or hidden', async () => {
-    const { state, oneShots } = await run({
-      turns: [],
+  it('keeps the enabled catalog when a configured pin is unavailable', async () => {
+    const { state, prompts } = await run({
+      turns: [submitted(validReply())],
       defaultModel: 'openai/gpt-9',
     });
 
-    expect(state.status).toBe('failed');
-    expect(state.detail).toContain('openai/gpt-9');
-    expect(state.detail).toContain('unavailable or hidden');
-    expect(oneShots.calls).toHaveLength(0);
+    expect(state.status).toBe('done');
+    expect(prompts[0]).toContain('anthropic/claude-opus-4');
+    expect(prompts[0]).not.toContain('openai/gpt-9');
+    expect(prompts[0]).not.toContain('Prefer "openai/gpt-9"');
   });
 
   it('refuses a plan whose agent phase inherits a model instead of naming one', async () => {
@@ -533,7 +563,7 @@ describe('PlanSession', () => {
         {
           name: 'builder',
           purpose: 'a second builder',
-          systemPrompt: 'You build again.',
+          systemPrompt: BUILD_PROMPT,
           userPrompt: 'Build: {{request}}',
           writes: ['docs/**'],
           envelope: 'build',
@@ -552,7 +582,7 @@ describe('PlanSession', () => {
     const duplicate = {
       name: 'doc_writer',
       purpose: 'write one document',
-      systemPrompt: 'You write docs.',
+      systemPrompt: BUILD_PROMPT,
       userPrompt: 'Write: {{request}}',
       writes: ['docs/**'],
       envelope: 'build',
@@ -597,7 +627,7 @@ describe('PlanSession', () => {
         {
           name: 'doc_writer',
           purpose: 'write one document',
-          systemPrompt: 'You write docs.',
+          systemPrompt: BUILD_PROMPT,
           userPrompt: 'Write: {{request}}',
           writes: ['docs/**'],
           envelope: 'build',
@@ -638,6 +668,267 @@ describe('PlanSession', () => {
     expect(state.status).toBe('failed');
     expect(state.detail).toContain('blocked');
     expect(state.entries.some((e) => e.kind === 'error')).toBe(true);
+  });
+
+  it('accepts a plan that assigns two different enabled models plus matching efforts', async () => {
+    const mixed = validReply({
+      pipeline: {
+        name: 'Build then review',
+        description: 'Build on a small model, then review on a stronger one.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'build',
+            kind: 'agent',
+            agent: 'builder',
+            model: 'anthropic/claude-haiku-4',
+            reasoningEffort: 'low',
+            description: 'Make the requested change inside the worktree.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test',
+            kind: 'code',
+            description: 'Run the project test command as proof of the change.',
+            command: { ref: 'test' },
+            feedbackTo: 'build',
+          },
+          {
+            name: 'review',
+            kind: 'agent',
+            agent: 'judge',
+            model: 'openai/gpt-5',
+            reasoningEffort: 'high',
+            description: 'Judge the result against the request.',
+            envelope: 'review',
+            prompt: { inputs: ['request'] },
+            gates: ['verdict_consistent', 'disapproval_halts'],
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'judge',
+          purpose: 'judge the result without editing it',
+          systemPrompt: REVIEW_PROMPT,
+          userPrompt: 'Review: {{request}}',
+          writes: [],
+          envelope: 'review',
+          toolProfile: 'read-only',
+        },
+      ],
+    });
+    const { state } = await run({
+      turns: [submitted(mixed)],
+      models: [...enabled, model('openai/gpt-5', 'GPT 5')],
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.plan!.pipeline.phases[0]?.model).toBe('anthropic/claude-haiku-4');
+    expect(state.plan!.pipeline.phases[2]?.model).toBe('openai/gpt-5');
+  });
+
+  it('warns when review uses the same provider as the last build and the pool has two prefixes', async () => {
+    const sameFamily = validReply({
+      pipeline: {
+        name: 'Build then review',
+        description: 'Build and review on the same family even though another is enabled.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'build',
+            kind: 'agent',
+            agent: 'builder',
+            model: 'anthropic/claude-opus-4',
+            reasoningEffort: 'high',
+            description: 'Make the requested change inside the worktree.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test',
+            kind: 'code',
+            description: 'Run the project test command as proof of the change.',
+            command: { ref: 'test' },
+            feedbackTo: 'build',
+          },
+          {
+            name: 'review',
+            kind: 'agent',
+            agent: 'judge',
+            model: 'anthropic/claude-haiku-4',
+            reasoningEffort: 'high',
+            description: 'Judge the result against the request.',
+            envelope: 'review',
+            prompt: { inputs: ['request'] },
+            gates: ['verdict_consistent', 'disapproval_halts'],
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'judge',
+          purpose: 'judge the result without editing it',
+          systemPrompt: REVIEW_PROMPT,
+          userPrompt: 'Review: {{request}}',
+          writes: [],
+          envelope: 'review',
+          toolProfile: 'read-only',
+        },
+      ],
+    });
+    const { state } = await run({
+      turns: [submitted(sameFamily)],
+      models: [...enabled, model('openai/gpt-5', 'GPT 5')],
+    });
+
+    expect(state.status).toBe('done');
+    expect(
+      state.plan!.warnings.some((warning) => warning.message.includes('same provider prefix')),
+    ).toBe(true);
+  });
+
+  it('does not warn when the catalog is a single provider family', async () => {
+    const sameFamily = validReply({
+      pipeline: {
+        name: 'Build then review',
+        description: 'Build and review on the only family this install can reach.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'build',
+            kind: 'agent',
+            agent: 'builder',
+            model: 'anthropic/claude-opus-4',
+            reasoningEffort: 'high',
+            description: 'Make the requested change inside the worktree.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test',
+            kind: 'code',
+            description: 'Run the project test command as proof of the change.',
+            command: { ref: 'test' },
+            feedbackTo: 'build',
+          },
+          {
+            name: 'review',
+            kind: 'agent',
+            agent: 'judge',
+            model: 'anthropic/claude-haiku-4',
+            reasoningEffort: 'high',
+            description: 'Judge the result against the request.',
+            envelope: 'review',
+            prompt: { inputs: ['request'] },
+            gates: ['verdict_consistent', 'disapproval_halts'],
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'judge',
+          purpose: 'judge the result without editing it',
+          systemPrompt: REVIEW_PROMPT,
+          userPrompt: 'Review: {{request}}',
+          writes: [],
+          envelope: 'review',
+          toolProfile: 'read-only',
+        },
+      ],
+    });
+    const { state } = await run({ turns: [submitted(sameFamily)] });
+
+    expect(state.status).toBe('done');
+    expect(
+      state.plan!.warnings.some((warning) => warning.message.includes('same provider prefix')),
+    ).toBe(false);
+  });
+
+  it('rejects a synthesized agent whose systemPrompt is only "do it"', async () => {
+    const thin = validReply({
+      pipeline: {
+        name: 'Docs',
+        description: 'Write the doc with a synthesized writer, then prove it.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'write_doc',
+            kind: 'agent',
+            agent: 'doc_writer',
+            model: 'anthropic/claude-haiku-4',
+            reasoningEffort: 'low',
+            description: 'Write the requested document into docs/.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test',
+            kind: 'code',
+            description: 'Run the project test command as proof of the change.',
+            command: { ref: 'test' },
+            feedbackTo: 'write_doc',
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'doc_writer',
+          purpose: 'write one document',
+          systemPrompt: 'do it',
+          userPrompt: 'Write: {{request}}',
+          writes: ['docs/**'],
+          envelope: 'build',
+        },
+      ],
+    });
+    const { state } = await run({ turns: [submitted(thin), submitted(validReply())] });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((entry) => entry.text.includes('must state its purpose'))).toBe(true);
+    expect(state.entries.some((entry) => entry.text.includes('write boundary'))).toBe(true);
+    expect(state.entries.some((entry) => entry.text.includes('envelope fields'))).toBe(true);
+  });
+
+  it('appends the review constitution to a synthesized judge', async () => {
+    const judged = validReply({
+      pipeline: {
+        name: 'Review',
+        description: 'Use a synthesized reviewer to judge the request.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'review',
+            kind: 'agent',
+            agent: 'judge',
+            model: 'anthropic/claude-opus-4',
+            reasoningEffort: 'high',
+            description: 'Judge the result against the request.',
+            envelope: 'review',
+            prompt: { inputs: ['request'] },
+            gates: ['verdict_consistent', 'disapproval_halts'],
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'judge',
+          purpose: 'judge the result without editing it',
+          systemPrompt: REVIEW_PROMPT,
+          userPrompt: 'Review: {{request}}',
+          writes: [],
+          envelope: 'review',
+          toolProfile: 'read-only',
+        },
+      ],
+    });
+    const { state } = await run({ turns: [submitted(judged)] });
+
+    expect(state.status).toBe('done');
+    expect(state.plan!.agents[0]!.name).toBe('judge');
+    expect(state.plan!.agents[0]!.systemPrompt).toContain('Envelope constitution (review)');
+    expect(state.plan!.agents[0]!.systemPrompt).toContain('git_diff');
   });
 
   it('cancels the turn in flight and settles cancelled', async () => {
