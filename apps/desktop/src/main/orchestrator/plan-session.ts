@@ -42,22 +42,6 @@ import {
 
 export type { OrchestratorState };
 
-function castModelsForPlanning(
-  enabledModels: readonly ModelInfo[],
-  defaultModel: string,
-  orchestratorModel: string,
-): ModelInfo[] {
-  const castPool = configuredCastModels(enabledModels, { defaultModel, orchestratorModel });
-  if (!castPool.unavailableModelIds.length) return castPool.models;
-
-  const pins = castPool.unavailableModelIds.map((id) => `"${id}"`).join(', ');
-  const subject = castPool.unavailableModelIds.length === 1 ? 'model' : 'models';
-  const verb = castPool.unavailableModelIds.length === 1 ? 'is' : 'are';
-  throw new Error(
-    `configured phase ${subject} ${pins} ${verb} unavailable or hidden; choose a reachable Agent Defaults or Orchestrator model`,
-  );
-}
-
 export interface PlanSessionDeps {
   projectId: string;
   projectPath: string;
@@ -165,15 +149,19 @@ export class PlanSession {
     const { ghAvailable, enabledModels } = await this.planningFacts();
     if (this.panel.cancelled) return;
 
-    const castModels = castModelsForPlanning(enabledModels, this.deps.defaultModel, model);
-    const allowedModelIds = castModels.map((candidate) => candidate.id);
+    const castPool = configuredCastModels(enabledModels, {
+      defaultModel: this.deps.defaultModel,
+      orchestratorModel: model,
+    });
+    const allowedModelIds = castPool.models.map((candidate) => candidate.id);
     const promptInputs: PlanPromptInputs = {
       request: this.deps.prompt,
       contextSummary: this.deps.contextSummary,
       commands: this.deps.commands,
       roster: this.deps.roster,
       envelopeDefs: this.deps.envelopeDefs,
-      models: castModels,
+      models: castPool.models,
+      preferredModelIds: castPool.preferredModelIds,
       ghAvailable,
     };
 
@@ -214,7 +202,7 @@ export class PlanSession {
             commandNames: this.deps.commands.map((c) => c.name),
             knownEnvelopes: this.deps.envelopeDefs.map((e) => e.name),
             allowedModelIds,
-            allowedModels: castModels,
+            allowedModels: castPool.models,
             scaffold: this.deps.scaffold,
           })
         : null;
