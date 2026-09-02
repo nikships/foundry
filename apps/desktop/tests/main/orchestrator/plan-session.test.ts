@@ -14,6 +14,9 @@ import { FIXED_ENGINE_DEFAULTS } from '../../../src/shared/types.js';
 import type { AgentDef, ModelInfo, ProjectCommand } from '../../../src/shared/types.js';
 import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
 import { PlanSession } from '../../../src/main/orchestrator/plan-session.js';
+import { generatedCompositionIssues } from '../../../src/main/orchestrator/plan.js';
+import { BUILTIN_AGENTS } from '../../../src/shared/builtin-agents.js';
+import { BUILTIN_PIPELINES } from '../../../src/shared/builtin-pipelines.js';
 import { scriptedOneShots, type ScriptedTurn } from '../../helpers/scripted-oneshot.js';
 
 const builder = (over: Partial<AgentDef> = {}): AgentDef => ({
@@ -967,3 +970,18 @@ async function until(check: () => boolean, timeoutMs = 2_000): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
+
+describe('generatedCompositionIssues', () => {
+  it('accepts builtin sdlc-pr as the few-shot shape with a read-only reviewer', () => {
+    const sdlc = BUILTIN_PIPELINES.find((pipeline) => pipeline.id === 'sdlc-pr')!;
+    expect(generatedCompositionIssues(sdlc, [], BUILTIN_AGENTS, ['test'])).toEqual([]);
+  });
+
+  it('rejects a ship-like plan that PRs after only a write-capable finisher', () => {
+    const ship = BUILTIN_PIPELINES.find((pipeline) => pipeline.id === 'ship-pr')!;
+    const issues = generatedCompositionIssues(ship, [], BUILTIN_AGENTS, ['test']);
+    expect(issues.some((issue) => issue.message.includes('read-only review before open_pr'))).toBe(
+      true,
+    );
+  });
+});

@@ -29,7 +29,6 @@ import { pipelineSchema, validate as validatePipeline } from '../store/pipelines
 import { validate as validateAgent } from '../store/roster.js';
 import { GATE_DESCRIPTIONS } from '../engine/gates.js';
 import { preflightForRun } from '../engine/preflight.js';
-import { compositionRuleBullets } from './composition-rules.js';
 import type { OutputFormat } from '../pi/transport.js';
 import {
   compositionRuleBullets,

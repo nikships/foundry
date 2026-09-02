@@ -31,10 +31,10 @@ describe('artifacts_exist', () => {
     expect(checks[0]!.ok).toBe(false);
   });
 
-  it('is honest that it verified nothing when nothing was claimed', async () => {
+  it('fails when nothing was claimed', async () => {
     const checks = await GATES.artifacts_exist!(base, ctx());
-    expect(checks[0]!.ok).toBe(true);
-    expect(checks[0]!.note).toContain('nothing to verify');
+    expect(checks[0]!.ok).toBe(false);
+    expect(checks[0]!.note).toContain('no artifacts declared');
   });
 
   it('accepts a test file the builder added with the change', async () => {
@@ -52,6 +52,12 @@ describe('files_non_empty', () => {
     );
     expect(checks.find((c) => c.item === 'specs/plan.md')!.ok).toBe(true);
     expect(checks.find((c) => c.item === 'specs/empty.md')!.ok).toBe(false);
+  });
+
+  it('fails when nothing was claimed', async () => {
+    const checks = await GATES.files_non_empty!(base, ctx());
+    expect(checks[0]!.ok).toBe(false);
+    expect(checks[0]!.note).toContain('no artifacts declared');
   });
 });
 
@@ -108,6 +114,16 @@ describe('verdict_consistent', () => {
       ctx(),
     );
     expect(checks.every((c) => c.ok)).toBe(true);
+  });
+
+  it('rejects a vacuous approval with no findings', async () => {
+    const checks = await GATES.verdict_consistent!(
+      { ...base, approved: true, blocking: [], findings: [] },
+      ctx(),
+    );
+    const vacuous = checks.find((c) => c.item === 'approval has findings')!;
+    expect(vacuous.ok).toBe(false);
+    expect(vacuous.note).toContain('vacuous approval');
   });
 });
 
@@ -191,5 +207,7 @@ describe('the gate runner', () => {
     const message = gateCorrection(['artifacts_exist / nope.md: missing']);
     expect(message).toContain('nope.md');
     expect(message).toContain('call submit_envelope again');
+    expect(message).not.toContain('## Report');
+    expect(message).not.toContain('"commit_message"');
   });
 });

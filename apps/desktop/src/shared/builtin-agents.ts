@@ -2,9 +2,9 @@
  * The agents Foundry ships with. Prompts are pure shared seed data,
  * and every one is editable in the Roster editor: these are defaults, not law.
  *
- * The envelope example is NOT written into these prompts. It is generated from
- * the zod schema at render time and appended, so the shape an agent is shown
- * and the shape its answer is parsed against cannot drift.
+ * The envelope example is NOT written into these prompts. The shape rides on
+ * `submit_envelope` and the output constraint, derived from the same zod schema
+ * the reply is parsed against, so the two cannot drift.
  */
 
 import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS, type AgentDef } from '@shared/types.js';
@@ -107,9 +107,10 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       'Plan the work described above.',
       '',
       '1. Write the full plan to `specs/{{run_id}}-plan.md`.',
-      '2. Use the required sections: Goal, Files, Stepwise changes, Tests to add/run, Out of scope, Risks.',
-      '3. Name only paths you have seen. Do not invent paths.',
-      '4. Declare that path in `artifacts`.',
+      '2. Fill `files_to_touch`, `steps`, and `verification` so the builder never has to guess: exact files, exact changes, how to verify. Put residual concerns in `risks`.',
+      '3. Mirror that structure in the artifact using the required sections: Goal, Files, Stepwise changes, Tests to add/run, Out of scope, Risks.',
+      '4. Name only paths you have seen. Do not invent paths.',
+      '5. Declare that path in `artifacts`.',
     ].join('\n'),
   },
   {
@@ -131,7 +132,8 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '',
       '## Instructions',
       '',
-      '- If a prior envelope carries a plan, a diagnosis, or test failures, that is your spec. Open the paths in its `artifacts` first and follow that spec.',
+      '- If a prior envelope carries a plan, its `files_to_touch`, `steps`, and `verification` plus the declared artifact file are your spec. Open the artifact paths first. If they disagree, report `status: "fail"` rather than guessing.',
+      '- If a prior envelope carries a diagnosis or test failures, that is your spec. Open any declared artifact paths first and follow it.',
       '- Implement only the files the spec lists. Do not touch unrelated files, and do not invent work the spec did not ask for.',
       "- If the plan's verification names tests, write or update those tests in the same turn, before claiming success. Tests are part of the change, not a later command.",
       '- When fixing test failures, address every reported failure, not the first one.',

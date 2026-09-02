@@ -144,6 +144,49 @@ function reviewGateRuleIssues(ctx: CompositionContext): ValidationIssue[] {
   return issues;
 }
 
+function isPrPhase(phase: PhaseDef, agents: readonly AgentDef[]): boolean {
+  if (phase.kind !== 'agent') return false;
+  return phase.name === 'open_pr' || effectivePhaseEnvelope(phase, agents) === 'pr';
+}
+
+function writesWorktree(agent: AgentDef | undefined): boolean {
+  const writes = agent?.writes;
+  return writes === null || (writes?.length ?? 0) > 0;
+}
+
+/**
+ * A write-capable review can fix as well as judge. Generated plans that then
+ * open a PR still need a later read-only reviewer.
+ */
+function independentJudgeBeforePrIssues(ctx: CompositionContext): ValidationIssue[] {
+  const prIndex = ctx.pipeline.phases.findIndex((phase) => isPrPhase(phase, ctx.agents));
+  if (prIndex < 0) return [];
+
+  const byName = new Map(ctx.agents.map((agent) => [agent.name, agent]));
+  const issues: ValidationIssue[] = [];
+  for (const [index, phase] of ctx.pipeline.phases.entries()) {
+    if (index >= prIndex || phase.kind !== 'agent') continue;
+    if (effectivePhaseEnvelope(phase, ctx.agents) !== 'review') continue;
+    const agent = phase.agent ? byName.get(phase.agent) : undefined;
+    if (!writesWorktree(agent)) continue;
+    const laterJudge = ctx.pipeline.phases.slice(index + 1, prIndex).some((candidate) => {
+      if (candidate.kind !== 'agent') return false;
+      if (effectivePhaseEnvelope(candidate, ctx.agents) !== 'review') return false;
+      const judge = candidate.agent ? byName.get(candidate.agent) : undefined;
+      return judge?.toolProfile === 'read-only';
+    });
+    if (!laterJudge) {
+      issues.push({
+        level: 'error',
+        where: phaseWhere(phase, index, ctx.indexOffset),
+        message:
+          'a write-capable review or finisher must be followed by a read-only review before open_pr',
+      });
+    }
+  }
+  return issues;
+}
+
 function proofRuleIssues(ctx: CompositionContext): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const byName = new Map(ctx.agents.map((agent) => [agent.name, agent]));
@@ -406,6 +449,12 @@ export const COMPOSITION_RULES: CompositionRule[] = [
     bullet:
       'Reviewer/verifier agent phases carry the "verdict_consistent" and "disapproval_halts" gates.',
     check: reviewGateRuleIssues,
+  },
+  {
+    id: 'independent-review-before-pr',
+    bullet:
+      'A write-capable review or finisher that is followed by a PR must itself be followed by a read-only review phase before open_pr. Builtin sdlc-pr is the shape.',
+    check: independentJudgeBeforePrIssues,
   },
   {
     id: 'phase-model',

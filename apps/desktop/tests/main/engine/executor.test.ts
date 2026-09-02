@@ -208,7 +208,13 @@ function reviewEnvelope(approved: boolean): string {
     summary: 'reviewed',
     artifacts: [],
     approved,
-    findings: approved ? [] : [{ requirement: 'it works', met: false, evidence: 'it does not' }],
+    findings: [
+      {
+        requirement: 'it works',
+        met: approved,
+        evidence: approved ? 'it does' : 'it does not',
+      },
+    ],
     blocking: approved ? [] : ['it does not work'],
     notes_for_next_agent: '',
   });
@@ -707,6 +713,69 @@ describe('agent phases', () => {
     expect(gates[0]!.passed).toBe(true);
   });
 
+  it('fails artifacts_exist and files_non_empty when the envelope declares none', async () => {
+    const scripted = scriptedAgent([buildEnvelope({ artifacts: [] })]);
+    const outcome = await run({
+      scripted,
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'An empty artifact list is a vacuous pass unless the gates fail it.',
+            gates: ['artifacts_exist', 'files_non_empty'],
+          }),
+        ],
+        {
+          description: 'empty artifacts must fail the existence and non-empty gates',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+    expect(outcome.status).toBe('rejected');
+    const gates = h.tracer.gateResults(outcome.runId);
+    expect(gates.map((g) => [g.gate, g.passed])).toEqual([
+      ['artifacts_exist', false],
+      ['files_non_empty', false],
+    ]);
+  });
+
+  it('passes planner gates when the spec file is declared and non-empty', async () => {
+    const planBody = {
+      status: 'success',
+      summary: 'planned',
+      artifacts: ['specs/run-plan.md'],
+      notes_for_next_agent: '',
+      commit_message: 'add the plan',
+      files_to_touch: ['README.md'],
+      steps: ['add a usage section'],
+      verification: ['readme still renders'],
+    };
+    const scripted = scriptedAgent([JSON.stringify(planBody)], ['specs/run-plan.md']);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ name: 'planner', envelope: 'plan', writes: ['specs/'] })],
+      pipeline: pipe(
+        [
+          agentPhase('plan', {
+            agent: 'planner',
+            envelope: 'plan',
+            description: 'Write a spec file and declare it.',
+            gates: ['artifacts_exist', 'files_non_empty'],
+          }),
+        ],
+        {
+          description: 'planner happy-path with a declared spec',
+          acceptance: { kind: 'envelope_status', phase: 'plan' },
+        },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    const gates = h.tracer.gateResults(outcome.runId);
+    expect(gates.map((g) => [g.gate, g.passed])).toEqual([
+      ['artifacts_exist', true],
+      ['files_non_empty', true],
+    ]);
+  });
+
   it('applies a deletion made during an agent turn', async () => {
     const scripted = scriptedAgent([buildEnvelope()], [], [], {
       deleteEffects: ['README.md'],
@@ -808,12 +877,17 @@ describe('agent phases', () => {
     expect(envelopes[0]!.schemaKind).toBe('severity_report');
     expect(envelopes[0]!.payload).toMatchObject({ severity: 'high' });
 
+    const format = turnRequests(scripted)[0]!.outputFormat as {
+      schema: { required?: string[]; properties?: Record<string, unknown> };
+    };
+    expect(format.schema.required).toContain('severity');
+    expect(format.schema.properties).toHaveProperty('severity');
     const prompt = readFileSync(
       join(h.tracer.runDir(outcome.runId), 'builder/prompts/report-1.md'),
       'utf8',
     );
-    expect(prompt).toContain('severity');
-    expect(prompt).toContain('low|med|high');
+    expect(prompt).toContain('call `submit_envelope` once');
+    expect(prompt).not.toContain('low|med|high');
   });
 
   it('fails when the agent itself reports failure', async () => {
@@ -1511,14 +1585,15 @@ describe('feedback re-entry into an already-prompted phase', () => {
     expect(prompts).toHaveLength(2);
     // The first entry is the whole phase prompt.
     expect(prompts[0]).toContain('do the thing');
-    expect(prompts[0]).toContain(exampleFor('build'));
+    expect(prompts[0]).toContain('call `submit_envelope` once');
+    expect(prompts[0]).not.toContain(exampleFor('build'));
     // The re-entry is the evidence plus a continue instruction, and nothing the
     // session is already holding: no request, no envelope example.
     expect(prompts[1]).toContain('A check failed after your last attempt');
     expect(prompts[1]).toContain('./check.sh');
     expect(prompts[1]).not.toContain('do the thing');
     expect(prompts[1]).not.toContain(exampleFor('build'));
-    expect(prompts[1]!.length).toBeLessThan(prompts[0]!.length);
+    expect(prompts[1]).not.toContain('call `submit_envelope` once');
 
     // Same live conversation: a delta is only correct because of that.
     const turns = wireLog(scripted).filter((l) => l.startsWith('turn_started'));
@@ -1563,7 +1638,8 @@ describe('feedback re-entry into an already-prompted phase', () => {
     // Turn 2 is the feedback re-entry, and the rewound session no longer holds
     // the prompt: it arrives in full, feedback appended.
     expect(prompts[2]).toContain('do the thing');
-    expect(prompts[2]).toContain(exampleFor('build'));
+    expect(prompts[2]).toContain('call `submit_envelope` once');
+    expect(prompts[2]).not.toContain(exampleFor('build'));
     expect(prompts[2]).toContain('./check.sh');
     expect(
       events(outcome.runId)
@@ -1658,7 +1734,8 @@ describe('feedback re-entry into an already-prompted phase', () => {
     // build(s1) → probe(s2) → build(s3): each model change is a new session.
     expect(requests.map((r) => r.sessionId)).toEqual(['s1', 's2', 's3', 's4']);
     expect(requests[2]!.text).toContain('do the thing');
-    expect(requests[2]!.text).toContain(exampleFor('build'));
+    expect(requests[2]!.text).toContain('call `submit_envelope` once');
+    expect(requests[2]!.text).not.toContain(exampleFor('build'));
     expect(requests[2]!.text).toContain('./check.sh');
   });
 
@@ -2007,10 +2084,11 @@ describe('the trace record', () => {
     expect(existsSync(join(dir, 'pipeline.json'))).toBe(true);
     expect(existsSync(join(dir, 'events.jsonl'))).toBe(true);
     expect(existsSync(join(dir, 'builder/prompts/build-1.md'))).toBe(true);
-    // Prompt on disk is exactly what was sent, envelope example included.
+    // Prompt on disk is exactly what was sent, including the submit_envelope cue.
     const prompt = readFileSync(join(dir, 'builder/prompts/build-1.md'), 'utf8');
     expect(prompt).toContain('do the thing');
-    expect(prompt).toContain('commit_message');
+    expect(prompt).toContain('call `submit_envelope` once');
+    expect(prompt).not.toContain('## Report');
   });
 
   it('records the resolved model on agent_start when the roster says inherit (FOU-68)', async () => {
@@ -2691,28 +2769,26 @@ describe('structured-output envelopes', () => {
     expect(format.schema.required).toContain('severity');
   });
 
-  it('still shows the agent the generated example beside the schema', async () => {
+  it('does not reprint the envelope example in the user prompt', async () => {
     const scripted = scriptedAgent([buildEnvelope()]);
     const outcome = await run({
       scripted,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'Keep the prompt example alongside the constraint.' })],
-        {
-          description: 'the prompt example survives the wire constraint',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
+      pipeline: pipe([agentPhase('build', { description: 'Keep a single envelope channel.' })], {
+        description: 'the prompt no longer reprints the schema example',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
     });
 
-    // Removing the example is an eval-backed decision, not a side effect of
-    // gaining a second channel for the same shape.
     const example = exampleFor('build');
-    expect(String(turnRequests(scripted)[0]!.text)).toContain(example);
+    const userText = String(turnRequests(scripted)[0]!.text);
+    expect(userText).toContain('call `submit_envelope` once');
+    expect(userText).not.toContain(example);
+    expect(userText).not.toContain('## Report');
     const prompt = readFileSync(
       join(h.tracer.runDir(outcome.runId), 'builder/prompts/build-1.md'),
       'utf8',
     );
-    expect(prompt).toContain(example);
+    expect(prompt).not.toContain(example);
   });
 
   it('accepts a valid structured reply whose text carries no envelope at all', async () => {
@@ -3235,7 +3311,8 @@ describe('continuing a killed run', () => {
     const prompt = turnRequests(continued)[0]!.text;
     // Full: the new session holds nothing, so the phase's own ask is re-sent.
     expect(prompt).toContain('Build: do the thing');
-    expect(prompt).toContain('## Report');
+    expect(prompt).toContain('call `submit_envelope` once');
+    expect(prompt).not.toContain('## Report');
     expect(prompt).toContain('## Recovering an interrupted attempt');
     expect(prompt).toContain('stopped by the operator while the "build" phase');
     expect(prompt).toMatch(/may already contain partial/);

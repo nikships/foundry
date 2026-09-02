@@ -178,7 +178,8 @@ describe('builtin prompt contracts', () => {
 
       ## Instructions
 
-      - If a prior envelope carries a plan, a diagnosis, or test failures, that is your spec. Open the paths in its \`artifacts\` first and follow that spec.
+      - If a prior envelope carries a plan, its \`files_to_touch\`, \`steps\`, and \`verification\` plus the declared artifact file are your spec. Open the artifact paths first. If they disagree, report \`status: "fail"\` rather than guessing.
+      - If a prior envelope carries a diagnosis or test failures, that is your spec. Open any declared artifact paths first and follow it.
       - Implement only the files the spec lists. Do not touch unrelated files, and do not invent work the spec did not ask for.
       - If the plan's verification names tests, write or update those tests in the same turn, before claiming success. Tests are part of the change, not a later command.
       - When fixing test failures, address every reported failure, not the first one.

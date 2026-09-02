@@ -71,7 +71,11 @@ function buildPhase(refined = false): PhaseDef {
     retries: 2,
     description:
       'Implement the plan exactly, writing or updating the tests the spec names as part of the change.',
-    prompt: { inputs: refined ? refinedRequest(['envelope:plan']) : ['request', 'envelope:plan'] },
+    prompt: {
+      inputs: refined
+        ? refinedRequest(['envelope:plan', 'envelope:refine'])
+        : ['request', 'envelope:plan'],
+    },
   };
 }
 
@@ -130,7 +134,7 @@ function productionCheckPhase(): PhaseDef {
     retries: 2,
     description: 'Audit the work against the ship bar and close the gaps it finds.',
     gates: ['verdict_consistent', 'disapproval_halts'],
-    prompt: { inputs: refinedRequest(['envelope:build']) },
+    prompt: { inputs: refinedRequest(['envelope:build', 'envelope:refine']) },
   };
 }
 
@@ -156,7 +160,12 @@ function reviewPhase(): PhaseDef {
     description: 'Check the built work against the refined brief, one finding per requirement.',
     gates: ['verdict_consistent', 'disapproval_halts'],
     prompt: {
-      inputs: refinedRequest(['envelope:plan', 'envelope:build', 'envelope:production_check']),
+      inputs: refinedRequest([
+        'envelope:plan',
+        'envelope:build',
+        'envelope:production_check',
+        'envelope:refine',
+      ]),
     },
   };
 }

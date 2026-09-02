@@ -31,7 +31,7 @@ import styles from './EnvelopesEditor.module.css';
 const BUILTIN_BLURBS: Record<EnvelopeKind, string> = {
   generic: 'Bare outcome — status, summary, artifacts, handoff note.',
   brief: 'Adds a rewritten request, its constraints, and acceptance criteria.',
-  plan: 'Adds a commit_message for the plan phase.',
+  plan: 'Adds files_to_touch, steps, verification, optional risks, and a commit_message.',
   build: 'Adds a commit_message for implementation work.',
   scout: 'Adds findings — a list of what was discovered.',
   review: 'Adds approved, structured findings, and blocking issues.',
@@ -132,13 +132,13 @@ const BUILTIN_EXTRA_FIELDS: Record<EnvelopeKind, CustomEnvelopeField[]> = {
     {
       name: 'constraints',
       type: 'string[]',
-      required: false,
+      required: true,
       description: 'a rule the work must respect',
     },
     {
       name: 'acceptance_criteria',
       type: 'string[]',
-      required: false,
+      required: true,
       description: 'how anyone can tell this is done',
     },
   ],
@@ -148,6 +148,30 @@ const BUILTIN_EXTRA_FIELDS: Record<EnvelopeKind, CustomEnvelopeField[]> = {
       type: 'string',
       required: false,
       description: 'imperative subject line under 72 chars',
+    },
+    {
+      name: 'files_to_touch',
+      type: 'string[]',
+      required: true,
+      description: 'paths this plan will change',
+    },
+    {
+      name: 'steps',
+      type: 'string[]',
+      required: true,
+      description: 'the change to make, one per entry',
+    },
+    {
+      name: 'verification',
+      type: 'string[]',
+      required: true,
+      description: 'how to prove the change works',
+    },
+    {
+      name: 'risks',
+      type: 'string[]',
+      required: false,
+      description: 'what could go wrong',
     },
   ],
   build: [
