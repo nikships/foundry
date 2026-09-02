@@ -16,6 +16,7 @@ import type { AgentSession as PiAgentSession } from '@earendil-works/pi-coding-a
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type { CompactionFacts } from '../engine/compaction.js';
 import { modelKey, pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
 import {
@@ -215,9 +216,11 @@ export class PiTransport implements AgentTransport {
   /**
    * Compacts the live session in place. Pi summarizes and keeps the same
    * session, so unlike the daemon there is no successor to adopt and no id to
-   * re-persist.
+   * re-persist. Foundry facts ride `session_before_compact` so the summary is
+   * ours rather than Pi's chat template.
    */
-  compact(): Promise<{ removedCount: number } | null> {
+  compact(facts?: CompactionFacts): Promise<{ removedCount: number } | null> {
+    this.extension.useCompactionFacts(facts ?? null);
     return compactSession(this.session);
   }
 

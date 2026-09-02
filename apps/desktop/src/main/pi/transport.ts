@@ -12,6 +12,7 @@
  */
 
 import type { ContextBreakdown, ReasoningEffort, ToolProfile } from '@shared/types.js';
+import type { CompactionFacts } from '../engine/compaction.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { Tracer } from '../trace/tracer.js';
 
@@ -156,8 +157,12 @@ export interface AgentTransport {
   applySettings(): Promise<{ model: string; warning?: string }>;
   contextStats(): Promise<ContextStats | null>;
   contextBreakdown(): Promise<ContextBreakdown | null>;
-  /** Compact in place, or `null` when there was nothing to compact. */
-  compact(): Promise<{ removedCount: number } | null>;
+  /**
+   * Compact in place, or `null` when there was nothing to compact.
+   * `facts` is Foundry's summarizer input; a transport that cannot customise
+   * the summary ignores it.
+   */
+  compact(facts?: CompactionFacts): Promise<{ removedCount: number } | null>;
   /**
    * What a rewind to `messageId` could put back. `null` when the transport
    * cannot answer, which the caller reads as "do not rewind".
