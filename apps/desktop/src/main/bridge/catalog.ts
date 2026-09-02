@@ -13,6 +13,11 @@
 
 import { readFileSync } from 'node:fs';
 import { bridgeCatalogPath } from './paths.js';
+import {
+  BRIDGE_MODEL_DENYLIST,
+  isDeniedModel,
+  type BridgeModelDenylist,
+} from './model-denylist.js';
 import type { BridgeProviderId } from './providers.js';
 
 /** One model as CLIProxyAPI's models.json writes it. Extra keys are allowed. */
@@ -104,10 +109,18 @@ export function parseCliproxyCatalog(value: unknown): CliproxyCatalog {
   return out;
 }
 
-/** Every agent-usable model the given login unlocks, in catalog order. */
+/**
+ * Every agent-usable model the given login unlocks, in catalog order.
+ *
+ * This is the one funnel every Bridge model passes through on its way into
+ * pi's models.json, so the operator's denylist is applied here rather than at
+ * each consumer: filtering later would leave a model the picker hides but the
+ * roster could still name.
+ */
 export function modelsForProvider(
   catalog: CliproxyCatalog,
   provider: BridgeProviderId,
+  denylist: BridgeModelDenylist = BRIDGE_MODEL_DENYLIST,
 ): CatalogModel[] {
   const kind = thinkingKind(provider);
   const seen = new Set<string>();
@@ -116,6 +129,7 @@ export function modelsForProvider(
     for (const model of catalog[channel] ?? []) {
       if (seen.has(model.id) || !isAgentModel(model)) continue;
       seen.add(model.id);
+      if (isDeniedModel(provider, model.id, denylist)) continue;
       out.push(toCatalogModel(model, kind));
     }
   }

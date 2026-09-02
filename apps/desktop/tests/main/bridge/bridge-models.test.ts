@@ -107,7 +107,9 @@ describe('models.json generation', () => {
   });
 
   it('projects the catalog for each authenticated login, not a Foundry-side allowlist', () => {
-    const providers = generateProviders(['gemini', 'grok'], BASE_URL, catalog);
+    // Empty denylist: this asserts channel projection, which must not shift
+    // when the operator edits which models they want offered.
+    const providers = generateProviders(['gemini', 'grok'], BASE_URL, catalog, {});
     expect(providers['bridge-gemini']?.models.map((model) => model.id)).toEqual([
       'gemini-3.7-flash-high',
       'claude-sonnet-4-6',

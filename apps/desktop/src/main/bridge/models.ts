@@ -23,6 +23,7 @@
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { loadBridgeCatalog, modelsForProvider, type CliproxyCatalog } from './catalog.js';
+import { BRIDGE_MODEL_DENYLIST, type BridgeModelDenylist } from './model-denylist.js';
 import {
   BRIDGE_PROVIDERS,
   isBridgeProviderId,
@@ -67,11 +68,18 @@ export type ModelsJson = { providers?: Record<string, unknown> } & Record<string
  */
 const SUBSCRIPTION_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
-/** The `bridge-*` provider entries for the given authenticated providers. */
+/**
+ * The `bridge-*` provider entries for the given authenticated providers.
+ *
+ * `denylist` defaults to the operator's shipped list and exists as a parameter
+ * so a test can pin projection mechanics without moving every time that list
+ * is edited.
+ */
 export function generateProviders(
   authenticated: readonly BridgeProviderId[],
   baseUrl: string,
   catalog: CliproxyCatalog,
+  denylist: BridgeModelDenylist = BRIDGE_MODEL_DENYLIST,
 ): Record<string, GeneratedProvider> {
   const wanted = new Set(authenticated);
   const out: Record<string, GeneratedProvider> = {};
@@ -84,7 +92,7 @@ export function generateProviders(
       baseUrl: `${trimSlash(baseUrl)}${provider.baseUrlSuffix}`,
       api: provider.api,
       apiKey: 'foundry-bridge',
-      models: modelsForProvider(catalog, provider.id).map((model) => ({
+      models: modelsForProvider(catalog, provider.id, denylist).map((model) => ({
         id: model.id,
         name: model.name,
         reasoning: model.reasoning,
