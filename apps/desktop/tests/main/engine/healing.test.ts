@@ -9,7 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import { describe, expect, it } from 'vitest';
@@ -365,6 +365,94 @@ describe('heal', () => {
 
     expect(prompt).toContain('timed out');
   });
+
+  it('tells the last attempt to revert in-phase edits rather than weaken the check', async () => {
+    const cwd = scratchRepo();
+    let prompt = '';
+    await heal({
+      phase: 'test',
+      request: 'x',
+      cwd,
+      failure: failure(),
+      attempts: 2,
+      protectedPaths: [],
+      agent: {
+        send: async (text) => {
+          prompt = text;
+          return { text: '' };
+        },
+        abort: () => undefined,
+      },
+      rerun: async () => pass(),
+      cancelled: () => false,
+    });
+    expect(prompt).toContain('attempt 1 of 2');
+    expect(prompt).not.toContain('This is the last attempt');
+
+    prompt = '';
+    await heal({
+      phase: 'test',
+      request: 'x',
+      cwd,
+      failure: failure(),
+      attempts: 1,
+      protectedPaths: [],
+      agent: {
+        send: async (text) => {
+          prompt = text;
+          return { text: '' };
+        },
+        abort: () => undefined,
+      },
+      rerun: async () => pass(),
+      cancelled: () => false,
+    });
+    expect(prompt).toContain('This is the last attempt');
+    expect(prompt).toContain('revert every in-phase edit');
+  });
+
+  it('reverts in-phase edits when healing is exhausted', async () => {
+    const cwd = scratchRepo();
+    const outcome = await heal({
+      phase: 'test',
+      request: 'make it work',
+      cwd,
+      failure: failure(),
+      attempts: 1,
+      protectedPaths: [],
+      agent: agentThat(() => {
+        writeFileSync(join(cwd, 'src.txt'), 'weakened\n');
+        writeFileSync(join(cwd, 'extra.txt'), 'partial\n');
+      }),
+      rerun: async () => failure(),
+      cancelled: () => false,
+    });
+
+    expect(outcome.healed).toBe(false);
+    expect(outcome.detail).toContain('in-phase edits reverted');
+    expect(readFileSync(join(cwd, 'src.txt'), 'utf8')).toBe('broken\n');
+    expect(existsSync(join(cwd, 'extra.txt'))).toBe(false);
+  });
+
+  it('does not revert earlier-phase files that were already dirty at heal start', async () => {
+    const cwd = scratchRepo();
+    writeFileSync(join(cwd, 'prior.txt'), 'from an earlier phase\n');
+    const outcome = await heal({
+      phase: 'test',
+      request: 'make it work',
+      cwd,
+      failure: failure(),
+      attempts: 1,
+      protectedPaths: [],
+      agent: agentThat(() => writeFileSync(join(cwd, 'src.txt'), 'weakened\n')),
+      rerun: async () => failure(),
+      cancelled: () => false,
+    });
+
+    expect(outcome.healed).toBe(false);
+    expect(readFileSync(join(cwd, 'prior.txt'), 'utf8')).toBe('from an earlier phase\n');
+    expect(readFileSync(join(cwd, 'src.txt'), 'utf8')).toBe('broken\n');
+  });
 });
 
 describe('resolveHealingModel', () => {
@@ -433,5 +521,7 @@ describe('healingAgent', () => {
   it('forbids weakening the check in its standing rules', () => {
     expect(HEALING_SYSTEM).toContain('smallest change');
     expect(HEALING_SYSTEM).toContain('Never weaken the check');
+    expect(HEALING_SYSTEM).toContain('revert every edit you made in this phase');
+    expect(HEALING_SYSTEM).toContain('do not revert earlier phases');
   });
 });

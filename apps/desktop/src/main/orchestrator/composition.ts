@@ -419,6 +419,12 @@ export const COMPOSITION_RULES: CompositionRule[] = [
     check: () => [],
   },
   {
+    id: 'flake-rerun',
+    bullet:
+      'Proof code phases that run a project command ({"ref":"test"}, lint, typecheck, or any listed proof command) set "flakeRerun": 2 so a flaky check is re-run without edits before healing. Do not set 0 on a proof phase.',
+    check: () => [],
+  },
+  {
     id: 'acceptance',
     bullet:
       'Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.',

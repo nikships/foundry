@@ -166,3 +166,56 @@ describe('merge', () => {
     expect(outcome.detail).toContain('rebase before merging');
   });
 });
+
+describe('submodules', () => {
+  function repoWithSubmodule(): { repo: string; sub: string } {
+    const sub = tempDir('foundry-worktree-sub-');
+    sh(sub, ['git', 'init', '-q', '-b', 'main']);
+    sh(sub, ['git', 'config', 'user.email', 'test@foundry.local']);
+    sh(sub, ['git', 'config', 'user.name', 'Foundry Test']);
+    writeFileSync(join(sub, 'lib.txt'), 'from-sub\n');
+    sh(sub, ['git', 'add', '-A']);
+    sh(sub, ['git', 'commit', '-qm', 'sub contents']);
+
+    const repo = scratchRepo();
+    sh(repo, ['git', 'config', 'protocol.file.allow', 'always']);
+    sh(repo, [
+      'git',
+      '-c',
+      'protocol.file.allow=always',
+      'submodule',
+      'add',
+      `file://${sub}`,
+      'vendor/lib',
+    ]);
+    sh(repo, ['git', 'commit', '-qm', 'add submodule']);
+    return { repo, sub };
+  }
+
+  it('populates submodule content in the run worktree without writing the operator checkout', async () => {
+    const { repo } = repoWithSubmodule();
+    const beforeStatus = sh(repo, ['git', 'status', '--porcelain']);
+    const beforeReadme = readFileSync(join(repo, 'README.md'), 'utf8');
+
+    const handle = await worktree.create({ repo, runId: 'run_sub', baseRef: 'main' });
+    expect(readFileSync(join(handle.path, 'vendor/lib/lib.txt'), 'utf8')).toBe('from-sub\n');
+    expect(readFileSync(join(repo, 'README.md'), 'utf8')).toBe(beforeReadme);
+    expect(sh(repo, ['git', 'status', '--porcelain'])).toBe(beforeStatus);
+  });
+
+  it('fails closed when submodule init fails', async () => {
+    const { repo } = repoWithSubmodule();
+    writeFileSync(
+      join(repo, '.gitmodules'),
+      '[submodule "vendor/lib"]\n\tpath = vendor/lib\n\turl = /nonexistent/foundry-sub\n',
+    );
+    sh(repo, ['git', 'add', '.gitmodules']);
+    sh(repo, ['git', 'commit', '-qm', 'break submodule url']);
+    sh(repo, ['git', 'config', 'submodule.vendor/lib.url', '/nonexistent/foundry-sub']);
+    sh(repo, ['rm', '-rf', join(repo, '.git', 'modules')]);
+
+    await expect(worktree.create({ repo, runId: 'run_bad_sub', baseRef: 'main' })).rejects.toThrow(
+      /submodule/i,
+    );
+  });
+});

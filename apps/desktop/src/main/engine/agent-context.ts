@@ -9,6 +9,8 @@ const LEGACY_SHELL_LINES = [
 export interface SetupExecution {
   command: string;
   exitCode: number | null;
+  argv?: string[];
+  durationMs?: number;
 }
 
 function withoutLegacyShellNote(role: string): string {

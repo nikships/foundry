@@ -45,6 +45,7 @@ describe('orchestrator composition rules', () => {
       'review-gates',
       'phase-model',
       'feedback-to',
+      'flake-rerun',
       'acceptance',
       'prefer-roster',
       'synthesized-agent',

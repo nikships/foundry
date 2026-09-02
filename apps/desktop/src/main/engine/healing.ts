@@ -24,7 +24,7 @@ import type {
 } from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
-import { enforce, snapshot, type Snapshot } from './boundary.js';
+import { enforce, restoreToPhaseStart, snapshot, type Snapshot } from './boundary.js';
 
 /** The one method a healing turn needs; a one-shot session satisfies it. */
 export interface HealingAgent {
@@ -143,6 +143,9 @@ export const HEALING_SYSTEM = [
   '- Fix the cause the output points at. Do not refactor, reformat, or tidy anything else.',
   '- Never weaken the check to pass it: do not delete, skip, or loosen a test,',
   '  a lint rule, or an assertion, and do not edit the command itself.',
+  '- On the last attempt, if you cannot make the frozen command pass without weakening it,',
+  '  revert every edit you made in this phase (do not revert earlier phases) and stop.',
+  '  The engine reverts in-phase edits if this attempt still fails.',
   '- Do not commit, push, merge, or touch any branch.',
   '- You are not asked to run the command; it is re-run for you after your turn.',
 ].join('\n');
@@ -167,6 +170,14 @@ export function healPrompt(input: {
     `    ${input.command}`,
     '',
     `This is attempt ${input.attempt} of ${input.attempts}. The same command runs again after your turn, unchanged.`,
+  ];
+  if (input.attempt === input.attempts) {
+    lines.push(
+      '',
+      'This is the last attempt. If you cannot make the frozen command pass without weakening it, revert every in-phase edit (do not revert earlier phases) and leave the tree as it was when this phase started. The status will be fail.',
+    );
+  }
+  lines.push(
     '',
     `What the run was asked to do, for context only — do not implement it here:`,
     input.request.trim() || '(no request recorded)',
@@ -175,7 +186,7 @@ export function healPrompt(input: {
     '```',
     input.outputTail.trim() || '(no output)',
     '```',
-  ];
+  );
   if (input.protectedPaths.length) {
     lines.push(
       '',
@@ -239,10 +250,23 @@ async function checkHealBoundary(
 async function healLoop(input: HealInput): Promise<HealOutcome> {
   const attempts: HealAttempt[] = [];
   let last = input.failure;
+  // Taken before any healer write so exhaustion can put this phase back without
+  // touching earlier phases' work.
+  const origin = await snapshot(input.cwd);
 
   const recordAttempt = (record: HealAttempt): void => {
     attempts.push(record);
     input.onAttempt?.(record);
+  };
+
+  const revertInPhase = async (detail: string): Promise<HealOutcome> => {
+    await restoreToPhaseStart(input.cwd, origin);
+    return {
+      healed: false,
+      attempts,
+      result: last,
+      detail: `${detail}; in-phase edits reverted`,
+    };
   };
 
   for (let attempt = 1; attempt <= input.attempts; attempt += 1) {
@@ -277,12 +301,7 @@ async function healLoop(input: HealInput): Promise<HealOutcome> {
         result: last,
         violations: await checkHealBoundary(input.cwd, before, input.protectedPaths),
       });
-      return {
-        healed: false,
-        attempts,
-        result: last,
-        detail: `the healing agent failed: ${(e as Error).message}`,
-      };
+      return revertInPhase(`the healing agent failed: ${(e as Error).message}`);
     }
 
     const violations = await checkHealBoundary(input.cwd, before, input.protectedPaths);
@@ -305,10 +324,5 @@ async function healLoop(input: HealInput): Promise<HealOutcome> {
     }
   }
 
-  return {
-    healed: false,
-    attempts,
-    result: last,
-    detail: `still failing after ${input.attempts} healing attempt(s)`,
-  };
+  return revertInPhase(`still failing after ${input.attempts} healing attempt(s)`);
 }

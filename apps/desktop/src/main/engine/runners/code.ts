@@ -1,16 +1,24 @@
 /**
- * A code phase runs one known command. A failure gets, in order: a healing
- * agent that may make the smallest fix in the worktree, then a route back to
- * an earlier agent phase as an envelope, then the run. Each of those is
- * bounded, and only the command's own exit code decides whether a fix worked.
+ * A code phase runs one known command. A failure gets, in order: no-edit
+ * flake reruns for `{ref}` proof phases, a healing agent that may make the
+ * smallest fix in the worktree, then a route back to an earlier agent phase
+ * as an envelope, then the run. Each of those is bounded, and only the
+ * command's own exit code decides whether a fix worked.
  */
 
-import type { CommandResult, PhaseDef } from '@shared/types.js';
-import { healingEligible } from '@shared/types.js';
+import {
+  flakeRerunCount,
+  healingEligible,
+  type CommandResult,
+  type HealClass,
+  type PhaseDef,
+} from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
+import { snapshot } from '../boundary.js';
 import { BUILTIN_ARGV, runCommand } from '../commands.js';
 import { resolveRefCommand, sniffCommands } from '../detect.js';
 import { feedbackEnvelope } from '../envelopes.js';
+import { changedPaths } from '../git.js';
 import { heal, type HealAttempt } from '../healing.js';
 import { resolveEnvelopeRef } from '../prompts.js';
 
@@ -76,16 +84,31 @@ export class CodePhaseRunner implements PhaseRunner {
       return { kind: 'next' };
     }
 
+    // A flaky `{ref}` proof is cheaper than a healer: re-run without edits
+    // first, and only write if the command stays red.
+    const flaked = await this.tryFlakeRerun(phase, ctx, resolved.argv);
+    if (flaked?.passed) {
+      this.traceHealClass(phase, ctx, 'flake', { reruns: flaked.reruns });
+      tracer.closePhase(phaseId, 'success');
+      return { kind: 'next' };
+    }
+    if (flaked) result = flaked.result;
+
     // A healer runs before the failure escalates: the command is frozen, so a
     // small repair in the worktree is cheaper than re-entering a whole phase.
     const healed = await this.tryHeal(phase, ctx, resolved, result);
     if (healed) {
       result = healed;
       this.record(phase, ctx, result);
+      this.traceHealClass(phase, ctx, result.passed ? 'healed' : 'failed', {
+        attempts: this.healSpent.get(phase.name) ?? 0,
+      });
       if (result.passed) {
         tracer.closePhase(phaseId, 'success');
         return { kind: 'next' };
       }
+    } else if (flakeRerunCount(phase) > 0) {
+      this.traceHealClass(phase, ctx, 'failed', { reruns: flakeRerunCount(phase) });
     }
 
     if (ctx.cancelled()) {
@@ -167,6 +190,66 @@ export class CodePhaseRunner implements PhaseRunner {
   private record(phase: PhaseDef, ctx: RunContext, result: CommandResult): void {
     ctx.commandResults.set(phase.name, result);
     ctx.tracer.writeRunFile(ctx.runId, `commands/${phase.name}.log`, result.outputTail);
+  }
+
+  /**
+   * Re-run a failed `{ref}` command without writing, so a flake is not
+   * rewritten. Returns the first passing rerun, or the last failure when
+   * every rerun stayed red. `null` means flake rerun is off for this phase.
+   */
+  private async tryFlakeRerun(
+    phase: PhaseDef,
+    ctx: RunContext,
+    argv: string[],
+  ): Promise<{ passed: true; reruns: number } | { passed: false; result: CommandResult } | null> {
+    const budget = flakeRerunCount(phase);
+    if (budget < 1) return null;
+    if (ctx.cancelled()) return null;
+
+    const { tracer, runId } = ctx;
+    const phaseId = ctx.phaseId(phase.name);
+    const before = await snapshot(ctx.cwd);
+    tracer.event({
+      runId,
+      phaseId,
+      type: 'log',
+      name: `flake rerun ${phase.name}`,
+      payload: { attempts: budget, command: argv.join(' ') },
+    });
+
+    let last: CommandResult | null = null;
+    for (let attempt = 1; attempt <= budget; attempt += 1) {
+      if (ctx.cancelled()) return last ? { passed: false, result: last } : null;
+      last = await this.execute(phase, ctx, argv);
+      this.record(phase, ctx, last);
+      if (!last.passed) continue;
+      const after = await changedPaths(ctx.cwd);
+      const wrote = after.filter((path) => !before.paths.has(path));
+      tracer.event({
+        runId,
+        phaseId,
+        type: 'log',
+        name: `flake rerun ${phase.name} passed`,
+        payload: { attempt, budget, wrote },
+      });
+      return { passed: true, reruns: attempt };
+    }
+    return last ? { passed: false, result: last } : null;
+  }
+
+  private traceHealClass(
+    phase: PhaseDef,
+    ctx: RunContext,
+    healClass: HealClass,
+    extra: Record<string, unknown>,
+  ): void {
+    ctx.tracer.event({
+      runId: ctx.runId,
+      phaseId: ctx.phaseId(phase.name),
+      type: 'log',
+      name: 'heal_class',
+      payload: { class: healClass, detail: healClass, ...extra },
+    });
   }
 
   /**

@@ -12,11 +12,19 @@
  * does break a run is having no model at all.
  */
 
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../helpers/tmp.js';
 import type { DoctorCheck, ModelInfo } from '../../../src/shared/types.js';
 import type { BridgeProviderStatus } from '../../../src/main/bridge/auth.js';
-import { checkProviders, type ProviderDoctorDeps } from '../../../src/main/system/doctor.js';
+import { defaultProject } from '../../../src/main/store/projects.js';
+import {
+  checkProject,
+  checkProviders,
+  type ProviderDoctorDeps,
+} from '../../../src/main/system/doctor.js';
 
 function model(id: string, displayName = id): ModelInfo {
   return {
@@ -305,5 +313,34 @@ describe('per-provider account checks', () => {
       }),
     );
     expect(checks.filter((c) => c.blocking)).toEqual([]);
+  });
+});
+
+describe('checkProject submodules', () => {
+  function gitRepo(): string {
+    const dir = tempDir('foundry-doctor-repo-');
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir });
+    execFileSync('git', ['config', 'user.email', 'test@foundry.local'], { cwd: dir });
+    execFileSync('git', ['config', 'user.name', 'Foundry Test'], { cwd: dir });
+    writeFileSync(join(dir, 'README.md'), '# scratch\n');
+    execFileSync('git', ['add', '-A'], { cwd: dir });
+    execFileSync('git', ['commit', '-qm', 'initial'], { cwd: dir });
+    return dir;
+  }
+
+  it('is green when the repo has submodules, because run worktrees initialize them', async () => {
+    const dir = gitRepo();
+    writeFileSync(
+      join(dir, '.gitmodules'),
+      '[submodule "vendor/lib"]\n\tpath = vendor/lib\n\turl = ./vendor/lib\n',
+    );
+    mkdirSync(join(dir, 'vendor', 'lib'), { recursive: true });
+    execFileSync('git', ['add', '-A'], { cwd: dir });
+    execFileSync('git', ['commit', '-qm', 'note submodules'], { cwd: dir });
+
+    const checks = await checkProject(defaultProject(dir));
+    const row = checks.find((c) => c.id === 'submodules');
+    expect(row?.ok).toBe(true);
+    expect(row?.detail).toContain('initialized in each run worktree');
   });
 });

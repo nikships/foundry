@@ -802,6 +802,7 @@ function Banner({ event }: { event: EventRow }): React.JSX.Element {
 function LogRow({ event }: { event: EventRow }): React.JSX.Element {
   const detail =
     str(event.payload.detail) ||
+    str(event.payload.class) ||
     str(event.payload.skipped) ||
     str(event.payload.text) ||
     str(event.payload.message);

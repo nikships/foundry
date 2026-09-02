@@ -57,6 +57,7 @@ const phaseSchema = z.object({
   feedbackRetries: z.number().int().min(0).max(5).optional(),
   optional: z.boolean().optional(),
   heal: z.boolean().optional(),
+  flakeRerun: z.number().int().min(0).max(5).optional(),
 });
 
 const canvasPointSchema = z.object({
