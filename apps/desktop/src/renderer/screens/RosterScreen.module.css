@@ -15,6 +15,7 @@
 
 /* strip — outer chrome holds titlebar spacer + bottom rule; inner is the scroll row */
 .roster-tabs {
+  position: relative;
   flex: none;
   display: flex;
   border-bottom: 1px solid var(--line);
@@ -32,6 +33,37 @@
   padding: 0 var(--s6);
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
+}
+.roster-scroll-control {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 52px;
+  display: flex;
+  align-items: center;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.roster-scroll-control.before {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: var(--s2);
+  background: linear-gradient(to right, var(--bg-base) 58%, transparent);
+}
+.roster-scroll-control.after {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: var(--s2);
+  background: linear-gradient(to left, var(--bg-base) 58%, transparent);
+}
+.roster-scroll-control:hover {
+  color: var(--text);
+}
+.roster-scroll-control:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -3px;
 }
 .roster-cell {
   position: relative;
