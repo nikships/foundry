@@ -1638,6 +1638,13 @@ describe('validateDiagnostics', () => {
     expect(validateDiagnostics({})).toContainEqual(
       expect.objectContaining({ level: 'error', where: 'spec' }),
     );
+    expect(validateDiagnostics({ lifecycleWarning: null })).toContainEqual(
+      expect.objectContaining({
+        level: 'error',
+        where: 'lifecycleWarning',
+        message: 'lifecycleWarning must be a string',
+      }),
+    );
   });
 
   it('flags invalid doctor check or orphan worktree shape', () => {

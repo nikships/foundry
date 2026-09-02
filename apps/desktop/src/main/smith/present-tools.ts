@@ -274,7 +274,7 @@ function optionalString(
   where: string,
   max: number,
 ): void {
-  if (value === undefined || value === null) return;
+  if (value === undefined) return;
   if (typeof value !== 'string') {
     issues.push({ level: 'error', where, message: `${where} must be a string` });
     return;
@@ -572,7 +572,10 @@ export function validateProviderStatus(spec: unknown): ValidationIssue[] {
         requireString(issues, device.deviceId, `${where}.deviceId`, 'device id');
         requireString(issues, device.name, `${where}.name`, 'device name');
         optionalString(issues, device.pairedAt, `${where}.pairedAt`, 100);
-        optionalString(issues, device.lastSeenAt, `${where}.lastSeenAt`, 100);
+        // JSON null means the device has never been seen.
+        if (device.lastSeenAt !== null) {
+          optionalString(issues, device.lastSeenAt, `${where}.lastSeenAt`, 100);
+        }
       }
     }
   }
