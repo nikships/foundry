@@ -200,6 +200,7 @@ const api: FoundryApi = {
   maintenance: {
     orphanWorktrees: () => call(IPC.maintenanceOrphans),
     removeWorktree: (projectId, path) => call(IPC.maintenanceRemoveWorktree, projectId, path),
+    removeAllWorktrees: () => call(IPC.maintenanceRemoveAllWorktrees),
     applyRetention: () => call(IPC.maintenanceRetention),
     compact: () => call(IPC.maintenanceCompact),
   },
