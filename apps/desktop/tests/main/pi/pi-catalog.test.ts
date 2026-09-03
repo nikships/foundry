@@ -132,10 +132,16 @@ describe('the agent model catalog', () => {
     ).toBe('grok');
   });
 
-  it('badges anything outside pi’s built-ins as custom', () => {
+  it('badges anything Foundry does not ship as custom', () => {
     expect(toModelInfo(model()).isCustom).toBe(true);
     expect(toModelInfo(model({ provider: 'anthropic' })).isCustom).toBe(false);
     expect(toModelInfo(model({ provider: 'openai' })).isCustom).toBe(false);
+    // A provider Foundry registers itself is shipped and reviewed like a
+    // built-in, so it does not wear a Custom pill either.
+    expect(
+      toModelInfo(model({ id: 'muse-spark-1.3', name: 'Muse Spark 1.3', provider: 'meta' }))
+        .isCustom,
+    ).toBe(false);
   });
 
   it('carries the context window through, which the gauge needs', () => {
@@ -171,6 +177,13 @@ describe('providerOf', () => {
     expect(providerOf('nemotron-3-ultra')).toBe('nvidia');
     expect(providerOf('llama-4')).toBe('meta');
     expect(providerOf('gpt-5-codex')).toBe('openai');
+  });
+
+  it('places Meta’s Model API ids, which name the family and not the lab', () => {
+    // `muse-spark-1.3` says nothing about Meta, so a match on the corporate
+    // name alone would leave every Muse model wearing the openai fallback.
+    expect(providerOf('meta/muse-spark-1.3', 'Muse Spark 1.3')).toBe('meta');
+    expect(providerOf('muse-spark-1.2-contributor')).toBe('meta');
   });
 
   it('falls back to openai for a name it cannot place', () => {

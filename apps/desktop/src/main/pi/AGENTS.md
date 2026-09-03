@@ -13,6 +13,7 @@ Before changing this integration, read `references/README.md`, then the vendored
 - Lazy wrappers defer loading the vendor package until the first turn.
 - `runtime.ts` owns the memoized runtime under Foundry Application Support.
 - `catalog.ts` owns reachable models and credential operations.
+- `direct-providers.ts` registers the providers pi's own table lacks, from `shared/direct-providers.ts`.
 
 Do not import pi’s transitive packages directly. Derive needed types from `pi-coding-agent`’s public surface.
 
@@ -32,6 +33,7 @@ Do not import pi’s transitive packages directly. Derive needed types from `pi-
 - Keep runtime imports free of unguarded native bindings. The packaging test blocks `dlopen`; add `asarUnpack` only when a required binding is proven.
 - `PI_OFFLINE=1` is read when constructing `ModelRuntime`; offline refreshes must not allow network.
 - Persistent direct API keys use the catalog login path. In-memory overrides must not be described as durable.
+- A provider absent from pi's table is registered on the runtime before it is handed out, never written into `models.json`, which the operator and the Bridge own. Registration carries no credential, so such a provider stays out of `getAvailable()` until a key is stored. Its models are pinned in `shared/direct-providers.ts` because the vendor endpoint reports ids alone.
 - Model fallback records the model that actually ran and skips operator-hidden failover targets.
 - Callers verify claims independently: repair checks Git and command detection executes proposed commands.
 
