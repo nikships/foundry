@@ -651,6 +651,11 @@ export function createMockFoundryApi(): FoundryApi {
           ),
         );
       },
+      issue: async (issueId) => {
+        const issue = MOCK_LINEAR_ISSUES.find((candidate) => candidate.id === issueId);
+        if (!issue) throw new Error('Linear issue not found');
+        return issue;
+      },
       workflowStates: async () => [
         { id: 'linear-state-todo', name: 'Todo', type: 'unstarted' },
         { id: 'linear-state-progress', name: 'In Progress', type: 'started' },

@@ -30,7 +30,7 @@ import com.foundry.companion.data.model.OrchestratorOptions
 import com.foundry.companion.data.model.OrchestratorState
 import com.foundry.companion.data.model.SmithModelInfo
 import com.foundry.companion.data.model.ValidationIssue
-import com.foundry.companion.data.model.linearIssueBrief
+import com.foundry.companion.data.model.linearIssuePlanPrompt
 import com.foundry.companion.ui.components.FoundryPrimaryButton
 import com.foundry.companion.ui.components.FoundrySecondaryButton
 import com.foundry.companion.ui.components.FoundryTopBar
@@ -262,7 +262,7 @@ fun NewRunScreen(
                             !isConnected -> "Reconnect to start a run"
                             !linearConnected -> "Connect Linear on the Mac first"
                             selectedLinearIssue == null -> "Choose a Linear issue"
-                            isLoadingLinearWorkflow -> "Loading the team workflow…"
+                            isLoadingLinearWorkflow -> "Loading issue details and team workflow…"
                             !linearStatusMapping.isComplete -> "Map all three lifecycle statuses"
                             selectedPipelineId.isBlank() && !planReady -> "Choose a pipeline or generate a plan"
                             else -> null
@@ -1384,7 +1384,7 @@ private fun LinearComposerSection(
                             strokeWidth = 2.dp
                         )
                         Text(
-                            text = "Loading ${selectedIssue.team.name}'s workflow…",
+                            text = "Loading issue details and ${selectedIssue.team.name}'s workflow…",
                             style = typography.body,
                             color = colors.textDim
                         )
@@ -1450,11 +1450,7 @@ private fun LinearComposerSection(
                 FoundrySecondaryButton(
                     text = "Generate plan from issue",
                     onClick = {
-                        // Title line only: ticket prose is untrusted evidence on the
-                        // desktop engine, not the operator request.
-                        onGeneratePlan(
-                            linearIssueBrief(selectedIssue)
-                        )
+                        onGeneratePlan(linearIssuePlanPrompt(selectedIssue))
                     },
                     enabled = plannerModelSet && !isLoadingStates
                 )

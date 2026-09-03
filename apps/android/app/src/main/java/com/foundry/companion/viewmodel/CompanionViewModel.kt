@@ -720,29 +720,60 @@ class CompanionViewModel(
             )
         }
         viewModelScope.launch {
-            repository.getLinearWorkflowStates(issue.team.id).onSuccess { states ->
-                _uiState.update { current ->
+            val detail = async { repository.getLinearIssue(issue.id) }
+            val workflow = async { repository.getLinearWorkflowStates(issue.team.id) }
+            val detailedIssue = detail.await()
+            val workflowStates = workflow.await()
+            val snapshot = detailedIssue.getOrNull()
+            val states = workflowStates.getOrNull()
+            _uiState.update { current ->
+                if (current.selectedLinearIssue?.id != issue.id) {
+                    current
+                } else if (snapshot == null) {
                     current.copy(
-                        linearWorkflowStates = states,
-                        linearStatusMapping = suggestedLinearMapping(
-                            current.linearConnection?.statusMapping ?: LinearStatusMapping(),
-                            states
-                        ),
-                        isLoadingLinearWorkflow = false
-                    )
-                }
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
+                        selectedLinearIssue = null,
+                        linearWorkflowStates = emptyList(),
+                        linearStatusMapping = current.linearConnection?.statusMapping
+                            ?: LinearStatusMapping(),
                         isLoadingLinearWorkflow = false,
                         validationIssues = listOf(
                             ValidationIssue(
                                 "error",
-                                error.message ?: "Could not load the Linear workflow",
+                                detailedIssue.exceptionOrNull()?.message
+                                    ?: "Could not load the Linear issue",
                                 "linear"
                             )
                         )
                     )
+                } else {
+                    val workflowError = workflowStates.exceptionOrNull()
+                    if (states != null) {
+                        current.copy(
+                            selectedLinearIssue = snapshot,
+                            linearWorkflowStates = states,
+                            linearStatusMapping = suggestedLinearMapping(
+                                current.linearConnection?.statusMapping ?: LinearStatusMapping(),
+                                states
+                            ),
+                            isLoadingLinearWorkflow = false,
+                            validationIssues = emptyList()
+                        )
+                    } else {
+                        current.copy(
+                            selectedLinearIssue = snapshot,
+                            linearWorkflowStates = emptyList(),
+                            linearStatusMapping = current.linearConnection?.statusMapping
+                                ?: LinearStatusMapping(),
+                            isLoadingLinearWorkflow = false,
+                            validationIssues = listOf(
+                                ValidationIssue(
+                                    "error",
+                                    workflowError?.message ?: "Could not load the Linear workflow",
+                                    "linear"
+                                )
+                            )
+                        )
+                    }
                 }
             }
         }

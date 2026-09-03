@@ -258,6 +258,7 @@ export interface CompanionRoutes {
   'POST /v1/orchestrator/plans/:planId/cancel': { response: { ok: boolean } };
   'GET /v1/linear': { response: CompanionLinearState };
   'GET /v1/linear/issues': { response: LinearIssueSnapshot[] };
+  'GET /v1/linear/issues/:issueId': { response: LinearIssueSnapshot };
   'GET /v1/linear/teams/:teamId/workflow-states': { response: LinearWorkflowState[] };
   'POST /v1/linear/runs': {
     request: CompanionLinearStartRequest;

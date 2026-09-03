@@ -81,7 +81,7 @@ interface RawIssue {
   } | null;
 }
 
-const ISSUE_FIELDS = `
+const ISSUE_SUMMARY_FIELDS = `
   id
   identifier
   title
@@ -90,6 +90,10 @@ const ISSUE_FIELDS = `
   updatedAt
   team { id name }
   state { id name type }
+`;
+
+const ISSUE_FIELDS = `
+  ${ISSUE_SUMMARY_FIELDS}
   labels { nodes { name } }
   parent { identifier title }
   comments(first: 20, orderBy: updatedAt) {
@@ -105,13 +109,13 @@ const ISSUE_FIELDS = `
 
 const VIEWER_QUERY = `query LinearViewer { viewer { id name } }`;
 const ISSUE_QUERY = `query LinearIssue($id: String!) { issue(id: $id) { ${ISSUE_FIELDS} } }`;
-const RECENT_ISSUES_QUERY = `query LinearIssues { issues(first: 25) { nodes { ${ISSUE_FIELDS} } } }`;
+const RECENT_ISSUES_QUERY = `query LinearIssues { issues(first: 25) { nodes { ${ISSUE_SUMMARY_FIELDS} } } }`;
 const SEARCH_ISSUES_QUERY = `
   query LinearIssues($query: String!) {
     issues(first: 25, filter: { or: [
       { identifier: { containsIgnoreCase: $query } },
       { title: { containsIgnoreCase: $query } }
-    ] }) { nodes { ${ISSUE_FIELDS} } }
+    ] }) { nodes { ${ISSUE_SUMMARY_FIELDS} } }
   }
 `;
 const WORKFLOW_STATES_QUERY = `
@@ -125,7 +129,7 @@ const UPDATE_ISSUE_STATE = `
   mutation LinearIssueState($issueId: String!, $stateId: String!) {
     issueUpdate(id: $issueId, input: { stateId: $stateId }) {
       success
-      issue { ${ISSUE_FIELDS} }
+      issue { ${ISSUE_SUMMARY_FIELDS} }
     }
   }
 `;

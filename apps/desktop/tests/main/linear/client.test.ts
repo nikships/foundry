@@ -157,4 +157,19 @@ describe('LinearClient', () => {
       commentsTruncated: true,
     });
   });
+
+  it('keeps issue browsing bounded by loading evidence only for the selected issue', async () => {
+    const transport = vi.fn<LinearTransport>(async (input) => {
+      const request = JSON.parse(input.body) as { query: string };
+      expect(request.query).not.toContain('comments(first: 20');
+      expect(request.query).not.toContain('labels { nodes { name } }');
+      expect(request.query).not.toContain('parent { identifier title }');
+      return response({ data: { issues: { nodes: [rawIssue] } } });
+    });
+    const client = new LinearClient({ apiKey: 'secret', transport, retries: 0 });
+
+    await expect(client.issues('FOU-190')).resolves.toMatchObject([
+      { id: rawIssue.id, title: rawIssue.title, comments: [] },
+    ]);
+  });
 });
