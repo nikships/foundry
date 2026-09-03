@@ -427,6 +427,11 @@ export function createMockFoundryApi(): FoundryApi {
       scopeCopies: async () => ({ roster: false, pipelines: false }),
       baseSyncInspect: async (id): Promise<BaseSyncStatus | null> => mockBaseSync(id),
       baseSync: async (id) => ({ ok: true, status: mockBaseSync(id) }),
+      refreshContext: async (id): Promise<SaveResult<ProjectDef>> => {
+        const project = MOCK_PROJECTS.find((p) => p.id === id);
+        if (!project) return { ok: false, issues: [] };
+        return { ok: true, issues: [], value: project };
+      },
     },
     readiness: {
       inspect: async (projectId): Promise<ReadinessInspectResult | null> => ({
@@ -645,6 +650,11 @@ export function createMockFoundryApi(): FoundryApi {
             value.toLowerCase().includes(needle),
           ),
         );
+      },
+      issue: async (issueId) => {
+        const issue = MOCK_LINEAR_ISSUES.find((candidate) => candidate.id === issueId);
+        if (!issue) throw new Error('Linear issue not found');
+        return issue;
       },
       workflowStates: async () => [
         { id: 'linear-state-todo', name: 'Todo', type: 'unstarted' },
@@ -949,6 +959,7 @@ export function createMockFoundryApi(): FoundryApi {
     maintenance: {
       orphanWorktrees: async () => [],
       removeWorktree: async () => unavailable(WEB_PREVIEW),
+      removeAllWorktrees: async () => unavailable(WEB_PREVIEW),
       applyRetention: async () => ({ runsDeleted: 0, bytesReclaimed: 0, worktreesRemoved: 0 }),
       compact: async () => {},
     },

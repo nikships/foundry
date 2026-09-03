@@ -37,6 +37,11 @@ export function register(ctx: Ctx, handle: Handle): void {
     if (!parsed.success) throw new Error('Linear issue search must be 200 characters or fewer');
     return ctx.linear.issues(parsed.data);
   });
+  handle(IPC.linearIssue, (issueId: string): Promise<LinearIssueSnapshot> => {
+    const parsed = shortString.safeParse(issueId);
+    if (!parsed.success) throw new Error('A valid Linear issue ID is required');
+    return ctx.linear.issue(parsed.data);
+  });
   handle(IPC.linearWorkflowStates, (teamId: string): Promise<LinearWorkflowState[]> => {
     const parsed = shortString.safeParse(teamId);
     if (!parsed.success) throw new Error('A valid Linear team ID is required');

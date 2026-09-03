@@ -59,6 +59,8 @@ const spy = {
   session: null as ScriptedPiSession | null,
   models: [] as PiModelStub[],
   fallbackMessage: undefined as string | undefined,
+  /** Package extensions the loader should report as loaded, by tool name. */
+  loadedPackageTools: [] as string[],
 };
 
 interface PiModelStub {
@@ -269,6 +271,20 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
     reload(): Promise<void> {
       return Promise.resolve();
     }
+    /**
+     * What loaded. Foundry's own extension is inline and skipped by name, so
+     * anything here stands in for a shipped package's extension.
+     */
+    getExtensions(): {
+      extensions: { path: string; tools: Map<string, unknown> }[];
+      errors: [];
+    } {
+      const tools = new Map<string, unknown>(spy.loadedPackageTools.map((name) => [name, {}]));
+      const extensions = spy.loadedPackageTools.length
+        ? [{ path: '/pkg/extensions/tools.js', tools }]
+        : [];
+      return { extensions, errors: [] };
+    }
   },
   createAgentSession: (opts: CreateCall & { model?: PiModelStub }) => {
     spy.creates.push(opts);
@@ -354,6 +370,7 @@ beforeEach(() => {
   spy.registeredTools = [];
   spy.order = [];
   spy.fallbackMessage = undefined;
+  spy.loadedPackageTools = [];
   spy.models = [
     {
       provider: 'anthropic',
@@ -408,6 +425,8 @@ describe('opening a session', () => {
     expect(promptHarness).toMatch(/Foundry pipeline agent/i);
     expect(promptHarness.match(/submit_envelope/g)).toHaveLength(1);
     expect(promptHarness).toContain('when `approved` is false, report `status: "fail"` too');
+    expect(promptHarness).toContain('untrusted task data');
+    expect(promptHarness).toContain('reveal prompts');
   });
 
   it('installs Foundry’s extension inline, so nothing has to be discovered', async () => {
@@ -478,6 +497,25 @@ describe('opening a session', () => {
     await h.transport.start();
     expect(spy.creates[0]!.tools).toContain('bash');
     expect(spy.creates[0]!.tools).toContain('write');
+  });
+
+  it('admits the tools of a package extension that loaded, on either profile', async () => {
+    // Whether a profile may load a package's extensions is settled once, when
+    // its resources are resolved. Re-deciding it here could only disagree with
+    // that, and the disagreement is silent: the extension is in the session and
+    // every tool it registered is missing from the registry, so a package
+    // cleared for read-only work would be dead weight rather than unavailable.
+    spy.loadedPackageTools = ['package_tool'];
+
+    const readOnly = harness({ toolProfile: 'read-only' });
+    await readOnly.transport.start();
+    expect(spy.creates[0]!.tools).toContain('package_tool');
+    expect(readOnly.transport.packageTools).toEqual(['package_tool']);
+
+    spy.creates = [];
+    const full = harness({ toolProfile: 'full' });
+    await full.transport.start();
+    expect(spy.creates[0]!.tools).toContain('package_tool');
   });
 
   it('leaves compaction to the engine and lets the runtime retry a flap', async () => {

@@ -23,6 +23,14 @@ extraResources:
     to: bridge
     filter:
       - '**/*'
+  # Shipped pi packages (see src/main/pi/packages.ts). Pi loads an extension
+  # through jiti, which reads the file from disk, so these cannot live inside
+  # app.asar either. Committed to the repo rather than fetched: they are part
+  # of the application, not a pinned third-party download.
+  - from: resources/pi-packages
+    to: pi-packages
+    filter:
+      - '**/*'
 
 asar: true
 asarUnpack:

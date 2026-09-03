@@ -104,6 +104,9 @@ class OfflineCompanionRepository(
 
     override suspend fun searchLinearIssues(query: String) = answer(emptyList<LinearIssueSnapshot>())
 
+    override suspend fun getLinearIssue(issueId: String) =
+        Result.failure<LinearIssueSnapshot>(IOException("unreachable"))
+
     override suspend fun getLinearWorkflowStates(teamId: String) =
         answer(emptyList<LinearWorkflowState>())
 

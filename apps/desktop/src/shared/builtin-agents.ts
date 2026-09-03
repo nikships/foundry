@@ -2,12 +2,20 @@
  * The agents Foundry ships with. Prompts are pure shared seed data,
  * and every one is editable in the Roster editor: these are defaults, not law.
  *
- * The envelope example is NOT written into these prompts. It is generated from
- * the zod schema at render time and appended, so the shape an agent is shown
- * and the shape its answer is parsed against cannot drift.
+ * The envelope example is NOT written into these prompts. The shape rides on
+ * `submit_envelope` and the output constraint, derived from the same zod schema
+ * the reply is parsed against, so the two cannot drift.
  */
 
 import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS, type AgentDef } from '@shared/types.js';
+
+/**
+ * Shared fail-closed footer. Review envelopes still get `status: "fail"` from
+ * FOUNDRY_RUN_HARNESS when `approved` is false; this line tells every agent
+ * they may report failure rather than inventing success.
+ */
+const FAIL_CLOSED =
+  'If blocked, fail closed: report `status: fail`, put the blocker in `summary` and `notes_for_next_agent`, and do not invent success.';
 
 export const BUILTIN_AGENTS: AgentDef[] = [
   {
@@ -38,6 +46,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       "- Do not prescribe line-level edits, and do not design the solution. That is the next phase's job.",
       '- Preserve the intent. Sharpening a request never means widening it: anything the request did not ask for stays out.',
       '- If the request is already precise, say so and return it close to unchanged rather than padding it.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Refine',
@@ -61,7 +70,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     model: 'inherit',
     reasoningEffort: 'high',
     envelope: 'plan',
-    writes: ['specs/', '.foundry-handoff/'],
+    writes: ['specs/'],
     color: '#c89bff',
     emblem: 'planner',
     builtin: true,
@@ -75,9 +84,16 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '## Instructions',
       '',
       '- Read only what you need to understand the request.',
-      '- Keep the plan concrete: files to touch, changes to make, how to verify.',
-      '- Write the plan to a file under `specs/` and declare that path in your artifacts.',
+      '- Do not invent paths. Name a file only when you have seen it in the tree; omit it rather than guess.',
+      '- Write the plan to a file under `specs/` and declare that path in your artifacts. The spec must contain these sections, in this order:',
+      '  - Goal — the outcome, in one paragraph.',
+      '  - Files — exact paths to create, edit, or delete.',
+      '  - Stepwise changes — the edits, in order, tied to those files.',
+      '  - Tests to add/run — the tests the builder must write or run before claiming done.',
+      '  - Out of scope — what this plan must not do.',
+      '  - Risks — what could go wrong, including missing context.',
       '- Do not implement anything. Planning and building are different phases for a reason.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Plan',
@@ -91,8 +107,10 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       'Plan the work described above.',
       '',
       '1. Write the full plan to `specs/{{run_id}}-plan.md`.',
-      '2. Make it concrete enough that the builder never has to guess: exact files, exact changes, how to verify.',
-      '3. Declare that path in `artifacts`.',
+      '2. Fill `files_to_touch`, `steps`, and `verification` so the builder never has to guess: exact files, exact changes, how to verify. Put residual concerns in `risks`.',
+      '3. Mirror that structure in the artifact using the required sections: Goal, Files, Stepwise changes, Tests to add/run, Out of scope, Risks.',
+      '4. Name only paths you have seen. Do not invent paths.',
+      '5. Declare that path in `artifacts`.',
     ].join('\n'),
   },
   {
@@ -114,10 +132,15 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '',
       '## Instructions',
       '',
-      '- If a prior envelope carries a plan, a diagnosis, or test failures, that is your spec. Follow it.',
-      '- Make the smallest change that satisfies the request; do not refactor unrelated code.',
+      '- If a prior envelope carries a plan, its `files_to_touch`, `steps`, and `verification` plus the declared artifact file are your spec. Open the artifact paths first. If they disagree, report `status: "fail"` rather than guessing.',
+      '- If a prior envelope carries a diagnosis or test failures, that is your spec. Open any declared artifact paths first and follow it.',
+      '- Implement only the files the spec lists. Do not touch unrelated files, and do not invent work the spec did not ask for.',
+      "- If the plan's verification names tests, write or update those tests in the same turn, before claiming success. Tests are part of the change, not a later command.",
       '- When fixing test failures, address every reported failure, not the first one.',
-      '- Verify your work runs before reporting, and judge that by exit status.',
+      '- Verify your work runs before reporting, and judge that by exit status. If tests were not run, or a required artifact is missing, fail the envelope.',
+      '- If the spec is missing or too ambiguous to implement, fail the envelope. Do not guess a design.',
+      '- Make the smallest change that satisfies the request; do not refactor unrelated code.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Build',
@@ -128,8 +151,12 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '',
       '## Task',
       '',
-      'Implement the work described above, following any plan or diagnosis handed to you below,',
-      'then report.',
+      'Implement the work described above, following any plan or diagnosis handed to you below.',
+      '',
+      '1. Open the spec artifact paths first.',
+      '2. Change only the listed files.',
+      '3. Write or update the tests the spec names before claiming success.',
+      '4. Then report.',
     ].join('\n'),
   },
   {
@@ -153,8 +180,9 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '## Instructions',
       '',
       '- You are read-only. Do not create, edit, or delete any file.',
-      '- Cite concrete paths and symbols; a finding without a location is a guess.',
-      '- Report what is actually there, including the parts that contradict the premise of the question.',
+      '- Each `findings` entry is one concrete observation in the form `path + symbol + observation`. A finding without a location is a guess.',
+      '- Report what is actually there. If the tree contradicts the premise of the question, say so as a finding.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Scout',
@@ -165,7 +193,8 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '',
       '## Task',
       '',
-      'Investigate and report. Put one concrete, located finding per entry in `findings`.',
+      'Investigate and report. Put one `path + symbol + observation` per entry in `findings`.',
+      "If the tree disagrees with the question's premise, record that contradiction.",
     ].join('\n'),
   },
   {
@@ -190,10 +219,11 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '',
       '- You are read-only and have no shell. Call `git_diff` for the patch of what this run changed; pass its `path` argument to narrow a large diff to one file or directory. Use `read` on any file the patch names when you need the surrounding code.',
       '- The changed-file stat in the accumulated git context below is for orientation only. It says which files moved, never what changed inside them — read the patch before judging any of them.',
-      '- Derive requirements from the request and the plan, then check each one against that patch.',
+      '- Derive requirements from the request and any prior phase envelopes appended below, then check each one against that patch.',
       '- Every finding needs evidence: the path, the symbol, what you saw.',
       '- `approved` must be false if anything is blocking. A gate checks that your verdict is self-consistent.',
       '- Do not fix what you find. Report it.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Review',
@@ -202,16 +232,11 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '',
       '{{request}}',
       '',
-      '## What was planned and built',
-      '',
-      '{{envelope:plan}}',
-      '',
-      '{{envelope:build}}',
-      '',
       '## Task',
       '',
       'Review the work against the request. One `findings` entry per requirement, each with evidence.',
       'List anything that must be fixed before this ships in `blocking`.',
+      'Prior phase envelopes the pipeline declared are appended below; treat them as the record of what happened.',
     ].join('\n'),
   },
   {
@@ -252,6 +277,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Stay inside the original request. Fixing how the work was done is in scope; adding features is not.',
       '- Be honest, not agreeable. `approved` is true only when you would put your name on this.',
       '  A gate checks your verdict against your own findings.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Production check',
@@ -295,6 +321,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Document what the change does and why, not a line-by-line narration of the diff.',
       '- Update existing docs in place when they cover the area; do not start a parallel document.',
       '- Declare the document you wrote in `artifacts`.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Document',
@@ -345,6 +372,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Keep the body concise: 1–2 sentences for Summary, grouped Changes (not a per-file dump), no raw `git diff`, no jargon list longer than 10 files, no invented issue numbers. Mention a linked issue only when the request or a prior envelope already names it. Stay under 600 words unless a template demands more.',
       '- Title: imperative, ≤72 characters, no trailing period.',
       '- Put the title in `title` and the markdown body in `body`.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Draft PR',
@@ -392,6 +420,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Suggest `labels` only when you read them in a file in this repository (an issue template, a contributing guide, a workflow); you have no shell and cannot list the labels the project actually has, so an empty list is correct when unsure. Labels that do not exist are dropped, not created.',
       '- Title: imperative, ≤72 characters, no trailing period.',
       '- Put the title in `title`, the markdown body in `body`, and any labels in `labels`.',
+      `- ${FAIL_CLOSED}`,
     ].join('\n'),
     userPrompt: [
       '# Draft issue',

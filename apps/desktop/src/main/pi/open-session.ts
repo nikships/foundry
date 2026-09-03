@@ -46,6 +46,13 @@ export function foundryResourceLoader(opts: {
   /** Replaces Pi's default "you are pi" system prompt. */
   harness: string;
   extensionFactory: ExtensionFactory;
+  /**
+   * Resolved paths from the packages this build ships, filtered to what this
+   * session type may load. They ride the additional-path channel, which pi
+   * honours even while discovery is off — so what Foundry named loads and a
+   * cloned repository's `.pi/` still cannot.
+   */
+  packageResources?: { extensionPaths: string[]; skillPaths: string[] };
 }): DefaultResourceLoader {
   return new DefaultResourceLoader({
     cwd: opts.cwd,
@@ -53,16 +60,42 @@ export function foundryResourceLoader(opts: {
     settingsManager: opts.settingsManager,
     // Discovery is off: an agent's tools, prompt, and policy come from the
     // roster and this directory. Context files (AGENTS.md walking to /) and
-    // .pi/APPEND_SYSTEM.md are prompt injection if left on.
+    // .pi/APPEND_SYSTEM.md are prompt injection if left on. These flags stay
+    // true with package resources present: the `no*` flags drop what pi
+    // *discovered*, never what a caller named.
     noExtensions: true,
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
+    ...(opts.packageResources?.extensionPaths.length
+      ? { additionalExtensionPaths: [...opts.packageResources.extensionPaths] }
+      : {}),
+    ...(opts.packageResources?.skillPaths.length
+      ? { additionalSkillPaths: [...opts.packageResources.skillPaths] }
+      : {}),
     systemPromptOverride: () => opts.harness,
     appendSystemPromptOverride: () => [],
     extensionFactories: [{ name: 'foundry', factory: opts.extensionFactory, hidden: true }],
   });
+}
+
+/**
+ * Tool names the loaded package extensions registered.
+ *
+ * Read after `reload()` and before `createAgentSession`, because the list
+ * handed to that call *is* the registry allowlist: a package tool absent from
+ * it does not exist for the session. Foundry's inline extension is skipped —
+ * its tools are already named by `tool-names.ts`, and a session's own tools
+ * must not be re-derived from whatever happened to load.
+ */
+export function packageToolNames(loader: DefaultResourceLoader): string[] {
+  const names = new Set<string>();
+  for (const extension of loader.getExtensions().extensions) {
+    if (extension.path.startsWith('<inline:')) continue;
+    for (const name of extension.tools.keys()) names.add(name);
+  }
+  return [...names];
 }
 
 export async function openFoundrySession(input: {
@@ -76,15 +109,29 @@ export async function openFoundrySession(input: {
   settingsManager: SettingsManager;
   sessionManager: SessionManager;
   onExtensionError?: (message: string) => void;
-}): Promise<{ session: PiAgentSession; modelFallbackMessage?: string }> {
+}): Promise<{
+  session: PiAgentSession;
+  modelFallbackMessage?: string;
+  /** Package-registered tools this session actually admitted, for the policy. */
+  packageTools: string[];
+}> {
   await input.resourceLoader.reload();
+  // After reload, before create: the `tools` array is the registry allowlist,
+  // so a package tool not named here would load and then not exist.
+  //
+  // Derived from what actually loaded rather than from a second per-session
+  // flag. Which extensions a profile may load is already decided once, when
+  // its package resources are resolved; a separate switch here could only
+  // disagree with that decision, and withholding the tools of an extension
+  // that did load yields a session carrying code it can never call.
+  const packageTools = packageToolNames(input.resourceLoader);
   const created = await createAgentSession({
     cwd: input.cwd,
     agentDir: input.agentDir,
     modelRuntime: input.modelRuntime,
     ...(input.model ? { model: input.model } : {}),
     thinkingLevel: input.thinkingLevel,
-    tools: [...input.tools],
+    tools: [...new Set([...input.tools, ...packageTools])],
     resourceLoader: input.resourceLoader,
     sessionManager: input.sessionManager,
     settingsManager: input.settingsManager,
@@ -95,8 +142,12 @@ export async function openFoundrySession(input: {
     onError: (err) =>
       input.onExtensionError?.(`extension error (${err.extensionPath}): ${err.error}`),
   });
+  for (const failure of input.resourceLoader.getExtensions().errors) {
+    input.onExtensionError?.(`extension failed to load (${failure.path}): ${failure.error}`);
+  }
   return {
     session: created.session,
+    packageTools,
     ...(created.modelFallbackMessage ? { modelFallbackMessage: created.modelFallbackMessage } : {}),
   };
 }

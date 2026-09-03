@@ -11,6 +11,7 @@
  */
 
 import type { AgentDef, ContextBreakdown, ReasoningEffort, UsageBreakdown } from '@shared/types.js';
+import type { CompactionFacts } from '../engine/compaction.js';
 import type { Tracer } from '../trace/tracer.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate } from './policy.js';
@@ -231,6 +232,10 @@ export class AgentSession {
         protectedPaths: this.deps.protectedPaths,
       },
       FOUNDRY_TOOL_NAMES,
+      // Read off the live transport rather than captured: the names only
+      // exist once the session has opened and loaded its packages, and the
+      // first ask can arrive on that same turn.
+      this.transport?.packageTools ?? [],
     );
     if (outcome.decision.outcome !== 'allow') {
       this.deps.tracer.event({
@@ -367,10 +372,13 @@ export class AgentSession {
    * Failure is survivable by design — the next turn then hits the context wall
    * as it would have anyway, so the reason is traced and the run carries on.
    */
-  async compact(before: ContextStats): Promise<{ removedCount: number } | null> {
+  async compact(
+    before: ContextStats,
+    facts?: CompactionFacts,
+  ): Promise<{ removedCount: number } | null> {
     if (!this.transport) return null;
     try {
-      const outcome = await this.transport.compact();
+      const outcome = await this.transport.compact(facts);
       if (!outcome) return null;
       this.agentSessionId = this.transport.id;
       this.persistSession();

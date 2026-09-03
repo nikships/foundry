@@ -1,7 +1,7 @@
 # Gemini Interactions API — the bits this skill relies on
 
 Base URL `https://generativelanguage.googleapis.com/v1beta`, auth header
-`x-goog-api-key: $GEMINI_API_KEY`. Everything below is preview-status (May 2026 agent).
+`x-goog-api-key: $GEMINI_API_KEY`. Preview status (May 2026 agent).
 
 ## Dispatch
 
@@ -12,33 +12,31 @@ Base URL `https://generativelanguage.googleapis.com/v1beta`, auth header
   "agent": "foundry-electron",
   "input": "…the task…",
   "environment": "remote",
-  "background": true,
-  "agent_config": { "type": "antigravity", "max_total_tokens": 1500000 }
+  "background": true
 }
 ```
 
 - `background: true` returns immediately with `{id, status: "in_progress", environment_id}`.
-  Requires `store: true`, which is the default.
-- For a **managed agent** (`foundry-electron`), `environment: "remote"` provisions a fresh
-  sandbox from the agent's stored `base_environment` — the warm snapshot, including
-  `node_modules`. Passing an existing `environment_id` instead reuses that live sandbox.
-- `agent_config.model` cannot be overridden per-interaction for a named agent; only
-  `system_instruction`, `tools` and `environment.network` can.
-- Unsupported and returns 400: `temperature`, `top_p`, `top_k`, `stop_sequences`,
-  `max_output_tokens`. No structured output.
+- `environment: "remote"` provisions a fresh sandbox from the agent's stored
+  `base_environment` — the warm snapshot, `node_modules` included. Passing an existing
+  `environment_id` reuses that live sandbox instead.
+- `agent_config` cannot be overridden per interaction for a named agent: the API answers
+  `AntigravityConfig cannot be overriden for custom agents.` Only `system_instruction`,
+  `tools` and `environment.network` can. It takes exactly `type`, `model` and
+  `max_total_tokens` — there is no thinking or reasoning-level field.
+- `agent_config.model` accepts `gemini-3.8-flash` (default), `gemini-3.7-flash`,
+  `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`. An unknown string is
+  accepted by `POST /agents` and only fails at dispatch with `Requested entity was not found.`
+- Returns 400: `temperature`, `top_p`, `top_k`, `stop_sequences`, `max_output_tokens`.
 
 ## Poll
 
-`GET /interactions/{id}` → `status` is one of `in_progress`, `completed`, `incomplete`,
-`failed`, `requires_action`. While in progress the response is minimal (no `steps`).
-When finished you get `output_text`, `steps[]` and `usage`.
+`GET /interactions/{id}` → `status` is `in_progress`, `completed`, `incomplete`, `failed` or
+`requires_action`. While in progress the response is minimal; when finished it carries
+`output_text`, `steps[]` and `usage`. `incomplete` means the run hit `max_total_tokens`;
+continue with `previous_interaction_id` and the same environment for a fresh budget.
 
-- `incomplete` = hit `max_total_tokens`. Continue with a new interaction that passes
-  `previous_interaction_id` and the same `environment` — the new run gets a fresh budget.
-- `requires_action` = a custom `function` tool wants a result. This skill defines no custom
-  functions, so it should not happen.
-
-For live progress while a background interaction is running, use the SSE stream:
+Live progress:
 
 ```bash
 curl -N "https://generativelanguage.googleapis.com/v1beta/interactions/$ID?stream=true" \
@@ -46,10 +44,7 @@ curl -N "https://generativelanguage.googleapis.com/v1beta/interactions/$ID?strea
   -H "Api-Revision: 2026-05-20"
 ```
 
-The stream emits `step.start`, `step.delta`, and `step.stop` events, including code
-execution calls and results. Reconnect with `last_event_id=<event_id>` after a dropped
-connection. The skill exposes this as `foundry-agent.sh stream <id> [last_event_id]`.
-
+Emits `step.start`, `step.delta`, `step.stop`. Reconnect with `last_event_id=<event_id>`.
 `POST /interactions/{id}:cancel` stops a background run.
 
 ## Continue in the same sandbox
@@ -64,9 +59,9 @@ connection. The skill exposes this as `foundry-agent.sh stream <id> [last_event_
 }
 ```
 
-Files, installed packages and git state persist in that environment.
+Files, installed packages and git state persist there.
 
-## Credentials (never exposed inside the sandbox)
+## Credentials
 
 Network `transform` headers are injected by an egress proxy, so tokens never land in the
 sandbox filesystem or env:
@@ -82,33 +77,22 @@ sandbox filesystem or env:
 }
 ```
 
-An allowlist is deny-by-default — include `{"domain": "*"}` as a catch-all, and note that
-`*.example.com` does not match the bare root domain. `"network": "disabled"` blocks all
-egress. Overriding `network` at invocation time replaces the stored rules but keeps the
-agent's `sources`; this is the supported way to rotate an expired token.
+The allowlist is deny-by-default, so keep the `*` catch-all. Overriding `network` at
+invocation time replaces the stored rules but keeps the agent's `sources` — that is how you
+rotate an expired token.
 
 ## Managing the agent
 
-- `GET /agents`, `GET /agents/{id}`, `DELETE /agents/{id}`.
-- `POST /agents` with `{id, base_agent, agent_config, system_instruction, base_environment}`.
-  `base_environment` may be `"remote"`, a config object with `sources`/`network`, or an
-  `environment_id` — passing an id **forks** that live sandbox into the agent definition,
-  which is how the warm snapshot is captured.
-- There is no versioning or update endpoint: to change the definition, delete and recreate
-  (`rewarm.sh` does exactly that from `agent-definition.json`).
-- Agent ids cannot start with reserved prefixes (`gemini-`, `google-`, `android-`, …).
+`GET /agents`, `GET /agents/{id}`, `DELETE /agents/{id}`, and `POST /agents` with
+`{id, base_agent, agent_config, system_instruction, base_environment}`. Passing an
+`environment_id` as `base_environment` forks that live sandbox into the definition, which is
+how the warm snapshot is captured. There is no update endpoint — changing the definition
+means delete and recreate, which is what `rewarm.sh` does.
 
 ## Sandbox facts
 
-Ubuntu, Python 3.12, Node.js 22, git/curl/ripgrep/jq/gcloud preinstalled. Sources: a git
-repo clone is capped at 500 MB, GCS copies at 2 GB, inline files at 1 MB each / 2 MB total.
-Context auto-compacts around 135k tokens, so long runs do not lose the thread.
-
-## Cost
-
-Billed on model tokens, not sandbox compute (free during preview). A typical bounded coding
-task lands well under a dollar; heavy multi-hour runs can reach a few dollars. `max_total_tokens`
-is the seatbelt.
+Ubuntu, Python 3.12, Node.js 22, git/curl/ripgrep/jq preinstalled. A repo clone source is
+capped at 500 MB. Context auto-compacts around 135k tokens, so long runs keep the thread.
 
 Docs: <https://ai.google.dev/gemini-api/docs/antigravity-agent>,
 <https://ai.google.dev/gemini-api/docs/agent-environment>,

@@ -20,10 +20,16 @@ import type {
   AppSettings,
   BoundaryViolation,
   CommandResult,
+  ProjectCommand,
   ReasoningEffort,
 } from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
+import {
+  envelopeSummaryBlock,
+  projectCommandBlock,
+  repositoryContextBlock,
+} from './agent-context.js';
 import { enforce, restoreToPhaseStart, snapshot, type Snapshot } from './boundary.js';
 
 /** The one method a healing turn needs; a one-shot session satisfies it. */
@@ -31,6 +37,13 @@ export interface HealingAgent {
   send(text: string): Promise<{ text: string }>;
   /** Ends the turn in flight, which is what a run-level cancel does. */
   abort(): void;
+}
+
+/** Facts appended beside HEALING_SYSTEM for a write-capable healer one-shot. */
+export interface HealingPromptContext {
+  repositoryContext?: string;
+  envelopeSummaries?: { phase: string; summary: string }[];
+  commands?: readonly ProjectCommand[];
 }
 
 /**
@@ -44,7 +57,7 @@ export interface HealingSupport {
   /** The model healing runs on, recorded for attribution. */
   model: string;
   reasoningEffort: ReasoningEffort;
-  open(cwd: string): HealingAgent;
+  open(cwd: string, context?: HealingPromptContext): HealingAgent;
 }
 
 /** One healing turn and the verdict the re-run gave it. */
@@ -79,13 +92,15 @@ export function healingAgent(
   oneShot: OneShotFactory,
   choice: { model: string; reasoningEffort: ReasoningEffort },
   cwd: string,
+  context?: HealingPromptContext,
 ): HealingAgent {
+  const systemPrompt = healingSystemRole(context);
   const session = oneShot({
     cwd,
     access: 'write',
     model: choice.model,
     reasoningEffort: choice.reasoningEffort,
-    systemPrompt: HEALING_SYSTEM,
+    systemPrompt,
   });
   return {
     send: (text) => session.send(text),
@@ -129,8 +144,20 @@ export function healingSupport(
     attempts,
     model: choice.model,
     reasoningEffort: choice.reasoningEffort,
-    open: (cwd) => healingAgent(oneShot, choice, cwd),
+    open: (cwd, context) => healingAgent(oneShot, choice, cwd, context),
   };
+}
+
+/** Standing healing rules plus the same repository card run agents receive. */
+export function healingSystemRole(context?: HealingPromptContext): string {
+  const sections = [HEALING_SYSTEM];
+  const card = repositoryContextBlock(context?.repositoryContext);
+  if (card) sections.push(card);
+  const envelopes = envelopeSummaryBlock(context?.envelopeSummaries);
+  if (envelopes) sections.push(envelopes);
+  const commands = projectCommandBlock(context?.commands);
+  if (commands) sections.push(commands);
+  return sections.join('\n\n');
 }
 
 /** Standing healing rules. The user turn names the command and the failure. */
@@ -210,6 +237,13 @@ interface HealInput {
   cancelled: () => boolean;
   /** Reported per pass, so the caller can trace an attempt as it lands. */
   onAttempt?: (attempt: HealAttempt) => void;
+  /**
+   * Standing system role written beside the user turn in the prompt record.
+   * Optional so unit tests that drive `heal` with a stub agent can omit it.
+   */
+  systemPrompt?: string;
+  /** The prompt this attempt actually sent, recorded before the turn. */
+  onPrompt?: (record: { system: string; user: string; attempt: number }) => void;
 }
 
 /**
@@ -277,21 +311,19 @@ async function healLoop(input: HealInput): Promise<HealOutcome> {
     const before = await snapshot(input.cwd);
     let reply = '';
     try {
-      reply = (
-        await input.agent.send(
-          healPrompt({
-            phase: input.phase,
-            request: input.request,
-            command: last.command,
-            exitCode: last.exitCode,
-            timedOut: last.timedOut,
-            outputTail: last.outputTail,
-            protectedPaths: input.protectedPaths,
-            attempt,
-            attempts: input.attempts,
-          }),
-        )
-      ).text;
+      const user = healPrompt({
+        phase: input.phase,
+        request: input.request,
+        command: last.command,
+        exitCode: last.exitCode,
+        timedOut: last.timedOut,
+        outputTail: last.outputTail,
+        protectedPaths: input.protectedPaths,
+        attempt,
+        attempts: input.attempts,
+      });
+      input.onPrompt?.({ system: input.systemPrompt ?? HEALING_SYSTEM, user, attempt });
+      reply = (await input.agent.send(user)).text;
     } catch (e) {
       // A turn that never answered still may have written; the boundary is
       // enforced either way so a protected path cannot survive on a failure.

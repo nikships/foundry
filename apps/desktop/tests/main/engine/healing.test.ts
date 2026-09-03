@@ -19,6 +19,7 @@ import {
   heal,
   healingAgent,
   healingSupport,
+  healingSystemRole,
   resolveHealingModel,
   type HealingAgent,
 } from '../../../src/main/engine/healing.js';
@@ -505,6 +506,36 @@ describe('healingAgent', () => {
     expect(oneShots.calls[0]!.systemPrompt).toBe(HEALING_SYSTEM);
   });
 
+  it('appends the repository card, prior envelope, and project commands', async () => {
+    const cwd = scratchRepo();
+    const oneShots = scriptedOneShots([{ text: 'done' }]);
+    const support = healingSupport(
+      oneShots.factory,
+      { ...defaultSettings(), healingModel: 'provider/healer', healingReasoningEffort: 'max' },
+      1,
+    );
+
+    await support
+      .open(cwd, {
+        repositoryContext: '## Stack\nTypeScript\n## Verification\n`npm test`',
+        envelopeSummaries: [{ phase: 'build', summary: 'added the widget' }],
+        commands: [
+          { name: 'test', argv: ['npm', 'test'] },
+          { name: 'lint', argv: ['npm', 'run', 'lint'] },
+        ],
+      })
+      .send('fix it');
+
+    const system = oneShots.calls[0]!.systemPrompt ?? '';
+    expect(system.startsWith(HEALING_SYSTEM)).toBe(true);
+    expect(system).toContain('# Repository context');
+    expect(system).toContain('## Stack');
+    expect(system).toContain('## Verification');
+    expect(system).toContain('added the widget');
+    expect(system).toContain('npm test');
+    expect(system).toContain('npm run lint');
+  });
+
   it('bounds the turn so a stuck healer cannot hold a run open forever', async () => {
     const cwd = scratchRepo();
     const oneShots = scriptedOneShots([{ hangUntilAbort: true }]);
@@ -523,5 +554,25 @@ describe('healingAgent', () => {
     expect(HEALING_SYSTEM).toContain('Never weaken the check');
     expect(HEALING_SYSTEM).toContain('revert every edit you made in this phase');
     expect(HEALING_SYSTEM).toContain('do not revert earlier phases');
+  });
+});
+
+describe('healingSystemRole', () => {
+  it('keeps the standing rules and appends the card, envelope, and commands when set', () => {
+    const role = healingSystemRole({
+      repositoryContext: '## Stack\nTypeScript\n## Verification\n`npm test`',
+      envelopeSummaries: [{ phase: 'build', summary: 'added the widget' }],
+      commands: [{ name: 'test', argv: ['npm', 'test'] }],
+    });
+    expect(role.startsWith(HEALING_SYSTEM)).toBe(true);
+    expect(role).toContain('## Stack');
+    expect(role).toContain('## Verification');
+    expect(role).toContain('added the widget');
+    expect(role).toContain('npm test');
+  });
+
+  it('stays on the standing rules when the card is empty', () => {
+    expect(healingSystemRole()).toBe(HEALING_SYSTEM);
+    expect(healingSystemRole({ repositoryContext: '  ' })).toBe(HEALING_SYSTEM);
   });
 });

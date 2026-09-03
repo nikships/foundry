@@ -562,6 +562,9 @@ export class CompanionHost {
     if (method === 'GET' && rest[0] === 'issues' && rest.length === 1) {
       return linear.issues(url.searchParams.get('query') ?? '');
     }
+    if (method === 'GET' && rest[0] === 'issues' && rest[1] && rest.length === 2) {
+      return linear.issue(rest[1]);
+    }
     if (
       method === 'GET' &&
       rest[0] === 'teams' &&

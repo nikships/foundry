@@ -490,8 +490,14 @@ export class SmithChatSession {
    */
   private decide(ask: PermissionAsk): PermissionDecision {
     const worktree = scopeCwd(this.deps.scope);
-    return evaluate(ask, { worktree, writes: null, protectedPaths: [] }, this.customToolNames)
-      .decision;
+    return evaluate(
+      ask,
+      { worktree, writes: null, protectedPaths: [] },
+      this.customToolNames,
+      // Read live: the names exist only once the session has opened and
+      // loaded whatever the operator installed.
+      this.transport?.packageTools ?? [],
+    ).decision;
   }
 
   private get stateFile(): string {

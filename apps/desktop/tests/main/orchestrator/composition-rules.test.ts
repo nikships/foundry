@@ -43,6 +43,7 @@ describe('orchestrator composition rules', () => {
       'refined-request',
       'proof',
       'review-gates',
+      'independent-review-before-pr',
       'phase-model',
       'feedback-to',
       'flake-rerun',

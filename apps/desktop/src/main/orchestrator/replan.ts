@@ -4,12 +4,13 @@
  */
 
 import { z } from 'zod';
-import type {
-  AgentDef,
-  GeneratedRunPlan,
-  PhaseDef,
-  PipelineAmendment,
-  ProjectCommand,
+import {
+  FIXED_ENGINE_DEFAULTS,
+  type AgentDef,
+  type GeneratedRunPlan,
+  type PhaseDef,
+  type PipelineAmendment,
+  type ProjectCommand,
 } from '@shared/types.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { OneShotFactory, OneShotSession } from '../pi/oneshot.js';
@@ -71,12 +72,62 @@ Call submit_result exactly once with:
 
 Each synthesized agent has {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase names it. Omit engine-owned ids and colors.`;
 
+function commandLine(command: PhaseDef['command']): string | null {
+  if (!command) return null;
+  if ('argv' in command) return command.argv.join(' ');
+  if ('ref' in command) return `{ref: ${command.ref}}`;
+  if ('builtin' in command) return `{builtin: ${command.builtin}}`;
+  return null;
+}
+
+function summarizePhase(phase: PhaseDef): string {
+  const bits = [`${phase.name} (${phase.kind}): ${phase.description}`];
+  if (phase.agent) bits.push(`agent ${phase.agent}`);
+  if (phase.model) bits.push(`model ${phase.model}`);
+  if (phase.reasoningEffort) bits.push(`effort ${phase.reasoningEffort}`);
+  if (phase.envelope) bits.push(`envelope ${phase.envelope}`);
+  const command = commandLine(phase.command);
+  if (command) bits.push(`command ${command}`);
+  return `- ${bits.join('; ')}`;
+}
+
+function castModelLines(plan: GeneratedRunPlan): string {
+  const seen = new Map<string, Set<string>>();
+  for (const phase of plan.pipeline.phases) {
+    if (phase.kind !== 'agent') continue;
+    if (!phase.model || phase.model === 'inherit') continue;
+    const efforts = seen.get(phase.model) ?? new Set<string>();
+    if (phase.reasoningEffort) efforts.add(phase.reasoningEffort);
+    seen.set(phase.model, efforts);
+  }
+  if (!seen.size) return '(no agent-phase models were confirmed)';
+  return [...seen.entries()]
+    .map(([id, efforts]) =>
+      efforts.size ? `- ${id} (effort ${[...efforts].join('/')})` : `- ${id}`,
+    )
+    .join('\n');
+}
+
 function buildReplanPrompt(input: ReplanProposalInput): string {
   return [
     `This is amendment attempt ${input.attempt}.`,
     '',
-    '## Confirmed plan',
-    JSON.stringify(input.plan),
+    '## Run goal',
+    input.plan.refinedRequest,
+    '',
+    '## Failed phase',
+    summarizePhase(input.failedPhase),
+    '',
+    '## Remaining queued phases being replaced',
+    input.remaining.length ? input.remaining.map(summarizePhase).join('\n') : '(none)',
+    '',
+    '## Completed phases (immutable)',
+    input.completed.length
+      ? input.completed.map((row) => `- ${row.phase.name}`).join('\n')
+      : '(none)',
+    '',
+    '## Cast models already confirmed (copy these ids verbatim)',
+    castModelLines(input.plan),
     '',
     '## Active roster',
     rosterLines(input.roster),
@@ -86,34 +137,63 @@ function buildReplanPrompt(input: ReplanProposalInput): string {
       ? input.commands.map((command) => `- ${command.name}: ${command.argv.join(' ')}`).join('\n')
       : '(none configured)',
     '',
-    '## Completed phases (immutable)',
-    JSON.stringify(input.completed),
-    '',
-    '## Failed phase',
-    JSON.stringify(input.failedPhase),
-    '',
-    '## Remaining queued phases being replaced',
-    JSON.stringify(input.remaining),
-    '',
     '## Failure evidence',
     input.evidence || '(no additional evidence was recorded)',
   ].join('\n');
 }
 
-function parseAmendment(value: unknown, colorOffset = 0): PipelineAmendment | null {
+type AmendmentParse =
+  | { ok: true; amendment: PipelineAmendment }
+  | { ok: false; issues: { where: string; message: string }[] };
+
+function parseAmendment(value: unknown, colorOffset = 0): AmendmentParse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      ok: false,
+      issues: [
+        {
+          where: 'reply',
+          message: 'the Orchestrator did not call submit_result with an amendment',
+        },
+      ],
+    };
+  }
   const parsed = amendmentSchema.safeParse(value);
-  if (!parsed.success) return null;
+  if (!parsed.success) {
+    return {
+      ok: false,
+      issues: parsed.error.issues.map((issue) => ({
+        where: issue.path.join('.') || 'amendment',
+        message: issue.message,
+      })),
+    };
+  }
   return {
-    reason: parsed.data.reason,
-    phases: parsed.data.phases,
-    agents: hydrateSynthesizedAgents(parsed.data.agents, colorOffset),
+    ok: true,
+    amendment: {
+      reason: parsed.data.reason,
+      phases: parsed.data.phases,
+      agents: hydrateSynthesizedAgents(parsed.data.agents, colorOffset),
+    },
   };
+}
+
+function amendmentCorrection(issues: { where: string; message: string }[]): string {
+  return [
+    'Foundry rejected your last amendment:',
+    '',
+    ...issues.map((issue) => `- ${issue.where}: ${issue.message}`),
+    '',
+    'Fix the amendment, call submit_result exactly once with the complete replacement, then stop.',
+  ].join('\n');
 }
 
 /**
  * Each proposal opens and disposes its own one-shot in the run's current cwd.
- * The callback is late-bound because an isolated worktree does not exist when
- * the registry constructs the executor.
+ * Schema misses share the same `envelopeRetries` budget planning uses: a
+ * correction restates the compact prompt plus the rejected reply. The callback
+ * is late-bound because an isolated worktree does not exist when the registry
+ * constructs the executor.
  */
 export function replanningSupport(
   oneShot: OneShotFactory,
@@ -121,26 +201,50 @@ export function replanningSupport(
   cwd: () => string,
 ): Replanner {
   let active: OneShotSession | null = null;
+  let aborted = false;
   return {
-    abort: () => active?.abort(),
+    abort: () => {
+      aborted = true;
+      active?.abort();
+    },
     async propose(input): Promise<PipelineAmendment | null> {
-      const session = oneShot({
-        cwd: cwd(),
-        access: 'read',
-        model: choice.model,
-        reasoningEffort: choice.reasoningEffort,
-        systemPrompt: REPLAN_SYSTEM_PROMPT,
-        outputFormat: AMENDMENT_OUTPUT_FORMAT,
-      });
-      active = session;
-      try {
-        const turn = await session.send(buildReplanPrompt(input));
-        if (turn.interrupted) return null;
-        return parseAmendment(turn.structuredOutput, input.plan.agents.length);
-      } finally {
-        if (active === session) active = null;
-        session.abort();
+      const basePrompt = buildReplanPrompt(input);
+      let ask = basePrompt;
+      const attempts = 1 + FIXED_ENGINE_DEFAULTS.envelopeRetries;
+      for (let n = 1; n <= attempts; n++) {
+        if (aborted) return null;
+        const session = oneShot({
+          cwd: cwd(),
+          access: 'read',
+          model: choice.model,
+          reasoningEffort: choice.reasoningEffort,
+          systemPrompt: REPLAN_SYSTEM_PROMPT,
+          outputFormat: AMENDMENT_OUTPUT_FORMAT,
+        });
+        active = session;
+        try {
+          const turn = await session.send(ask);
+          if (turn.interrupted || aborted) return null;
+          const parsed = parseAmendment(turn.structuredOutput, input.plan.agents.length);
+          if (parsed.ok) return parsed.amendment;
+          if (n === attempts) return null;
+          const previous = turn.structuredOutput
+            ? JSON.stringify(turn.structuredOutput)
+            : `(submit_result was not called)\n${turn.text}`;
+          ask = [
+            basePrompt,
+            '',
+            '## Previous reply rejected by Foundry',
+            previous,
+            '',
+            amendmentCorrection(parsed.issues),
+          ].join('\n');
+        } finally {
+          if (active === session) active = null;
+          session.abort();
+        }
       }
+      return null;
     },
   };
 }

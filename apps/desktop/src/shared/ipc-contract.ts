@@ -499,6 +499,11 @@ export interface FoundryApi {
      * reset a diverged branch. Null when the project is gone.
      */
     baseSync(id: string): Promise<BaseSyncResult | null>;
+    /**
+     * Rebuild the repository fact card from a read-only one-shot. The card is
+     * what run agents receive as `# Repository context`.
+     */
+    refreshContext(id: string): Promise<SaveResult<ProjectDef>>;
   };
   readiness: {
     /** Marker-file status. Cache never wins over the file. */
@@ -622,6 +627,8 @@ export interface FoundryApi {
     clearApiKey(): Promise<LinearActionResult>;
     /** Empty query browses recent accessible issues; text filters key/title. */
     issues(query: string): Promise<LinearIssueSnapshot[]>;
+    /** Loads the selected issue with bounded comments and other planning evidence. */
+    issue(issueId: string): Promise<LinearIssueSnapshot>;
     workflowStates(teamId: string): Promise<LinearWorkflowState[]>;
     startRun(
       input: LinearStartRunInput,
@@ -773,6 +780,7 @@ export interface FoundryApi {
   maintenance: {
     orphanWorktrees(): Promise<OrphanWorktree[]>;
     removeWorktree(projectId: string, path: string): Promise<WorktreeAction>;
+    removeAllWorktrees(): Promise<WorktreeAction>;
     applyRetention(): Promise<MaintenanceReport>;
     compact(): Promise<void>;
   };
@@ -848,6 +856,7 @@ export const IPC = {
   projectsScopeCopies: 'projects:scopeCopies',
   projectsBaseSyncInspect: 'projects:baseSyncInspect',
   projectsBaseSync: 'projects:baseSync',
+  projectsRefreshContext: 'projects:refreshContext',
   readinessInspect: 'readiness:inspect',
   readinessEvaluate: 'readiness:evaluate',
   readinessMakeReady: 'readiness:makeReady',
@@ -898,6 +907,7 @@ export const IPC = {
   linearTest: 'linear:test',
   linearClearApiKey: 'linear:clearApiKey',
   linearIssues: 'linear:issues',
+  linearIssue: 'linear:issue',
   linearWorkflowStates: 'linear:workflowStates',
   linearStartRun: 'linear:startRun',
   runsStart: 'runs:start',
@@ -943,6 +953,7 @@ export const IPC = {
   doctorRun: 'doctor:run',
   maintenanceOrphans: 'maintenance:orphans',
   maintenanceRemoveWorktree: 'maintenance:removeWorktree',
+  maintenanceRemoveAllWorktrees: 'maintenance:removeAllWorktrees',
   maintenanceRetention: 'maintenance:retention',
   maintenanceCompact: 'maintenance:compact',
   appOpenExternal: 'app:openExternal',

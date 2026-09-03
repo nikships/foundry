@@ -144,6 +144,49 @@ function reviewGateRuleIssues(ctx: CompositionContext): ValidationIssue[] {
   return issues;
 }
 
+function isPrPhase(phase: PhaseDef, agents: readonly AgentDef[]): boolean {
+  if (phase.kind !== 'agent') return false;
+  return phase.name === 'open_pr' || effectivePhaseEnvelope(phase, agents) === 'pr';
+}
+
+function writesWorktree(agent: AgentDef | undefined): boolean {
+  const writes = agent?.writes;
+  return writes === null || (writes?.length ?? 0) > 0;
+}
+
+/**
+ * A write-capable review can fix as well as judge. Generated plans that then
+ * open a PR still need a later read-only reviewer.
+ */
+function independentJudgeBeforePrIssues(ctx: CompositionContext): ValidationIssue[] {
+  const prIndex = ctx.pipeline.phases.findIndex((phase) => isPrPhase(phase, ctx.agents));
+  if (prIndex < 0) return [];
+
+  const byName = new Map(ctx.agents.map((agent) => [agent.name, agent]));
+  const issues: ValidationIssue[] = [];
+  for (const [index, phase] of ctx.pipeline.phases.entries()) {
+    if (index >= prIndex || phase.kind !== 'agent') continue;
+    if (effectivePhaseEnvelope(phase, ctx.agents) !== 'review') continue;
+    const agent = phase.agent ? byName.get(phase.agent) : undefined;
+    if (!writesWorktree(agent)) continue;
+    const laterJudge = ctx.pipeline.phases.slice(index + 1, prIndex).some((candidate) => {
+      if (candidate.kind !== 'agent') return false;
+      if (effectivePhaseEnvelope(candidate, ctx.agents) !== 'review') return false;
+      const judge = candidate.agent ? byName.get(candidate.agent) : undefined;
+      return judge?.toolProfile === 'read-only';
+    });
+    if (!laterJudge) {
+      issues.push({
+        level: 'error',
+        where: phaseWhere(phase, index, ctx.indexOffset),
+        message:
+          'a write-capable review or finisher must be followed by a read-only review before open_pr',
+      });
+    }
+  }
+  return issues;
+}
+
 function proofRuleIssues(ctx: CompositionContext): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const byName = new Map(ctx.agents.map((agent) => [agent.name, agent]));
@@ -408,6 +451,12 @@ export const COMPOSITION_RULES: CompositionRule[] = [
     check: reviewGateRuleIssues,
   },
   {
+    id: 'independent-review-before-pr',
+    bullet:
+      'A write-capable review or finisher that is followed by a PR must itself be followed by a read-only review phase before open_pr. Builtin sdlc-pr is the shape.',
+    check: independentJudgeBeforePrIssues,
+  },
+  {
     id: 'phase-model',
     bullet:
       '**Every agent phase names its own model and reasoning level.** Set "model" to one of the configured cast-pool ids you are shown and set "reasoningEffort" to one of that model\'s listed efforts. Choose both for that phase\'s work: give design, review, and hard implementation the strongest models and reasoning, and hand mechanical or narrowly scoped work a smaller model and lower effort. Never omit "model", write "inherit", or leave the model choice to the agent, roster, or install default — a plan with an unnamed model is rejected.',
@@ -433,13 +482,13 @@ export const COMPOSITION_RULES: CompositionRule[] = [
   {
     id: 'prefer-roster',
     bullet:
-      'Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile fit. Do not assume capabilities that are not in their summary.',
+      'Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile all fit. Do not assume capabilities that are not in their summary. Unrestricted roster writes (shown as "unrestricted") do not fit a path-bounded request — do not appoint that agent just because its purpose is "implement".',
     check: () => [],
   },
   {
     id: 'synthesized-agent',
     bullet:
-      'A synthesized agent gets a one-line purpose, a tight "writes" boundary containing only paths its phase must touch, and never the name of a roster agent. A synthesized judge-only reviewer uses "writes":[] and "toolProfile":"read-only". Use the build envelope for implementation agents. Foundry appends the canonical envelope constitution to the synthesized systemPrompt after you submit.',
+      'A synthesized agent gets a one-line purpose, a tight "writes" boundary containing only paths its phase must touch, and never the name of a roster agent. When the request names the files or directories to touch, synthesize the implementation agent rather than using an unrestricted roster builder. A synthesized judge-only reviewer uses "writes":[] and "toolProfile":"read-only". Use the build envelope for implementation agents. Foundry appends the canonical envelope constitution to the synthesized systemPrompt after you submit.',
     check: synthesizedReviewerIssues,
   },
   {

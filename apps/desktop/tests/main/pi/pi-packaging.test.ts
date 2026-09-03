@@ -73,6 +73,16 @@ describe('the agent runtime under a packaged launch', () => {
     expect(builder).toContain("'**/node_modules/better-sqlite3/**'");
   });
 
+  it('ships pi packages outside the asar, where jiti can read them', () => {
+    // Pi loads an extension through jiti, which reads the file from disk. A
+    // path inside app.asar is not a file, so a package bundled with the app
+    // code would resolve and then fail to load — at runtime, in a signed
+    // build, with no dev-run symptom.
+    const builder = readFileSync(join(repoRoot, 'electron-builder.yml'), 'utf8');
+    expect(builder).toContain('from: resources/pi-packages');
+    expect(builder).toContain('to: pi-packages');
+  });
+
   it('keeps the runtime package out of the bundle rather than inlining it', () => {
     // electron-vite's externalizeDepsPlugin leaves every `dependencies` entry
     // as a runtime require, which is what lets electron-builder ship pi as real

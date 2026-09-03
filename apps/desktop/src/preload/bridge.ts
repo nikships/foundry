@@ -70,6 +70,7 @@ const api: FoundryApi = {
     scopeCopies: (id) => call(IPC.projectsScopeCopies, id),
     baseSyncInspect: (id) => call(IPC.projectsBaseSyncInspect, id),
     baseSync: (id) => call(IPC.projectsBaseSync, id),
+    refreshContext: (id) => call(IPC.projectsRefreshContext, id),
   },
   readiness: {
     inspect: (projectId) => call(IPC.readinessInspect, projectId),
@@ -135,6 +136,7 @@ const api: FoundryApi = {
     test: () => call(IPC.linearTest),
     clearApiKey: () => call(IPC.linearClearApiKey),
     issues: (query) => call(IPC.linearIssues, query),
+    issue: (issueId) => call(IPC.linearIssue, issueId),
     workflowStates: (teamId) => call(IPC.linearWorkflowStates, teamId),
     startRun: (input) => call(IPC.linearStartRun, input),
   },
@@ -199,6 +201,7 @@ const api: FoundryApi = {
   maintenance: {
     orphanWorktrees: () => call(IPC.maintenanceOrphans),
     removeWorktree: (projectId, path) => call(IPC.maintenanceRemoveWorktree, projectId, path),
+    removeAllWorktrees: () => call(IPC.maintenanceRemoveAllWorktrees),
     applyRetention: () => call(IPC.maintenanceRetention),
     compact: () => call(IPC.maintenanceCompact),
   },

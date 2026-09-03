@@ -19,6 +19,8 @@ import type {
   ExtensionFactory,
   ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
+import { foundryCompactionSummary } from '../engine/compaction.js';
+import type { CompactionFacts } from '../engine/compaction.js';
 import {
   gitDiffTool,
   readPhaseContextTool,
@@ -72,6 +74,12 @@ export interface FoundryExtensionHandle {
    * stays in the system role instead of being stuffed into the user message.
    */
   useSystemPrompt(text: string | null): void;
+  /**
+   * Pipeline facts for the next `session.compact()`. The hook supplies a
+   * Foundry summary so Pi's chat Goal / Progress / Next Steps template is not
+   * used. Cleared after the compact so a later call cannot reuse a stale pin.
+   */
+  useCompactionFacts(facts: CompactionFacts | null): void;
 }
 
 function makePolicyExtension(
@@ -94,15 +102,47 @@ function makePolicyExtension(
   };
 }
 
+function compactionSlot(): {
+  useFacts(facts: CompactionFacts | null): void;
+  apply(pi: ExtensionAPI): void;
+} {
+  let pending: CompactionFacts | null = null;
+  return {
+    useFacts(facts) {
+      pending = facts;
+    },
+    apply(pi) {
+      pi.on('session_before_compact', (event) => {
+        const facts = pending;
+        pending = null;
+        if (!facts) return;
+        const ops = event.preparation.fileOps;
+        const fromPrep = [...(ops?.written ?? []), ...(ops?.edited ?? [])];
+        const filesModified = [...new Set([...facts.filesModified, ...fromPrep])];
+        return {
+          compaction: {
+            summary: foundryCompactionSummary({ ...facts, filesModified }),
+            firstKeptEntryId: event.preparation.firstKeptEntryId,
+            tokensBefore: event.preparation.tokensBefore,
+            details: event.preparation.fileOps,
+          },
+        };
+      });
+    },
+  };
+}
+
 export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensionHandle {
   let api: ExtensionAPI | null = null;
   let pending: SubmissionTool | null = null;
+  const compaction = compactionSlot();
   const base = makePolicyExtension(opts.decide, (pi) => {
     api = pi;
     pi.registerTool(reportProgressTool(opts.tools));
     pi.registerTool(readPhaseContextTool(opts.tools));
     pi.registerTool(gitDiffTool(opts.tools));
     if (pending) pi.registerTool(pending.definition);
+    compaction.apply(pi);
   });
 
   return {
@@ -112,6 +152,9 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
       if (api && tool) api.registerTool(tool.definition);
     },
     useSystemPrompt: base.useSystemPrompt,
+    useCompactionFacts(facts) {
+      compaction.useFacts(facts);
+    },
   };
 }
 

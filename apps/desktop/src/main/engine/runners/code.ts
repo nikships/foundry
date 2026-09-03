@@ -19,13 +19,29 @@ import { BUILTIN_ARGV, runCommand } from '../commands.js';
 import { resolveRefCommand, sniffCommands } from '../detect.js';
 import { feedbackEnvelope } from '../envelopes.js';
 import { changedPaths } from '../git.js';
-import { heal, type HealAttempt } from '../healing.js';
-import { resolveEnvelopeRef } from '../prompts.js';
+import {
+  heal,
+  healingSystemRole,
+  type HealAttempt,
+  type HealingPromptContext,
+} from '../healing.js';
+import { formatPromptRecord, resolveEnvelopeRef } from '../prompts.js';
 
 type CommandResolution =
   | { ok: true; argv: string[]; skip?: false }
   | { ok: true; skip: true; argv: string[]; detail: string }
   | { ok: false; detail: string };
+
+function healingPromptContext(ctx: RunContext): HealingPromptContext {
+  return {
+    repositoryContext: ctx.project.contextSummary,
+    envelopeSummaries: [...ctx.envelopes].map(([name, envelope]) => ({
+      phase: name,
+      summary: typeof envelope.summary === 'string' ? envelope.summary : '',
+    })),
+    commands: ctx.project.commands,
+  };
+}
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -283,7 +299,9 @@ export class CodePhaseRunner implements PhaseRunner {
     const { tracer, runId } = ctx;
     const phaseId = ctx.phaseId(phase.name);
     this.healVisits.set(phase.name, (this.healVisits.get(phase.name) ?? 0) + 1);
-    const agent = support.open(ctx.cwd);
+    const promptContext = healingPromptContext(ctx);
+    const systemPrompt = healingSystemRole(promptContext);
+    const agent = support.open(ctx.cwd, promptContext);
     // A healing turn blocks the phase on a model until it finishes or the
     // operator cancels, and it can write. Cancellation has to reach it directly, or Stop
     // would leave an agent editing the worktree of a run the operator ended.
@@ -314,6 +332,16 @@ export class CodePhaseRunner implements PhaseRunner {
         agent,
         rerun: () => this.execute(phase, ctx, resolved.argv),
         cancelled: () => ctx.cancelled(),
+        systemPrompt,
+        onPrompt: ({ system, user, attempt }) => {
+          const visit = this.healVisits.get(phase.name) ?? 1;
+          const suffix = visit > 1 ? `${visit}-${attempt}` : `${attempt}`;
+          tracer.writeRunFile(
+            runId,
+            `healer/prompts/${phase.name}-${suffix}.md`,
+            formatPromptRecord({ system, user }),
+          );
+        },
         onAttempt: (attempt) => this.traceAttempt(phase, ctx, support.model, attempt),
       });
     } finally {

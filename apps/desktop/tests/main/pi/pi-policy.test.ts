@@ -59,6 +59,35 @@ describe('tool categories', () => {
     expect(categorize('some_future_tool')).toBe('unknown');
     expect(categorize('')).toBe('unknown');
   });
+
+  it('classifies a package tool only when the session names it', () => {
+    expect(categorize('web_fetch', FOUNDRY_TOOL_NAMES, ['web_fetch'])).toBe('package');
+    // A session that loaded no packages cannot attribute it, so it stays
+    // unknown and the fail-closed branch applies.
+    expect(categorize('web_fetch', FOUNDRY_TOOL_NAMES)).toBe('unknown');
+  });
+
+  it('lets Foundry’s own name win over a package claiming it', () => {
+    expect(categorize('submit_envelope', FOUNDRY_TOOL_NAMES, ['submit_envelope'])).toBe('foundry');
+  });
+});
+
+describe('package tools', () => {
+  it('allows one the operator installed, naming why it is trusted', () => {
+    const outcome = evaluate(
+      ask('web_fetch', { url: 'https://example.com' }),
+      ctx(),
+      [],
+      ['web_fetch'],
+    );
+    expect(outcome.decision.outcome).toBe('allow');
+    expect(outcome.reason).toContain('package');
+  });
+
+  it('still denies a tool no package accounted for', () => {
+    const outcome = evaluate(ask('web_fetch'), ctx(), [], ['other_tool']);
+    expect(outcome.decision.outcome).toBe('deny');
+  });
 });
 
 describe('read-only and Foundry tools', () => {

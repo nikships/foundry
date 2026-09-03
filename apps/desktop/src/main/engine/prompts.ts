@@ -1,12 +1,11 @@
 /**
  * Prompt rendering. The template palette a user sees in the Roster editor is
- * exactly the set of substitutions performed here, and the envelope example is
- * appended from the zod schema rather than written by hand — so the shape the
- * agent is shown always matches the shape its answer is parsed against.
+ * exactly the set of substitutions performed here. The envelope shape rides on
+ * `submit_envelope` and the output constraint, not as a reprinted JSON example.
  */
 
 import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
-import { exampleFor, type Envelope } from './envelopes.js';
+import type { Envelope } from './envelopes.js';
 
 export interface RenderContext {
   request: string;
@@ -20,6 +19,8 @@ export interface RenderContext {
   baseRef?: string;
   /** Base commit and bounded stat for phases that inspect the accumulated diff. */
   gitContext?: { branchPointSha: string; diffStat: string };
+  /** Linear ticket prose, fenced as untrusted evidence rather than {{request}}. */
+  untrustedEvidence?: string;
   /** Envelopes from earlier phases, by phase name. */
   envelopes: Map<string, Envelope>;
   /** Set when a code phase sent failure evidence back to this agent. */
@@ -158,6 +159,10 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
   let user = renderTemplate(agent.userPrompt, promptContext);
   user = appendMissingInputs(agent, phase, promptContext, user, requestInput);
 
+  if (ctx.untrustedEvidence) {
+    user = `${user}\n\n${ctx.untrustedEvidence}`;
+  }
+
   if (ctx.gitContext) {
     user = [
       user,
@@ -178,10 +183,7 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
     user = [user, '', '## Recovering an interrupted attempt', '', ctx.recoveryNote].join('\n');
   }
 
-  const kind = phase.envelope ?? agent.envelope;
-  user = [user, '', '## Report', '', exampleFor(kind, agent.customFields, ctx.envelopeDefs)].join(
-    '\n',
-  );
+  user = [user, '', 'When done, call `submit_envelope` once.'].join('\n');
 
   return { system, user };
 }
@@ -209,9 +211,9 @@ export function killedRecoveryNote(phase: string): string {
  * Re-entry into a phase whose session already holds the rendered prompt: the
  * evidence that sent the run back here, and nothing the session already has.
  *
- * The envelope example, the declared inputs, and the request are deliberately
- * absent — they are earlier in the same conversation, and the tool schema plus
- * the output constraint still ride on every turn.
+ * The declared inputs and the request are deliberately absent — they are
+ * earlier in the same conversation, and the tool schema plus the output
+ * constraint still ride on every turn.
  */
 export function feedbackDelta(input: { phase: string; feedback: string }): string {
   return [

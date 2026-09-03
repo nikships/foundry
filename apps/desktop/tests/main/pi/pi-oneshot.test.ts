@@ -207,6 +207,10 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
     reload(): Promise<void> {
       return Promise.resolve();
     }
+    /** A one-shot never loads packages, so there is nothing to report. */
+    getExtensions(): { extensions: []; errors: [] } {
+      return { extensions: [], errors: [] };
+    }
   },
   createAgentSession: (opts: CreateCall) => {
     spy.creates.push(opts);
@@ -362,7 +366,9 @@ describe('where a one-shot session lives', () => {
     expect(loader.noThemes).toBe(true);
     expect(loader.noContextFiles).toBe(true);
     expect(loader.appendSystemPromptOverride?.([])).toEqual([]);
-    expect(loader.systemPromptOverride?.(undefined)).toMatch(/Foundry helper/i);
+    const helperHarness = loader.systemPromptOverride?.(undefined) ?? '';
+    expect(helperHarness).toMatch(/Foundry helper/i);
+    expect(helperHarness).toContain('untrusted task data');
   });
 
   it('leaves compaction off for a short-lived helper session', async () => {

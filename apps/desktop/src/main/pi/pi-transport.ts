@@ -16,6 +16,7 @@ import type { AgentSession as PiAgentSession } from '@earendil-works/pi-coding-a
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type { CompactionFacts } from '../engine/compaction.js';
 import { modelKey, pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
 import {
@@ -36,6 +37,7 @@ import { modelRuntime } from './runtime.js';
 import { FOUNDRY_RUN_HARNESS } from './system-prompt.js';
 import { runToolsFor } from './tool-names.js';
 import { submitEnvelopeTool, type SubmissionTool } from './tools.js';
+import { resolveBundledPackages } from './packages.js';
 import { subscribeSessionEvents, VendorEventReader } from './vendor-events.js';
 import type {
   AgentTransport,
@@ -73,6 +75,7 @@ export class PiTransport implements AgentTransport {
   private models: TransportModel[] = [];
   private resolvedModel: PiModel | null = null;
   private closed = false;
+  private loadedPackageTools: string[] = [];
   private readonly events = new VendorEventReader();
 
   constructor(private readonly opts: PiTransportOptions) {
@@ -97,6 +100,10 @@ export class PiTransport implements AgentTransport {
 
   get lastUserMessageId(): string | null {
     return lastUserMessageId(this.session);
+  }
+
+  get packageTools(): readonly string[] {
+    return this.loadedPackageTools;
   }
 
   get availableModels(): TransportModel[] {
@@ -136,12 +143,24 @@ export class PiTransport implements AgentTransport {
     );
     const agentDir = join(this.opts.supportDir, 'pi');
     const settingsManager = foundrySettings();
+    // A read-only agent gets a package's skills but none of its extensions: a
+    // skill only instructs, while an extension tool would be a capability the
+    // profile exists to withhold. This is the single place that decision is
+    // made — the session then admits the tools of whatever loaded here, so a
+    // package cleared for read-only work is usable rather than inert.
+    const readOnly = this.opts.toolProfile === 'read-only';
+    const packageResources = await resolveBundledPackages({
+      supportDir: this.opts.supportDir,
+      skillsOnly: readOnly,
+      onWarning: (message) => this.opts.onModelWarning?.(message),
+    });
     const resourceLoader = foundryResourceLoader({
       cwd: this.opts.cwd,
       agentDir,
       settingsManager,
       harness: FOUNDRY_RUN_HARNESS,
       extensionFactory: this.extension.factory,
+      packageResources,
     });
     const opened = await openFoundrySession({
       cwd: this.opts.cwd,
@@ -160,6 +179,7 @@ export class PiTransport implements AgentTransport {
     });
     if (opened.modelFallbackMessage) this.opts.onModelWarning?.(opened.modelFallbackMessage);
 
+    this.loadedPackageTools = opened.packageTools;
     this.session = opened.session;
     this.unsubscribe = subscribeSessionEvents(opened.session, this.events, this.opts.onEvent);
   }
@@ -215,9 +235,11 @@ export class PiTransport implements AgentTransport {
   /**
    * Compacts the live session in place. Pi summarizes and keeps the same
    * session, so unlike the daemon there is no successor to adopt and no id to
-   * re-persist.
+   * re-persist. Foundry facts ride `session_before_compact` so the summary is
+   * ours rather than Pi's chat template.
    */
-  compact(): Promise<{ removedCount: number } | null> {
+  compact(facts?: CompactionFacts): Promise<{ removedCount: number } | null> {
+    this.extension.useCompactionFacts(facts ?? null);
     return compactSession(this.session);
   }
 
