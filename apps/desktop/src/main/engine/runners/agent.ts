@@ -26,8 +26,9 @@ import {
   type RenderContext,
   type RenderedPrompt,
 } from '../prompts.js';
-import { promptFingerprint, type PromptLedger } from '../prompt-ledger.js';
 import { agentSystemRole, type SetupExecution } from '../agent-context.js';
+import { stripReportBlock } from '../compaction.js';
+import { promptFingerprint, type PromptLedger } from '../prompt-ledger.js';
 import { diffStat } from '../git.js';
 
 const DIFF_CONTEXT_ENVELOPES = new Set(['review', 'pr', 'document']);
@@ -516,10 +517,11 @@ export class AgentPhaseRunner implements PhaseRunner {
    * evidence goes on the wire — but the system role always comes off the real
    * render, because a turn's standing rules are re-sent in full every time.
    *
-   * Everything that could have dropped that prompt from context — compaction,
-   * rewind, a closed or replaced session — has already cleared the ledger, and
-   * a stale render simply misses the fingerprint. A miss costs tokens; a wrong
-   * hit would cost correctness, which is why the comparison is exact.
+   * Everything that could have dropped that prompt from context — rewind, a
+   * closed or replaced session, or a compact that could not retain its pin —
+   * has already cleared the ledger, and a stale render simply misses the
+   * fingerprint. A miss costs tokens; a wrong hit would cost correctness, which
+   * is why the comparison is exact.
    */
   private async compose(
     agent: AgentDef,
@@ -566,7 +568,10 @@ export class AgentPhaseRunner implements PhaseRunner {
       };
     }
 
-    this.deps.prompts.note(session, phase.name, fingerprint);
+    this.deps.prompts.note(session, phase.name, fingerprint, {
+      userPrompt: stripReportBlock(baseline.user),
+      projectCard: ctx.project.contextSummary?.trim() ?? '',
+    });
     return { rendered, systemPrompt, delta: false };
   }
 

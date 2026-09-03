@@ -499,6 +499,11 @@ export interface FoundryApi {
      * reset a diverged branch. Null when the project is gone.
      */
     baseSync(id: string): Promise<BaseSyncResult | null>;
+    /**
+     * Rebuild the repository fact card from a read-only one-shot. The card is
+     * what run agents receive as `# Repository context`.
+     */
+    refreshContext(id: string): Promise<SaveResult<ProjectDef>>;
   };
   readiness: {
     /** Marker-file status. Cache never wins over the file. */
@@ -848,6 +853,7 @@ export const IPC = {
   projectsScopeCopies: 'projects:scopeCopies',
   projectsBaseSyncInspect: 'projects:baseSyncInspect',
   projectsBaseSync: 'projects:baseSync',
+  projectsRefreshContext: 'projects:refreshContext',
   readinessInspect: 'readiness:inspect',
   readinessEvaluate: 'readiness:evaluate',
   readinessMakeReady: 'readiness:makeReady',

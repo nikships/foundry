@@ -27,6 +27,7 @@ import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './pr
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
 import { checkPlanRails } from '../orchestrator/plan.js';
+import { ensureProjectContext } from '../project-context.js';
 
 export interface StartRunOutcome {
   ok: boolean;
@@ -139,6 +140,19 @@ export async function startRun(
     });
     project = ensured.project;
   }
+
+  // Missing cards are generated here so the first agent turn already has
+  // Stack / layout / conventions / verification. A card whose baseRef HEAD
+  // moved is rebuilt the same way. Failure is non-fatal: the run still starts.
+  project = await ensureProjectContext({
+    project,
+    settings: deps.settings(),
+    oneShot: deps.oneShot,
+    persist: (next) => {
+      project = deps.saveProject(next);
+    },
+    refreshIfStale: true,
+  });
 
   const knownEnvelopes = deps.envelopeDefs().map((e) => e.name);
   const commandNames = project.commands.map((c) => c.name);

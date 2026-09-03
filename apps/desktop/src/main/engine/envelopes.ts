@@ -42,10 +42,17 @@ export const schemas = {
     // The whole point of the phase, so an empty one is a failed phase rather
     // than a brief nobody can act on.
     improved_request: z.string().min(1),
-    constraints: z.array(z.string()).default([]),
-    acceptance_criteria: z.array(z.string()).default([]),
+    constraints: z.array(z.string()).min(1),
+    acceptance_criteria: z.array(z.string()).min(1),
   }),
-  plan: z.object({ ...base, commit_message: z.string().default('') }),
+  plan: z.object({
+    ...base,
+    commit_message: z.string().default(''),
+    files_to_touch: z.array(z.string()).min(1),
+    steps: z.array(z.string()).min(1),
+    verification: z.array(z.string()).min(1),
+    risks: z.array(z.string()).default([]),
+  }),
   build: z.object({ ...base, commit_message: z.string().default('') }),
   scout: z.object({ ...base, findings: z.array(z.string()).default([]) }),
   review: z.object({
@@ -79,6 +86,10 @@ const FIELD_HINTS: Record<string, unknown> = {
   artifacts: ['relative/path/you/created.md'],
   notes_for_next_agent: 'what the next phase needs to know',
   commit_message: 'imperative subject line under 72 chars',
+  files_to_touch: ['relative/path/to/touch.ts'],
+  steps: ['the change to make in that file'],
+  verification: ['how to prove the change works'],
+  risks: ['what could go wrong'],
   improved_request: 'the rewritten request, standalone and ready to hand to the next phase',
   constraints: ['a rule the work must respect'],
   acceptance_criteria: ['how anyone can tell this is done'],
@@ -256,6 +267,8 @@ export function exampleFor(
   for (const key of Object.keys(baseSchema.shape)) {
     if (key === 'findings' && exampleKind === 'review') {
       example[key] = REVIEW_FINDINGS_HINT;
+    } else if (key === 'findings' && exampleKind === 'scout') {
+      example[key] = ['path + symbol + observation'];
     } else if (exampleKind === 'issue' && key in ISSUE_FIELD_HINTS) {
       example[key] = ISSUE_FIELD_HINTS[key];
     } else {

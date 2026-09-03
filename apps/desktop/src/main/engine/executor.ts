@@ -45,6 +45,8 @@ import type { CommandDriftRecord } from './detect.js';
 import type { HealingSupport } from './healing.js';
 import { runCommand } from './commands.js';
 import { killedRecoveryNote } from './prompts.js';
+import { artifactPathsOf, requiredFieldsFor, unresolvedFailuresOf } from './compaction.js';
+import type { CompactionFacts } from './compaction.js';
 import { PromptLedger } from './prompt-ledger.js';
 import { createIssue, openPr, type GhOptions } from '../system/gh.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
@@ -139,6 +141,7 @@ export interface RunOutcome {
   detail: string;
 }
 
+/** Vestigial: builtins write specs/, but custom prompts may still use {{handoff_dir}}. */
 const HANDOFF_DIR = '.foundry-handoff';
 
 export class Executor {
@@ -184,7 +187,8 @@ export class Executor {
    * Which phase prompts each live session still holds, so a feedback re-entry
    * can send a delta. Lives here rather than in the runner because only the
    * executor sees the events that drop a prompt from a session's context:
-   * compaction, close, and replacement in `sessionFor`.
+   * a compact that dropped messages (retain the pin), close, and replacement
+   * in `sessionFor`.
    */
   private readonly prompts = new PromptLedger();
   private readonly agents: AgentDef[];
@@ -1156,6 +1160,11 @@ export class Executor {
    * cannot report its occupancy (one-shot has none) is left alone, and a
    * compaction that fails is not an error the run answers for: the next turn
    * hits the same context wall it would have hit without this.
+   *
+   * Forget runs only after a compact that actually dropped messages, and then
+   * only for phases other than the pinned constitution. A failed compact, or
+   * one that removed nothing, leaves the ledger intact so a `feedbackTo`
+   * re-entry stays a delta.
    */
   private async compactFullSessions(): Promise<void> {
     const threshold = this.deps.compactionThreshold;
@@ -1163,12 +1172,32 @@ export class Executor {
       const stats = await session.contextStats();
       if (!stats?.limit) continue;
       if (stats.used / stats.limit < threshold) continue;
-      // A summarised conversation may no longer carry an earlier phase's
-      // prompt verbatim, and a compaction that refused still consumed the
-      // decision — forget either way and let the next entry render in full.
-      this.prompts.forget(session);
-      await session.compact(stats);
+      const outcome = await session.compact(stats, this.compactionFacts(session));
+      if (outcome && outcome.removedCount > 0) this.prompts.retainPinned(session);
     }
+  }
+
+  /** Pipeline evidence the Foundry summarizer pins across an opaque compact. */
+  private compactionFacts(session: AgentSession): CompactionFacts {
+    const pin = this.prompts.constitution(session);
+    const phaseName = pin?.phase ?? '';
+    const phase = this.pipeline.phases.find((entry) => entry.name === phaseName);
+    const agent = phase ? this.agents.find((entry) => entry.name === phase.agent) : undefined;
+    const envelopeKind = phase?.envelope ?? agent?.envelope ?? 'generic';
+    return {
+      request: this.deps.request,
+      phase: phaseName,
+      artifactPaths: artifactPathsOf(this.envelopes.values()),
+      unresolvedFailures: unresolvedFailuresOf({
+        commands: this.commandResults,
+        feedback: this.feedback,
+      }),
+      filesModified: [],
+      envelopeKind,
+      requiredFields: requiredFieldsFor(envelopeKind, agent?.customFields, this.deps.envelopeDefs),
+      phaseUserPrompt: pin?.userPrompt ?? '',
+      projectCard: pin?.projectCard || this.deps.project.contextSummary?.trim() || '',
+    };
   }
 
   private async settleKilled(): Promise<RunOutcome> {
