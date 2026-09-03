@@ -111,6 +111,7 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.linearTest]: approve('smith_providers', 'linear_test'),
   [IPC.linearClearApiKey]: approve('smith_providers', 'linear_clear_api_key'),
   [IPC.linearIssues]: read('smith_runs', 'linear_issues'),
+  [IPC.linearIssue]: read('smith_runs', 'linear_issue'),
   [IPC.linearWorkflowStates]: read('smith_runs', 'linear_workflow_states'),
   [IPC.linearStartRun]: approve('smith_runs', 'linear_start'),
   [IPC.runsStart]: approve('smith_runs', 'start'),

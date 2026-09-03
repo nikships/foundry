@@ -37,6 +37,7 @@ export const SMITH_RUN_OPERATIONS = [
   'export_plan',
   'restore_checkpoint',
   'linear_issues',
+  'linear_issue',
   'linear_workflow_states',
   'linear_start',
 ] as const;
@@ -44,7 +45,7 @@ export const SMITH_RUN_OPERATIONS = [
 type RunOperation = (typeof SMITH_RUN_OPERATIONS)[number];
 type RunReadOperation =
   'detail' | 'events' | 'context' | 'prompt' | 'artifacts' | 'plan' | 'checkpoints';
-type LinearRunReadOperation = 'linear_issues' | 'linear_workflow_states';
+type LinearRunReadOperation = 'linear_issues' | 'linear_issue' | 'linear_workflow_states';
 type RunActionOperation = Exclude<
   RunOperation,
   'list' | 'live_tail' | RunReadOperation | LinearRunReadOperation
@@ -93,7 +94,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_runs',
     label: 'Smith runs',
     description:
-      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt/artifacts(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId).',
+      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt/artifacts(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_issue(issueId), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId).',
     parameters: {
       type: 'object',
       properties: {
@@ -234,7 +235,7 @@ function resolveGatedArgs(op: RunActionOperation, params: unknown, projectId: st
 }
 
 function isLinearRunReadOperation(op: RunOperation): op is LinearRunReadOperation {
-  return op === 'linear_issues' || op === 'linear_workflow_states';
+  return op === 'linear_issues' || op === 'linear_issue' || op === 'linear_workflow_states';
 }
 
 function linearRunRead(
@@ -248,6 +249,12 @@ function linearRunRead(
       return Promise.resolve(json({ ok: false, error: 'query must be a string' }));
     }
     return immediate(deps, IPC.linearIssues, query ?? '');
+  }
+  if (op === 'linear_issue') {
+    const issueId = stringField(params, 'issueId');
+    return issueId
+      ? immediate(deps, IPC.linearIssue, issueId)
+      : Promise.resolve(json({ ok: false, error: 'issueId is required' }));
   }
   const teamId = stringField(params, 'teamId');
   return teamId
