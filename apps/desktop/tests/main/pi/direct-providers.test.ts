@@ -31,22 +31,17 @@ describe('the direct-provider table', () => {
     expect(isDirectProviderId('anthropic')).toBe(false);
   });
 
-  it('points at the Model API root and speaks chat-completions', () => {
+  it('points at the Model API root and speaks Responses', () => {
     expect(meta?.baseUrl).toBe('https://api.meta.ai/v1');
-    expect(meta?.api).toBe('openai-completions');
+    expect(meta?.api).toBe('openai-responses');
   });
 
   it('offers only text-returning models, which is all an agent phase can use', () => {
     // Muse Image and the transcription model live on the same endpoint. A
     // picture back from a build phase is a failed phase.
     const ids = meta?.models.map((model) => model.id) ?? [];
-    expect(ids).toEqual([
-      'muse-spark-1.3',
-      'muse-spark-1.3-contributor',
-      'muse-spark-1.2',
-      'muse-spark-1.2-contributor',
-      'muse-spark-1.1',
-    ]);
+    expect(ids).toEqual(['muse-spark-1.3', 'muse-spark-1.3-contributor']);
+    expect(ids.some((id) => id.includes('image') || id.includes('llama'))).toBe(false);
   });
 
   it('withholds the two efforts the API refuses and names the rest', () => {

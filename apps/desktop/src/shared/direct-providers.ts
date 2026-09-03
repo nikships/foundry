@@ -17,8 +17,9 @@
  * nothing else — no context window, no rate card, no thinking levels — so the
  * metadata the picker and the Orchestrator's cast pool need has to come from
  * somewhere, and a table in the repository is reviewable where a runtime guess
- * is not. Image and transcription models are left out: an agent phase needs a
- * model that returns text.
+ * is not. Only Muse Spark 1.3 is shipped: older Spark ids, Llama, Muse Image,
+ * and the transcription model are left out. An agent phase needs a current
+ * text-returning model.
  */
 
 import type { ModelCost } from './types.js';
@@ -32,8 +33,12 @@ export interface DirectProviderDef {
   /** Icon key the renderer maps to a provider mark. */
   icon: string;
   baseUrl: string;
-  /** pi's API kind. Meta's endpoint is OpenAI chat-completions shaped. */
-  api: 'openai-completions';
+  /**
+   * pi's API kind. Meta's Model API is used as OpenAI Responses so a tool
+   * loop can replay `reasoning.encrypted_content`; chat-completions does not
+   * return thinking that can be sent back.
+   */
+  api: 'openai-responses';
   models: readonly DirectModelDef[];
 }
 
@@ -110,13 +115,10 @@ export const DIRECT_PROVIDERS: readonly DirectProviderDef[] = [
     label: 'Meta',
     icon: 'meta',
     baseUrl: 'https://api.meta.ai/v1',
-    api: 'openai-completions',
+    api: 'openai-responses',
     models: [
       sparkModel('muse-spark-1.3', 'Muse Spark 1.3', SPARK_COST),
       sparkModel('muse-spark-1.3-contributor', 'Muse Spark 1.3 Contributor', CONTRIBUTOR_COST),
-      sparkModel('muse-spark-1.2', 'Muse Spark 1.2', SPARK_COST),
-      sparkModel('muse-spark-1.2-contributor', 'Muse Spark 1.2 Contributor', CONTRIBUTOR_COST),
-      sparkModel('muse-spark-1.1', 'Muse Spark 1.1', SPARK_COST),
     ],
   },
 ] as const;

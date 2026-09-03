@@ -183,7 +183,7 @@ describe('providerOf', () => {
     // `muse-spark-1.3` says nothing about Meta, so a match on the corporate
     // name alone would leave every Muse model wearing the openai fallback.
     expect(providerOf('meta/muse-spark-1.3', 'Muse Spark 1.3')).toBe('meta');
-    expect(providerOf('muse-spark-1.2-contributor')).toBe('meta');
+    expect(providerOf('muse-spark-1.3-contributor')).toBe('meta');
   });
 
   it('falls back to openai for a name it cannot place', () => {
