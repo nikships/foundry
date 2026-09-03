@@ -36,4 +36,4 @@ jobs:
         uses: Factory-AI/droid-action@main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          droid_args: "--skip-permissions-unsafe -m glm-5.3-flash"
+          droid_args: '--skip-permissions-unsafe -m glm-5.3-flash'

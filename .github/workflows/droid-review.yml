@@ -29,4 +29,4 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           review_model: glm-5.3-flash
-          droid_args: "--skip-permissions-unsafe"
+          droid_args: '--skip-permissions-unsafe'
