@@ -269,6 +269,10 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
     reload(): Promise<void> {
       return Promise.resolve();
     }
+    /** No package resources in this double; the inline extension is hidden. */
+    getExtensions(): { extensions: []; errors: [] } {
+      return { extensions: [], errors: [] };
+    }
   },
   createAgentSession: (opts: CreateCall & { model?: PiModelStub }) => {
     spy.creates.push(opts);

@@ -178,6 +178,15 @@ export interface AgentTransport {
   readonly pid: number | undefined;
   /** Anchor for a rewind: the last user message the session recorded. */
   readonly lastUserMessageId: string | null;
+  /**
+   * Tools this session admitted from operator-installed packages, so the
+   * policy can rule on them by attribution rather than by guessing.
+   *
+   * Optional because most transports load no packages at all. Omitting it is
+   * the fail-closed answer: an unattributed tool stays `unknown`, which the
+   * policy denies rather than allows.
+   */
+  readonly packageTools?: readonly string[];
   readonly availableModels: TransportModel[];
   readonly activeModel: string;
   /**
