@@ -46,6 +46,14 @@ interface LoaderCall {
   extensionFactories: { name: string; hidden?: boolean }[];
 }
 
+interface PiModelStub {
+  provider: string;
+  id: string;
+  name: string;
+  contextWindow: number;
+  input: ('text' | 'image')[];
+}
+
 const spy = {
   creates: [] as CreateCall[],
   loaders: [] as LoaderCall[],
@@ -54,7 +62,7 @@ const spy = {
   sessionManagers: [] as { kind: string; args: unknown[] }[],
   order: [] as string[],
   session: null as ScriptedPiSession | null,
-  models: [] as { provider: string; id: string; name: string; contextWindow: number }[],
+  models: [] as PiModelStub[],
   registeredTools: [] as {
     name: string;
     parameters: unknown;
@@ -67,12 +75,13 @@ class ScriptedPiSession {
   messages: { role: string; stopReason: string; errorMessage?: string }[] = [];
   state = { messages: this.messages };
   agent = { state: { messages: this.messages as unknown[] } };
-  model: { provider: string; id: string; name: string; contextWindow: number } | null = null;
+  model: PiModelStub | null = null;
   thinkingLevel = 'off';
   lastText = '';
   aborts = 0;
   disposed = 0;
   prompts: string[] = [];
+  promptOptions: unknown[] = [];
   customMessages: string[] = [];
   cycles = 0;
   turn: (session: ScriptedPiSession) => void | Promise<void> = (s) => s.say('done');
@@ -97,9 +106,10 @@ class ScriptedPiSession {
     return Promise.resolve();
   }
 
-  async prompt(text: string): Promise<void> {
+  async prompt(text: string, options?: unknown): Promise<void> {
     spy.order.push('prompt');
     this.prompts.push(text);
+    this.promptOptions.push(options);
     if (this.hangUntilAbort) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => {
@@ -120,7 +130,7 @@ class ScriptedPiSession {
 
   async cycleModel(): Promise<
     | {
-        model: { provider: string; id: string; name: string; contextWindow: number };
+        model: PiModelStub;
         thinkingLevel: string;
         isScoped: boolean;
       }
@@ -294,6 +304,7 @@ beforeEach(() => {
       id: 'claude-sonnet-4',
       name: 'Claude Sonnet 4',
       contextWindow: 200_000,
+      input: ['text', 'image'],
     },
   ];
 });
@@ -396,6 +407,37 @@ describe('where a one-shot session lives', () => {
 });
 
 describe('running one turn', () => {
+  it('maps Foundry attachments onto Pi ImageContent, not the sdk.md source wrapper', async () => {
+    const h = harness();
+    await h.open().send('look', [{ mediaType: 'image/png', data: 'aaaa' }]);
+    expect(h.session.promptOptions[0]).toMatchObject({
+      expandPromptTemplates: false,
+      source: 'extension',
+      images: [{ type: 'image', data: 'aaaa', mimeType: 'image/png' }],
+    });
+    expect(JSON.stringify(h.session.promptOptions[0])).not.toContain('"source":{"type":"base64"');
+  });
+
+  it('refuses images before prompting a text-only model', async () => {
+    spy.models[0]!.input = ['text'];
+    const h = harness();
+
+    await expect(h.open().send('look', [{ mediaType: 'image/png', data: 'aaaa' }])).rejects.toThrow(
+      'anthropic/claude-sonnet-4 does not support image input. Choose an image-capable Orchestrator model.',
+    );
+    expect(h.session.prompts).toEqual([]);
+    expect(h.session.disposed).toBe(1);
+  });
+
+  it('omits images on a text-only send', async () => {
+    const h = harness();
+    await h.open().send('look');
+    expect(h.session.promptOptions[0]).toEqual({
+      expandPromptTemplates: false,
+      source: 'extension',
+    });
+  });
+
   it('returns the final text, trimmed', async () => {
     const h = harness();
     h.session.turn = (s) => s.say('  the answer  ');
@@ -453,6 +495,7 @@ describe('running one turn', () => {
       id: 'gpt-5',
       name: 'GPT-5',
       contextWindow: 400_000,
+      input: ['text', 'image'],
     });
     const h = harness();
     let attempt = 0;
@@ -486,12 +529,19 @@ describe('running one turn', () => {
 
   it('skips a hidden fallback and continues on the next visible model', async () => {
     spy.models.push(
-      { provider: 'openai', id: 'gpt-5', name: 'GPT-5', contextWindow: 400_000 },
+      {
+        provider: 'openai',
+        id: 'gpt-5',
+        name: 'GPT-5',
+        contextWindow: 400_000,
+        input: ['text', 'image'],
+      },
       {
         provider: 'google',
         id: 'gemini-2.5-pro',
         name: 'Gemini 2.5 Pro',
         contextWindow: 1_000_000,
+        input: ['text', 'image'],
       },
     );
     const h = harness({ hiddenModelIds: () => ['openai/gpt-5'] });
@@ -518,6 +568,54 @@ describe('running one turn', () => {
     };
 
     expect((await h.open().send('go')).text).toBe('recovered on visible');
+    expect(h.session.customMessages).toHaveLength(1);
+    expect(h.warnings.at(-1)).toContain('continuing this turn on google/gemini-2.5-pro');
+  });
+
+  it('skips a text-only fallback when the interrupted turn has images', async () => {
+    spy.models.push(
+      {
+        provider: 'openai',
+        id: 'gpt-5',
+        name: 'GPT-5',
+        contextWindow: 400_000,
+        input: ['text'],
+      },
+      {
+        provider: 'google',
+        id: 'gemini-2.5-pro',
+        name: 'Gemini 2.5 Pro',
+        contextWindow: 1_000_000,
+        input: ['text', 'image'],
+      },
+    );
+    const h = harness();
+    let attempt = 0;
+    h.session.turn = (session) => {
+      if (attempt++ === 0) {
+        session.emit({
+          type: 'auto_retry_start',
+          attempt: 5,
+          maxAttempts: 5,
+          delayMs: 32_000,
+          errorMessage: 'rate limited',
+        });
+        session.emit({
+          type: 'auto_retry_end',
+          success: false,
+          attempt: 5,
+          finalError: 'rate limited',
+        });
+        session.say('', { stopReason: 'error', errorMessage: 'rate limited' });
+        return;
+      }
+      session.say('recovered with images');
+    };
+
+    const result = await h.open().send('look', [{ mediaType: 'image/png', data: 'aaaa' }]);
+
+    expect(result.text).toBe('recovered with images');
+    expect(h.session.cycles).toBe(2);
     expect(h.session.customMessages).toHaveLength(1);
     expect(h.warnings.at(-1)).toContain('continuing this turn on google/gemini-2.5-pro');
   });

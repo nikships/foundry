@@ -740,7 +740,7 @@ export function createMockFoundryApi(): FoundryApi {
       }),
     },
     orchestrator: {
-      plan: async (projectId, prompt, model, reasoningEffort) => {
+      plan: async (projectId, prompt, model, reasoningEffort, _images) => {
         const planId = `web-plan-${++orchestratorSequence}`;
         const pipeline = mockPipelines[0]!;
         const plan: GeneratedRunPlan = {

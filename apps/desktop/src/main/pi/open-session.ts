@@ -12,6 +12,7 @@ import {
   type AgentSession as PiAgentSession,
   type ExtensionFactory,
   type ModelRuntime,
+  type PromptOptions,
 } from '@earendil-works/pi-coding-agent';
 import type { ContextBreakdown } from '@shared/types.js';
 import type { PiModel, PiThinkingLevel } from './model.js';
@@ -254,8 +255,13 @@ export async function promptUntilIdle(
   session: PiAgentSession,
   text: string,
   afterIdle?: () => Promise<void>,
+  images?: NonNullable<PromptOptions['images']>,
 ): Promise<{ stopReason: string; errorMessage?: string } | null> {
-  await session.prompt(text, { expandPromptTemplates: false, source: 'extension' });
+  await session.prompt(text, {
+    expandPromptTemplates: false,
+    source: 'extension',
+    ...(images?.length ? { images } : {}),
+  });
   await session.waitForIdle();
   await afterIdle?.();
   const last = lastAssistantStop(session);

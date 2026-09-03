@@ -18,7 +18,7 @@
 
 import { randomBytes } from 'node:crypto';
 import type { PanelEntry, PanelStateCore, ReasoningEffort } from '@shared/types.js';
-import type { OneShotFactory, OneShotResult, OneShotSession } from '../pi/oneshot.js';
+import type { OneShotFactory, OneShotImage, OneShotResult, OneShotSession } from '../pi/oneshot.js';
 import { foldTranscript } from '../pi/transcript.js';
 import type { OutputFormat, TransportEvent } from '../pi/transport.js';
 
@@ -54,6 +54,8 @@ export interface AskTurn {
   /** Optional schema-bound `submit_result` answer channel. */
   outputFormat?: OutputFormat;
   textCap?: number;
+  /** Optional images forwarded to the one-shot turn. */
+  images?: readonly OneShotImage[];
 }
 
 export class PanelSession<TState extends PanelStateCore> {
@@ -169,7 +171,7 @@ export class PanelSession<TState extends PanelStateCore> {
       ...(input.outputFormat ? { outputFormat: input.outputFormat } : {}),
     });
     this.bind(session);
-    const turn = await session.send(input.prompt);
+    const turn = await session.send(input.prompt, input.images);
     if (this._cancelled) return null;
     return turn;
   }

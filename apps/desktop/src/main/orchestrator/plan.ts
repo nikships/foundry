@@ -78,6 +78,8 @@ export interface PlanPromptInputs {
   preferredModelIds?: string[];
   /** Whether gh can open PRs here, which decides the acceptance guidance. */
   ghAvailable?: boolean;
+  /** Count of in-memory images on this turn; never the bytes themselves. */
+  attachedImageCount?: number;
 }
 
 /** Compact one-line summary per roster agent — not prompts, to keep context lean. */
@@ -160,7 +162,20 @@ function fewShotPipelines(models: readonly ModelInfo[]): string {
 }
 
 export function buildPlanPrompt(inputs: PlanPromptInputs): string {
-  const parts = ['Compose the pipeline for this request.', '', `## Request`, inputs.request];
+  const attachedImageCount = inputs.attachedImageCount ?? 0;
+  const requestBody = inputs.request.trim()
+    ? inputs.request
+    : attachedImageCount > 0
+      ? '(see attached images)'
+      : inputs.request;
+  const parts = ['Compose the pipeline for this request.', '', `## Request`, requestBody];
+  if (attachedImageCount > 0) {
+    parts.push(
+      '',
+      '## Attached images',
+      `${attachedImageCount} image(s) are attached to this turn. Treat them as the visual specification.`,
+    );
+  }
   if (inputs.contextSummary) {
     parts.push('', '## Repository', inputs.contextSummary);
   }

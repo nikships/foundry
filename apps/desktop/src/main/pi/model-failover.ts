@@ -27,6 +27,7 @@ export async function continueWithModelFailover(input: {
   events: VendorEventReader;
   availableModelCount: number;
   hiddenModelIds?: readonly string[];
+  requireImageInput?: boolean;
   onWarning?: (warning: string) => void;
 }): Promise<void> {
   const attempted = new Set<string>();
@@ -49,8 +50,11 @@ export async function continueWithModelFailover(input: {
     if (attempted.has(nextId)) return;
     attempted.add(nextId);
     // cycleModel() has already stepped onto this id. Do not start a turn on
-    // a model the operator hid; keep walking until a visible one or a wrap.
-    if (hidden.has(nextId)) continue;
+    // a model the operator hid or one that cannot consume this turn's images;
+    // keep walking until a compatible one or a wrap.
+    if (hidden.has(nextId) || (input.requireImageInput && !next.model.input.includes('image'))) {
+      continue;
+    }
 
     const messages = input.session.agent.state.messages;
     const last = messages[messages.length - 1];

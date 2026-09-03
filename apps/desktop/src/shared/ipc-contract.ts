@@ -44,6 +44,7 @@ import type {
   StartRunInput,
   PanelEntry,
   PanelStateCore,
+  PlanImageAttachment,
   UpdateStatus,
   ValidationIssue,
 } from './types.js';
@@ -715,6 +716,7 @@ export interface FoundryApi {
       prompt: string,
       model: string,
       reasoningEffort: ReasoningEffort,
+      images?: PlanImageAttachment[],
     ): Promise<{ planId: string } | { error: string }>;
     cancel(planId: string): Promise<boolean>;
   };

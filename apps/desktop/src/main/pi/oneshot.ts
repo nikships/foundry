@@ -12,7 +12,7 @@
  * the same call sites with no model, no credential, and no network.
  */
 
-import type { ReasoningEffort } from '@shared/types.js';
+import type { PlanImageAttachment, ReasoningEffort } from '@shared/types.js';
 import type {
   OutputFormat,
   PermissionAsk,
@@ -73,8 +73,11 @@ export interface OneShotResult {
  * One question, then disposal. `send` is called once; `abort` ends the turn in
  * flight, which is what a cancel button and a poll-kill both do.
  */
+/** Vendor-neutral image attachment for a one-shot turn. */
+export type OneShotImage = PlanImageAttachment;
+
 export interface OneShotSession {
-  send(prompt: string): Promise<OneShotResult>;
+  send(prompt: string, images?: readonly OneShotImage[]): Promise<OneShotResult>;
   /** Ends whatever is running. Safe before `send` and after it resolves. */
   abort(): void;
 }

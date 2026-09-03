@@ -1338,6 +1338,27 @@ export interface GeneratedRunPlan {
   reasoningEffort: ReasoningEffort;
 }
 
+export const PLAN_IMAGE_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+] as const;
+export type PlanImageMime = (typeof PLAN_IMAGE_MIME_TYPES)[number];
+
+export const PLAN_IMAGE_MAX_COUNT = 8;
+/** Decoded size, per image. */
+export const PLAN_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+/** Decoded size, all images combined. */
+export const PLAN_IMAGE_MAX_TOTAL_BYTES = 12 * 1024 * 1024;
+
+/** Clone-safe planning attachment. `data` is raw base64, no `data:` prefix. */
+export interface PlanImageAttachment {
+  mediaType: PlanImageMime;
+  data: string;
+  name?: string;
+}
+
 /** One mid-run amendment: replaces the not-yet-run tail of the pipeline. */
 export interface PipelineAmendment {
   reason: string;

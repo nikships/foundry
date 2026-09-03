@@ -9,17 +9,20 @@ import type {
   AgentDef,
   EnvelopeDef,
   ModelInfo,
+  PlanImageAttachment,
   ProjectCommand,
   ReasoningEffort,
 } from '@shared/types.js';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
 import type { PanelRegistry } from '../session/index.js';
+import { validatePlanImages } from './plan-images.js';
 import type { PlanStart } from './plan-session.js';
 
 export interface PlanStartInput {
   prompt: string;
   model: string;
   reasoningEffort: ReasoningEffort;
+  images?: PlanImageAttachment[];
 }
 
 export interface PlanStartProject {
@@ -49,7 +52,11 @@ export function startPlan(
   services: PlanStartServices,
 ): { planId: string } | { error: string } {
   if (!project) return { error: 'project not found' };
-  if (!input.prompt.trim()) return { error: 'a plan needs a request' };
+  const checked = validatePlanImages(input.images);
+  if (!checked.ok) return { error: checked.error };
+  if (!input.prompt.trim() && checked.images.length === 0) {
+    return { error: 'a plan needs a request' };
+  }
   const projectPath = project.path;
   const planId = plans.start({
     projectId: project.id,
@@ -65,6 +72,7 @@ export function startPlan(
     scaffold: project.scaffold === true,
     enabledModels: services.enabledModels,
     ghAvailable: async () => services.ghAvailable(projectPath),
+    ...(checked.images.length > 0 ? { images: checked.images } : {}),
   });
   return { planId };
 }

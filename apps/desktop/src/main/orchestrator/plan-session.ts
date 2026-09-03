@@ -15,13 +15,15 @@ import type {
   AgentDef,
   EnvelopeDef,
   ModelInfo,
+  PlanImageAttachment,
   ProjectCommand,
   ReasoningEffort,
+  ValidationIssue,
 } from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
 import { modelLabel } from '@shared/model-label.js';
-import type { OneShotFactory } from '../pi/oneshot.js';
+import type { OneShotFactory, OneShotResult } from '../pi/oneshot.js';
 import {
   PanelSession,
   createPanelRegistry,
@@ -37,6 +39,7 @@ import {
   planOutputFormat,
   planCorrection,
   toGeneratedPlan,
+  type ParsedPlanReply,
   type PlanPromptInputs,
 } from './plan.js';
 
@@ -56,6 +59,8 @@ export interface PlanSessionDeps {
   roster: AgentDef[];
   envelopeDefs: EnvelopeDef[];
   scaffold?: boolean;
+  /** In-memory planning attachments. Never copied onto OrchestratorState. */
+  images?: PlanImageAttachment[];
   /**
    * The models this install can reach, minus the operator's hidden ones. Read
    * in the background alongside gh, because building pi's runtime is the
@@ -163,6 +168,7 @@ export class PlanSession {
       models: castPool.models,
       preferredModelIds: castPool.preferredModelIds,
       ghAvailable,
+      attachedImageCount: this.deps.images?.length ?? 0,
     };
 
     // One parse-or-correct budget covers both the JSON shape and the rails,
@@ -171,79 +177,124 @@ export class PlanSession {
     let ask = basePrompt;
     const attempts = 1 + FIXED_ENGINE_DEFAULTS.envelopeRetries;
     for (let attempt = 1; attempt <= attempts; attempt++) {
-      this.panel.push({
-        kind: 'note',
-        text:
-          attempt === 1
-            ? `Asking the Orchestrator${model === 'inherit' ? '' : ` (${modelLabel(model)})`}…`
-            : `Sending the validation errors back (attempt ${attempt} of ${attempts})…`,
-      });
-
-      // The Orchestrator reads the operator's own checkout, where nothing
-      // would revert a write, so the session has no tool that could make one.
-      const turn = await this.panel.ask({
-        oneShot: this.deps.oneShot,
-        cwd: this.deps.projectPath,
-        access: 'read',
-        model,
-        reasoningEffort: this.deps.reasoningEffort,
-        systemPrompt: ORCHESTRATOR_PROMPT,
-        outputFormat: planOutputFormat(),
-        prompt: ask,
-      });
+      this.noteAttempt(attempt, attempts, model);
+      const turn = await this.askTurn(ask, model);
       if (!turn) return;
       const structuredReply = turn.structuredOutput ? JSON.stringify(turn.structuredOutput) : null;
       state.rawReply = structuredReply ?? turn.text;
-
-      const parsed = parsePlanReply(turn.structuredOutput, this.planId);
-      const rails = parsed.ok
-        ? checkPlanRails(parsed.reply, {
-            roster: this.deps.roster,
-            commandNames: this.deps.commands.map((c) => c.name),
-            knownEnvelopes: this.deps.envelopeDefs.map((e) => e.name),
-            allowedModelIds,
-            allowedModels: castPool.models,
-            scaffold: this.deps.scaffold,
-          })
-        : null;
-
-      if (parsed.ok && rails?.ok) {
-        state.plan = toGeneratedPlan({
-          planId: this.planId,
-          projectId: this.deps.projectId,
-          prompt: this.deps.prompt,
-          reply: parsed.reply,
-          warnings: rails.warnings,
-          model,
-          reasoningEffort: this.deps.reasoningEffort,
-        });
-        state.status = 'done';
-        state.detail = rails.warnings.length
-          ? `plan ready, with ${rails.warnings.length} warning(s)`
-          : 'plan ready';
-        return;
-      }
-
-      const issues = parsed.ok ? (rails && !rails.ok ? rails.issues : []) : parsed.issues;
-      for (const issue of issues) {
-        this.panel.push({ kind: 'note', text: `Rejected: ${issue.where}: ${issue.message}` });
-      }
-      // A one-shot owns exactly one turn, so the correction opens a fresh
-      // session. Restate both the original context and the rejected reply;
-      // otherwise that fresh session would see only errors from a plan it had
-      // never seen and could not repair them coherently.
-      ask = [
+      const accepted = this.applyTurn(turn, {
+        model,
+        allowedModelIds,
+        allowedModels: castPool.models,
         basePrompt,
-        '',
-        '## Previous reply rejected by Foundry',
-        structuredReply ?? `(submit_result was not called)\n${turn.text}`,
-        '',
-        planCorrection(issues),
-      ].join('\n');
+        structuredReply,
+        setAsk: (next) => {
+          ask = next;
+        },
+      });
+      if (accepted) return;
     }
 
     this.panel.fail(`the Orchestrator could not produce a valid plan within ${attempts} attempts`);
   }
+
+  private noteAttempt(attempt: number, attempts: number, model: string): void {
+    this.panel.push({
+      kind: 'note',
+      text:
+        attempt === 1
+          ? `Asking the Orchestrator${model === 'inherit' ? '' : ` (${modelLabel(model)})`}…`
+          : `Sending the validation errors back (attempt ${attempt} of ${attempts})…`,
+    });
+  }
+
+  private askTurn(prompt: string, model: string): Promise<OneShotResult | null> {
+    // The Orchestrator reads the operator's own checkout, where nothing
+    // would revert a write, so the session has no tool that could make one.
+    return this.panel.ask({
+      oneShot: this.deps.oneShot,
+      cwd: this.deps.projectPath,
+      access: 'read',
+      model,
+      reasoningEffort: this.deps.reasoningEffort,
+      systemPrompt: ORCHESTRATOR_PROMPT,
+      outputFormat: planOutputFormat(),
+      prompt,
+      ...(this.deps.images?.length ? { images: this.deps.images } : {}),
+    });
+  }
+
+  private applyTurn(
+    turn: OneShotResult,
+    opts: {
+      model: string;
+      allowedModelIds: string[];
+      allowedModels: ModelInfo[];
+      basePrompt: string;
+      structuredReply: string | null;
+      setAsk: (next: string) => void;
+    },
+  ): boolean {
+    const parsed = parsePlanReply(turn.structuredOutput, this.planId);
+    const rails = parsed.ok
+      ? checkPlanRails(parsed.reply, {
+          roster: this.deps.roster,
+          commandNames: this.deps.commands.map((c) => c.name),
+          knownEnvelopes: this.deps.envelopeDefs.map((e) => e.name),
+          allowedModelIds: opts.allowedModelIds,
+          allowedModels: opts.allowedModels,
+          scaffold: this.deps.scaffold,
+        })
+      : null;
+    if (parsed.ok && rails?.ok) {
+      this.acceptPlan(parsed.reply, rails.warnings, opts.model);
+      return true;
+    }
+    const issues = parsed.ok ? (rails && !rails.ok ? rails.issues : []) : parsed.issues;
+    for (const issue of issues) {
+      this.panel.push({ kind: 'note', text: `Rejected: ${issue.where}: ${issue.message}` });
+    }
+    // A one-shot owns exactly one turn, so the correction opens a fresh
+    // session. Restate both the original context and the rejected reply;
+    // otherwise that fresh session would see only errors from a plan it had
+    // never seen and could not repair them coherently.
+    opts.setAsk(
+      correctionPrompt(
+        opts.basePrompt,
+        opts.structuredReply ?? `(submit_result was not called)\n${turn.text}`,
+        issues,
+      ),
+    );
+    return false;
+  }
+
+  private acceptPlan(reply: ParsedPlanReply, warnings: ValidationIssue[], model: string): void {
+    const state = this.panel.state;
+    state.plan = toGeneratedPlan({
+      planId: this.planId,
+      projectId: this.deps.projectId,
+      prompt: this.deps.prompt,
+      reply,
+      warnings,
+      model,
+      reasoningEffort: this.deps.reasoningEffort,
+    });
+    state.status = 'done';
+    state.detail = warnings.length
+      ? `plan ready, with ${warnings.length} warning(s)`
+      : 'plan ready';
+  }
+}
+
+function correctionPrompt(basePrompt: string, previous: string, issues: ValidationIssue[]): string {
+  return [
+    basePrompt,
+    '',
+    '## Previous reply rejected by Foundry',
+    previous,
+    '',
+    planCorrection(issues),
+  ].join('\n');
 }
 
 export function createPlans(
