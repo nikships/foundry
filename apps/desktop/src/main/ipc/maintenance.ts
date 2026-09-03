@@ -64,6 +64,55 @@ export function register(ctx: Ctx, handle: Handle): void {
     },
   );
 
+  handle(IPC.maintenanceRemoveAllWorktrees, async (): Promise<WorktreeAction> => {
+    const projects = ctx.projects.list();
+    const targetLists = await Promise.all(
+      projects.map(async (project) => {
+        if (!existsSync(project.path)) return [];
+        return worktreeLib.findOrphans({
+          repo: project.path,
+          projectId: project.id,
+          activeRunIds: ctx.registry.tracerFor(project).activeRunIds(),
+        });
+      }),
+    );
+    const targets = targetLists.flat();
+    if (targets.length === 0) return { ok: true, detail: 'no leftover worktrees' };
+    const byProject = new Map<string, OrphanWorktree[]>();
+    for (const orphan of targets) {
+      const list = byProject.get(orphan.projectId) ?? [];
+      list.push(orphan);
+      byProject.set(orphan.projectId, list);
+    }
+    // One project at a time: git serialises on a lock per repository, so
+    // parallel removals in the same repo only queue behind each other anyway.
+    let removed = 0;
+    const failures: string[] = [];
+    for (const [projectId, orphans] of byProject) {
+      const project = projectOf(projectId);
+      if (!project) {
+        failures.push(`${projectId}: project not found`);
+        continue;
+      }
+      for (const orphan of orphans) {
+        const runId = orphan.path.split('/').pop() ?? '';
+        const outcome = await worktreeLib.discard(project.path, {
+          path: orphan.path,
+          branch: worktreeLib.branchNameFor(runId),
+          baseRef: project.baseRef,
+          branchPointSha: '',
+        });
+        if (outcome.removed) removed += 1;
+        else failures.push(`${orphan.path}: ${outcome.detail}`);
+      }
+    }
+    const detail =
+      failures.length === 0
+        ? `removed ${removed} leftover worktree${removed === 1 ? '' : 's'}`
+        : `removed ${removed} of ${targets.length} leftover worktrees: ${failures.join('; ')}`;
+    return { ok: failures.length === 0, detail };
+  });
+
   handle(IPC.maintenanceRetention, (): MaintenanceReport => {
     const days = ctx.settings.get().retentionDays;
     let runsDeleted = 0;

@@ -551,20 +551,49 @@ export default function SettingsScreen({
   };
   const loadOrphans = async (): Promise<void> =>
     setOrphans(await api.maintenance.orphanWorktrees());
-  const removeOrphan = useConfirmAction(
-    (orphan: OrphanWorktree) =>
-      `Remove leftover worktree at ${orphan.path}? Its branch and any uncommitted work in it are deleted.`,
-    async (orphan: OrphanWorktree): Promise<void> => {
-      try {
-        const result = await api.maintenance.removeWorktree(orphan.projectId, orphan.path);
-        setMaintenanceNote(result.detail);
-        setErrors(result.ok ? [] : [result.detail]);
-        await loadOrphans();
-      } catch (e) {
-        setErrors([(e as Error).message]);
-      }
-    },
-  );
+  /** Which leftover worktrees currently have a removal in flight. */
+  const [removingPaths, setRemovingPaths] = useState<string[]>([]);
+  const [removingAll, setRemovingAll] = useState(false);
+  // No confirmation step: these are abandoned directories from crashed or
+  // killed runs, and the row text already states the removal deletes the
+  // branch and any uncommitted work. The row drops off the list the moment
+  // the click lands, so a 1.5 GB `git worktree remove` reads as instant and
+  // the re-list afterwards only reconciles stragglers.
+  const removeOrphan = async (orphan: OrphanWorktree): Promise<void> => {
+    if (removingPaths.includes(orphan.path)) return;
+    setRemovingPaths((paths) => [...paths, orphan.path]);
+    setOrphans((current) => current.filter((o) => o.path !== orphan.path));
+    try {
+      const result = await api.maintenance.removeWorktree(orphan.projectId, orphan.path);
+      setMaintenanceNote(result.detail);
+      setErrors(result.ok ? [] : [result.detail]);
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    } finally {
+      setRemovingPaths((paths) => paths.filter((p) => p !== orphan.path));
+      await loadOrphans();
+    }
+  };
+  const removeAllOrphans = async (): Promise<void> => {
+    if (removingAll || orphans.length === 0) return;
+    const targets = orphans;
+    setRemovingAll(true);
+    // Same optimistic treatment as a single removal: clear the list now, let
+    // the re-list reconcile anything the bulk sweep could not delete.
+    setRemovingPaths((paths) => [...paths, ...targets.map((o) => o.path)]);
+    setOrphans([]);
+    try {
+      const result = await api.maintenance.removeAllWorktrees();
+      setMaintenanceNote(result.detail);
+      setErrors(result.ok ? [] : [result.detail]);
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    } finally {
+      setRemovingPaths((paths) => paths.filter((p) => !targets.some((o) => o.path === p)));
+      setRemovingAll(false);
+      await loadOrphans();
+    }
+  };
   /**
    * Runs one provider or credential action with the pane's own busy/note state.
    *
@@ -2182,21 +2211,40 @@ export default function SettingsScreen({
                           its branch and any uncommitted work in it.
                         </p>
                         {orphans.length ? (
-                          <ul className={styles.settingsOrphans}>
-                            {orphans.map((orphan) => (
-                              <li key={orphan.path}>
-                                <span className={`mono ${styles.path}`}>{orphan.path}</span>
-                                <span className="mono faint">{orphan.branch}</span>
-                                <Button
-                                  variant="danger"
-                                  size="sm"
-                                  onClick={() => void removeOrphan(orphan)}
-                                >
-                                  Remove
-                                </Button>
-                              </li>
-                            ))}
-                          </ul>
+                          <>
+                            <div className={styles.settingsSubrow}>
+                              <span className={styles.hint}>
+                                {orphans.length} leftover worktree
+                                {orphans.length === 1 ? '' : 's'}
+                              </span>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                disabled={removingAll}
+                                onClick={() => void removeAllOrphans()}
+                              >
+                                {removingAll ? 'Removing…' : 'Remove all'}
+                              </Button>
+                            </div>
+                            <ul className={styles.settingsOrphans}>
+                              {orphans.map((orphan) => (
+                                <li key={orphan.path}>
+                                  <span className={`mono ${styles.path}`}>{orphan.path}</span>
+                                  <span className="mono faint">{orphan.branch}</span>
+                                  <Button
+                                    variant="danger"
+                                    size="sm"
+                                    disabled={removingPaths.includes(orphan.path)}
+                                    onClick={() => void removeOrphan(orphan)}
+                                  >
+                                    {removingPaths.includes(orphan.path) ? 'Removing…' : 'Remove'}
+                                  </Button>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : removingPaths.length > 0 || removingAll ? (
+                          <p className="faint">Removing…</p>
                         ) : (
                           <p className="faint">None found.</p>
                         )}

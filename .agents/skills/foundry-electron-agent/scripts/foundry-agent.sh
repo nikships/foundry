@@ -6,8 +6,8 @@ API="https://generativelanguage.googleapis.com/v1beta"
 AGENT_ID="${FOUNDRY_AGENT_ID:-foundry-electron}"
 RUN_DIR="${FOUNDRY_AGENT_RUN_DIR:-.foundry-agent-runs}"
 # NOTE: agent_config (model, max_total_tokens) cannot be overridden per-interaction for a
-# managed agent — the API rejects it. The token budget lives in agent-definition.json and is
-# applied by rewarm.sh when the agent is (re)created.
+# managed agent — the API answers "AntigravityConfig cannot be overriden for custom agents."
+# Both live in agent-definition.json and are applied by rewarm.sh when the agent is recreated.
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 

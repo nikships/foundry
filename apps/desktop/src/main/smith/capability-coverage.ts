@@ -152,6 +152,7 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.doctorRun]: read('smith_system', 'doctor'),
   [IPC.maintenanceOrphans]: read('smith_system', 'orphans'),
   [IPC.maintenanceRemoveWorktree]: approve('smith_system', 'remove_orphan'),
+  [IPC.maintenanceRemoveAllWorktrees]: approve('smith_system', 'remove_all_orphans'),
   [IPC.maintenanceRetention]: approve('smith_system', 'apply_retention'),
   [IPC.maintenanceCompact]: approve('smith_system', 'compact'),
   [IPC.appOpenExternal]: approve('smith_system', 'open_external'),

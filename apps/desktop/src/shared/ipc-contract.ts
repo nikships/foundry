@@ -780,6 +780,7 @@ export interface FoundryApi {
   maintenance: {
     orphanWorktrees(): Promise<OrphanWorktree[]>;
     removeWorktree(projectId: string, path: string): Promise<WorktreeAction>;
+    removeAllWorktrees(): Promise<WorktreeAction>;
     applyRetention(): Promise<MaintenanceReport>;
     compact(): Promise<void>;
   };
@@ -952,6 +953,7 @@ export const IPC = {
   doctorRun: 'doctor:run',
   maintenanceOrphans: 'maintenance:orphans',
   maintenanceRemoveWorktree: 'maintenance:removeWorktree',
+  maintenanceRemoveAllWorktrees: 'maintenance:removeAllWorktrees',
   maintenanceRetention: 'maintenance:retention',
   maintenanceCompact: 'maintenance:compact',
   appOpenExternal: 'app:openExternal',
