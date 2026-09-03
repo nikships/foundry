@@ -232,6 +232,10 @@ export class AgentSession {
         protectedPaths: this.deps.protectedPaths,
       },
       FOUNDRY_TOOL_NAMES,
+      // Read off the live transport rather than captured: the names only
+      // exist once the session has opened and loaded its packages, and the
+      // first ask can arrive on that same turn.
+      this.transport?.packageTools ?? [],
     );
     if (outcome.decision.outcome !== 'allow') {
       this.deps.tracer.event({

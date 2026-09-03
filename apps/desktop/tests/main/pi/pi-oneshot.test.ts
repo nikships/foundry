@@ -207,6 +207,10 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
     reload(): Promise<void> {
       return Promise.resolve();
     }
+    /** A one-shot never loads packages, so there is nothing to report. */
+    getExtensions(): { extensions: []; errors: [] } {
+      return { extensions: [], errors: [] };
+    }
   },
   createAgentSession: (opts: CreateCall) => {
     spy.creates.push(opts);
