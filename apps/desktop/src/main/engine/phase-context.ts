@@ -17,6 +17,8 @@ export interface RunContext {
   readonly project: ProjectDef;
   readonly pipeline: PipelineDef;
   readonly request: string;
+  /** Linear ticket evidence, when this run started from an issue. */
+  readonly untrustedEvidence?: string;
   /** The worktree when isolated, the checkout otherwise. */
   readonly cwd: string;
   readonly handoffDir: string;

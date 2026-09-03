@@ -24,6 +24,7 @@ interface CompanionRepository {
     suspend fun cancelOrchestratorPlan(planId: String): Result<Boolean>
     suspend fun getLinearState(): Result<LinearConnectionState>
     suspend fun searchLinearIssues(query: String): Result<List<LinearIssueSnapshot>>
+    suspend fun getLinearIssue(issueId: String): Result<LinearIssueSnapshot>
     suspend fun getLinearWorkflowStates(teamId: String): Result<List<LinearWorkflowState>>
     suspend fun startLinearRun(input: LinearStartRunInput): Result<CompanionStartResult>
     suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult>

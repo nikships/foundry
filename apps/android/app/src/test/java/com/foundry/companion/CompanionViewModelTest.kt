@@ -683,6 +683,7 @@ class CompanionViewModelTest {
 
         val selected = viewModel.uiState.value
         assertEquals("FOU-204", selected.selectedLinearIssue?.identifier)
+        assertTrue(selected.selectedLinearIssue?.comments?.isNotEmpty() == true)
         assertTrue(selected.linearWorkflowStates.isNotEmpty())
 
         // The saved mapping is complete, so a run can start right away.

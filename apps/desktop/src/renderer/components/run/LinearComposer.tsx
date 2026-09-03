@@ -8,7 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { linearIssueBrief } from '@shared/linear.js';
+import { linearIssueBrief, linearIssueEvidence } from '@shared/linear.js';
 import type {
   GeneratedRunPlan,
   LinearIssueSnapshot,
@@ -380,6 +380,7 @@ export default function LinearComposer({
   const [selectedPipeline, setSelectedPipeline] = useState('');
   const [searching, setSearching] = useState(false);
   const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [workflowError, setWorkflowError] = useState('');
@@ -388,13 +389,14 @@ export default function LinearComposer({
   const [planStartIssues, setPlanStartIssues] = useState<ValidationIssue[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const searchGenerationRef = useRef(0);
+  const issueRef = useRef<LinearIssueSnapshot | null>(null);
   const primaryActionRef = useRef<() => void>(() => undefined);
+  issueRef.current = issue;
 
   const pipeline = useMemo(
     () => pipelines.find((candidate) => candidate.id === selectedPipeline) ?? pipelines[0] ?? null,
     [pipelines, selectedPipeline],
   );
-  const brief = useMemo(() => (issue ? linearIssueBrief(issue) : ''), [issue]);
   const mappingReady = mappingComplete(mapping) && !workflowError;
   const baseRef = project?.baseRef ?? 'base branch';
   const manualBlocked = blockedReason({
@@ -601,11 +603,30 @@ export default function LinearComposer({
     }
   };
 
-  const submitPlan = (): void => {
-    if (planBlocked || orchestrator.planningLive) return;
+  const submitPlan = async (): Promise<void> => {
+    if (planBlocked || orchestrator.planningLive || evidenceLoading || !issue) return;
     setStartIssues([]);
     setPlanStartIssues([]);
-    void orchestrator.submit(brief);
+    setEvidenceLoading(true);
+    try {
+      const detailedIssue = await api.linear.issue(issue.id);
+      if (issueRef.current?.id !== issue.id) return;
+      await orchestrator.submit(
+        [linearIssueBrief(detailedIssue), linearIssueEvidence(detailedIssue)].join('\n\n'),
+      );
+    } catch (error) {
+      if (issueRef.current?.id === issue.id) {
+        setStartIssues([
+          {
+            level: 'error',
+            where: 'linear.issue',
+            message: (error as Error).message || 'Could not load Linear issue details.',
+          },
+        ]);
+      }
+    } finally {
+      setEvidenceLoading(false);
+    }
   };
 
   primaryActionRef.current = () => {
@@ -613,7 +634,7 @@ export default function LinearComposer({
     if (orchestrator.stage === 'ready' && orchestrator.plan) {
       void start(orchestrator.plan);
     } else if (execution === 'orchestrator') {
-      submitPlan();
+      void submitPlan();
     } else {
       void start(null);
     }
@@ -630,7 +651,11 @@ export default function LinearComposer({
   }, [active, issue]);
 
   const planningFailed = orchestrator.planning?.status === 'failed';
-  const currentBlocked = execution === 'orchestrator' ? planBlocked : manualBlocked;
+  const currentBlocked = evidenceLoading
+    ? 'Loading Linear issue details'
+    : execution === 'orchestrator'
+      ? planBlocked
+      : manualBlocked;
   const lifecycle = issue ? lifecycleSummary(issue, states, mapping, mappingReady) : '';
 
   return (
@@ -722,8 +747,9 @@ export default function LinearComposer({
 
             {issue && execution === 'orchestrator' && orchestrator.stage === 'compose' && (
               <p className={styles.orchestratorHint}>
-                The Orchestrator reads {issue.identifier}&apos;s title and description as the brief,
-                then composes the pipeline.
+                The Orchestrator reads {issue.identifier}&apos;s title as the brief and the
+                description, comments, labels, and parent as untrusted evidence, then composes the
+                pipeline.
               </p>
             )}
             {currentBlocked && !starting && orchestrator.stage === 'compose' && (

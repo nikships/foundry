@@ -91,7 +91,16 @@ class FakeCompanionRepository(
             url = "https://linear.app/foundry-nik/issue/FOU-204",
             updatedAt = "2026-08-26T18:28:53Z",
             team = LinearTeam("team-foundry", "Foundry"),
-            state = LinearWorkflowState("linear-backlog", "Backlog", "backlog")
+            state = LinearWorkflowState("linear-backlog", "Backlog", "backlog"),
+            labels = listOf("Area: Android"),
+            comments = listOf(
+                LinearIssueComment(
+                    id = "comment-fou-204",
+                    body = "Keep generated plans aligned with the desktop flow.",
+                    createdAt = "2026-08-26T18:30:00Z",
+                    author = "Ada"
+                )
+            )
         ),
         LinearIssueSnapshot(
             id = "linear-fou-203",
@@ -692,7 +701,17 @@ class FakeCompanionRepository(
                     it.title.lowercase().contains(normalized)
             }
         }
-        return Result.success(matches)
+        return Result.success(
+            matches.map {
+                it.copy(labels = emptyList(), parent = null, comments = emptyList())
+            }
+        )
+    }
+
+    override suspend fun getLinearIssue(issueId: String): Result<LinearIssueSnapshot> {
+        val issue = linearIssues.find { it.id == issueId }
+            ?: return Result.failure(IllegalArgumentException("Linear issue not found"))
+        return Result.success(issue)
     }
 
     override suspend fun getLinearWorkflowStates(

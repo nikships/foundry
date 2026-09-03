@@ -19,6 +19,8 @@ export interface RenderContext {
   baseRef?: string;
   /** Base commit and bounded stat for phases that inspect the accumulated diff. */
   gitContext?: { branchPointSha: string; diffStat: string };
+  /** Linear ticket prose, fenced as untrusted evidence rather than {{request}}. */
+  untrustedEvidence?: string;
   /** Envelopes from earlier phases, by phase name. */
   envelopes: Map<string, Envelope>;
   /** Set when a code phase sent failure evidence back to this agent. */
@@ -156,6 +158,10 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
   const system = renderTemplate(agent.systemPrompt, promptContext);
   let user = renderTemplate(agent.userPrompt, promptContext);
   user = appendMissingInputs(agent, phase, promptContext, user, requestInput);
+
+  if (ctx.untrustedEvidence) {
+    user = `${user}\n\n${ctx.untrustedEvidence}`;
+  }
 
   if (ctx.gitContext) {
     user = [

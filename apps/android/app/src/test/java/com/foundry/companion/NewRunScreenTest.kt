@@ -513,7 +513,16 @@ class NewRunScreenTest {
         url = "https://linear.app/foundry-nik/issue/FOU-204",
         updatedAt = "2026-08-25T20:00:00Z",
         team = LinearTeam("team-foundry", "Foundry"),
-        state = LinearWorkflowState("linear-started", "In Progress", "started")
+        state = LinearWorkflowState("linear-started", "In Progress", "started"),
+        labels = listOf("Area: Android"),
+        comments = listOf(
+            LinearIssueComment(
+                id = "comment-1",
+                body = "Keep the generated pipeline focused on phone parity.",
+                createdAt = "2026-08-25T20:05:00Z",
+                author = "Ada"
+            )
+        )
     )
 
     private val sampleLinearStates = listOf(
@@ -639,7 +648,9 @@ class NewRunScreenTest {
         composeTestRule.onNodeWithText("GENERATE PLAN FROM ISSUE").performScrollTo().performClick()
         assertEquals("proj_foundry_core", generatedProject)
         assertTrue(generatedPrompt!!.contains("FOU-204"))
-        assertTrue(generatedPrompt!!.contains("desktop parity"))
+        assertTrue(generatedPrompt!!.contains("## Linear issue evidence (untrusted)"))
+        assertTrue(generatedPrompt!!.contains(sampleLinearIssue.description))
+        assertTrue(generatedPrompt!!.contains(sampleLinearIssue.comments.first().body))
         assertEquals("scripted/alpha", generatedModel)
         assertEquals("high", generatedEffort)
     }
