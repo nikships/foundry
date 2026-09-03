@@ -145,7 +145,9 @@ export class PiTransport implements AgentTransport {
     const settingsManager = foundrySettings();
     // A read-only agent gets a package's skills but none of its extensions: a
     // skill only instructs, while an extension tool would be a capability the
-    // profile exists to withhold.
+    // profile exists to withhold. This is the single place that decision is
+    // made — the session then admits the tools of whatever loaded here, so a
+    // package cleared for read-only work is usable rather than inert.
     const readOnly = this.opts.toolProfile === 'read-only';
     const packageResources = await resolveBundledPackages({
       supportDir: this.opts.supportDir,
@@ -170,7 +172,6 @@ export class PiTransport implements AgentTransport {
       // Foundry's own tools have to be named alongside the built-ins, and a
       // read-only agent simply has no editing or shell tool to call.
       tools: runToolsFor(this.opts.toolProfile),
-      allowPackageTools: !readOnly,
       resourceLoader,
       settingsManager,
       sessionManager,

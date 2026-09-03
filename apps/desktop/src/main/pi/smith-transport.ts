@@ -188,7 +188,6 @@ export class SmithPiTransport implements AgentTransport {
       // Full builtins plus Smith's own tools: the list is the allowlist, and
       // Smith is a full coding agent in the operator's checkout on purpose.
       tools: [...BUILTIN_TOOLS, ...this.opts.customTools.map((tool) => tool.name)],
-      allowPackageTools: true,
       resourceLoader,
       settingsManager,
       sessionManager,

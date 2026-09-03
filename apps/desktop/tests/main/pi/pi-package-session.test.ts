@@ -133,6 +133,19 @@ describe('a session with package resources', () => {
     expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(['demo']);
   });
 
+  it('admits the tools of an extension it was given, so a cleared package is not inert', async () => {
+    // Which extensions a profile may load is decided once, when its package
+    // resources are resolved. A second switch at open could only disagree, and
+    // disagreeing here would load a read-only-cleared package's code and then
+    // withhold every tool it registered — present in the session, callable by
+    // nobody, with nothing to show why.
+    const pkg = seedPackageResources(workspace);
+    const loader = loaderFor({ extensionPaths: [pkg.extension], skillPaths: [pkg.skill] });
+    await loader.reload();
+
+    expect(packageToolNames(loader)).toEqual(['package_tool']);
+  });
+
   it('surfaces an extension that cannot load rather than failing the open', async () => {
     const broken = join(workspace, 'broken.js');
     writeFileSync(broken, 'this is not valid javascript {{{\n');

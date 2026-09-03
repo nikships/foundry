@@ -108,13 +108,6 @@ export async function openFoundrySession(input: {
   resourceLoader: DefaultResourceLoader;
   settingsManager: SettingsManager;
   sessionManager: SessionManager;
-  /**
-   * Widen the allowlist to whatever the loaded package extensions registered.
-   * Off by default, and never set for a read-only profile: the tool list is
-   * the capability boundary, so a session that must not be able to write stays
-   * at exactly the names Foundry chose.
-   */
-  allowPackageTools?: boolean;
   onExtensionError?: (message: string) => void;
 }): Promise<{
   session: PiAgentSession;
@@ -125,7 +118,13 @@ export async function openFoundrySession(input: {
   await input.resourceLoader.reload();
   // After reload, before create: the `tools` array is the registry allowlist,
   // so a package tool not named here would load and then not exist.
-  const packageTools = input.allowPackageTools ? packageToolNames(input.resourceLoader) : [];
+  //
+  // Derived from what actually loaded rather than from a second per-session
+  // flag. Which extensions a profile may load is already decided once, when
+  // its package resources are resolved; a separate switch here could only
+  // disagree with that decision, and withholding the tools of an extension
+  // that did load yields a session carrying code it can never call.
+  const packageTools = packageToolNames(input.resourceLoader);
   const created = await createAgentSession({
     cwd: input.cwd,
     agentDir: input.agentDir,
