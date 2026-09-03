@@ -28,7 +28,7 @@ setup_payload="$(jq -n --rawfile prompt "$SKILL_DIR/setup-prompt.md" '{
   agent: "antigravity-preview-05-2026",
   input: $prompt,
   background: true,
-  agent_config: {type: "antigravity", model: "gemini-3.7-flash", max_total_tokens: 800000},
+  agent_config: {type: "antigravity", model: "gemini-3.8-flash", max_total_tokens: 800000},
   environment: {
     type: "remote",
     sources: [{type: "repository", source: "https://github.com/nikships/foundry", target: "/workspace/foundry"}]
