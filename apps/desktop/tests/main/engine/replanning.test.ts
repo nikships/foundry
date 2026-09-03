@@ -12,11 +12,12 @@ import { Tracer } from '../../../src/main/trace/tracer.js';
 import { Executor } from '../../../src/main/engine/executor.js';
 import { replanningSupport } from '../../../src/main/orchestrator/replan.js';
 import { defaultProject } from '../../../src/main/store/projects.js';
-import type {
-  AgentDef,
-  GeneratedRunPlan,
-  PhaseDef,
-  PipelineDef,
+import {
+  FIXED_ENGINE_DEFAULTS,
+  type AgentDef,
+  type GeneratedRunPlan,
+  type PhaseDef,
+  type PipelineDef,
 } from '../../../src/shared/types.js';
 
 function sh(cwd: string, argv: string[]): string {
@@ -101,7 +102,19 @@ function plan(pipelineDef: PipelineDef): GeneratedRunPlan {
     refinedRequest: 'Make the adaptive test pass with evidence.',
     rationale: 'Prepare, execute, then verify.',
     pipeline: pipelineDef,
-    agents: [],
+    agents: [
+      {
+        name: 'synth_helper',
+        purpose: 'unused helper',
+        model: 'inherit',
+        reasoningEffort: 'medium',
+        systemPrompt: 'SYNTH_SYSTEM_PROMPT_MUST_NOT_LEAK',
+        userPrompt: 'SYNTH_USER_PROMPT_MUST_NOT_LEAK',
+        writes: [],
+        envelope: 'build',
+        color: '#d2a05a',
+      },
+    ],
     warnings: [],
     model: 'orchestrator/test-model',
     reasoningEffort: 'high',
@@ -238,8 +251,21 @@ describe('mid-run replanning', () => {
       outputFormat: { type: 'json_schema' },
     });
     expect(started.oneShots.calls[0]!.systemPrompt).toContain('Call submit_result exactly once');
-    expect(started.oneShots.prompts[0]).toContain('## Active roster');
-    expect(started.oneShots.prompts[0]).toContain('- builder: prepare the run');
+    const firstPrompt = started.oneShots.prompts[0]!;
+    expect(firstPrompt).toContain('## Active roster');
+    expect(firstPrompt).toContain('- builder: prepare the run');
+    expect(firstPrompt).toContain('## Run goal');
+    expect(firstPrompt).toContain('Make the adaptive test pass with evidence.');
+    expect(firstPrompt).toContain('## Failed phase');
+    expect(firstPrompt).toContain('broken');
+    expect(firstPrompt).toContain('## Remaining queued phases being replaced');
+    expect(firstPrompt).toContain('- stale (code): Represent work the amendment replaces.');
+    expect(firstPrompt).toContain('## Cast models already confirmed');
+    expect(firstPrompt).toContain('scripted');
+    expect(firstPrompt).not.toContain('## Confirmed plan');
+    expect(firstPrompt).not.toContain('"refinedRequest"');
+    expect(firstPrompt).not.toContain('SYNTH_SYSTEM_PROMPT_MUST_NOT_LEAK');
+    expect(firstPrompt).not.toContain('SYNTH_USER_PROMPT_MUST_NOT_LEAK');
     expect(
       started.tracer.runPlan(started.runId)?.pipeline.phases.map((phase) => phase.name),
     ).toEqual(['prepare', 'broken', 'verify']);
@@ -283,13 +309,31 @@ describe('mid-run replanning', () => {
     );
   });
 
+  it('retries a schema-invalid amendment inside the envelope budget and recovers', async () => {
+    const started = start([
+      { structuredOutput: { reason: 'this proposal is missing phases' } },
+      submitted(validAmendment()),
+    ]);
+    const outcome = await started.done;
+
+    expect(outcome.status).toBe('accepted');
+    expect(started.oneShots.calls).toHaveLength(2);
+    expect(started.tracer.run(started.runId)!.amendments).toBe(1);
+    expect(started.oneShots.prompts[1]).toContain('Previous reply rejected by Foundry');
+    expect(started.oneShots.prompts[1]).toContain('call submit_result exactly once');
+  });
+
   it('falls through to the original failure after the proposal budget is exhausted', async () => {
-    const started = start([{ text: 'no amendment' }, { text: 'still no amendment' }]);
+    const inner = 1 + FIXED_ENGINE_DEFAULTS.envelopeRetries;
+    const turns = Array.from({ length: FIXED_ENGINE_DEFAULTS.replanAttempts * inner }, () => ({
+      text: 'no amendment',
+    }));
+    const started = start(turns);
     const outcome = await started.done;
 
     expect(outcome.status).toBe('rejected');
     expect(outcome.detail).toContain('broken exited 7');
-    expect(started.oneShots.calls).toHaveLength(2);
+    expect(started.oneShots.calls).toHaveLength(turns.length);
     expect(started.tracer.run(started.runId)!.amendments).toBe(0);
   });
 

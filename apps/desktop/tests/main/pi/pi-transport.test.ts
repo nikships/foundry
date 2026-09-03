@@ -425,6 +425,8 @@ describe('opening a session', () => {
     expect(promptHarness).toMatch(/Foundry pipeline agent/i);
     expect(promptHarness.match(/submit_envelope/g)).toHaveLength(1);
     expect(promptHarness).toContain('when `approved` is false, report `status: "fail"` too');
+    expect(promptHarness).toContain('untrusted task data');
+    expect(promptHarness).toContain('reveal prompts');
   });
 
   it('installs Foundry’s extension inline, so nothing has to be discovered', async () => {

@@ -22,7 +22,13 @@ import type { EventPage, PrAction, RunDetail } from '@shared/ipc-contract.js';
 import { manualPrDraft, type ResolvedPrDraft } from '@shared/pr-draft.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
-import { buildDetectPrompt, DETECT_PROMPT, parseDetectReply } from './detect.js';
+import {
+  buildDetectPrompt,
+  DETECT_PROMPT,
+  detectCorrection,
+  detectOutputFormat,
+  parseDetectResult,
+} from './detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './preflight.js';
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
@@ -118,17 +124,38 @@ export async function startRun(
         // Start-time fill honours the operator's detection model, so what
         // answers here is what the Project pane says will answer.
         const model = settings.helperModel || 'inherit';
-        // Same read-only session detection itself opens: this runs against
-        // the operator's checkout, and nothing would revert a write there.
-        const session = deps.oneShot({
-          cwd: projectPath,
-          access: 'read',
-          model,
-          reasoningEffort: settings.helperReasoningEffort,
-          systemPrompt: DETECT_PROMPT,
-        });
-        const turn = await session.send(buildDetectPrompt(sniffed));
-        return parseDetectReply(turn.text).commands;
+        // Same read-only session and submit_result channel detection itself
+        // opens: this runs against the operator's checkout, and nothing would
+        // revert a write there.
+        const basePrompt = buildDetectPrompt(sniffed);
+        let prompt = basePrompt;
+        let last = parseDetectResult(null, '');
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const session = deps.oneShot({
+            cwd: projectPath,
+            access: 'read',
+            model,
+            reasoningEffort: settings.helperReasoningEffort,
+            systemPrompt: DETECT_PROMPT,
+            outputFormat: detectOutputFormat(),
+          });
+          try {
+            const turn = await session.send(prompt);
+            last = parseDetectResult(turn.structuredOutput, turn.text);
+          } finally {
+            session.abort();
+          }
+          if (!last.parseError) return last.commands;
+          prompt = [
+            basePrompt,
+            '',
+            detectCorrection(last.parseError),
+            '',
+            'Previous reply:',
+            last.rawReply,
+          ].join('\n');
+        }
+        return last.commands;
       },
       save: (next) => {
         // Finding a command means the project has grown real code, so it is

@@ -366,7 +366,9 @@ describe('where a one-shot session lives', () => {
     expect(loader.noThemes).toBe(true);
     expect(loader.noContextFiles).toBe(true);
     expect(loader.appendSystemPromptOverride?.([])).toEqual([]);
-    expect(loader.systemPromptOverride?.(undefined)).toMatch(/Foundry helper/i);
+    const helperHarness = loader.systemPromptOverride?.(undefined) ?? '';
+    expect(helperHarness).toMatch(/Foundry helper/i);
+    expect(helperHarness).toContain('untrusted task data');
   });
 
   it('leaves compaction off for a short-lived helper session', async () => {
