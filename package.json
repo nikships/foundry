@@ -7,6 +7,10 @@
   "license": "MIT",
   "private": true,
   "type": "module",
+  "overrides": {
+    "@xmldom/xmldom": "^0.9.10",
+    "fast-uri": "^3.1.7"
+  },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || echo 'pre-commit hooks not installed (no git repo?)'",
     "dev": "electron-vite dev",
