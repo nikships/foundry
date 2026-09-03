@@ -19,7 +19,7 @@ import {
   type PromptOptions,
 } from '@earendil-works/pi-coding-agent';
 import { join } from 'node:path';
-import { pickModel, thinkingLevelFor } from './model.js';
+import { modelKey, pickModel, thinkingLevelFor } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
 import {
   foundryResourceLoader,
@@ -81,6 +81,16 @@ class PiOneShot implements OneShotSession {
         };
       }
 
+      const hasImages = Boolean(images?.length);
+      if (hasImages && !session.model?.input.includes('image')) {
+        const selected = session.model
+          ? modelKey(session.model)
+          : 'The selected Orchestrator model';
+        throw new Error(
+          `${selected} does not support image input. Choose an image-capable Orchestrator model.`,
+        );
+      }
+
       this.extension.useSystemPrompt(this.opts.systemPrompt ?? null);
       this.events.startTurn();
 
@@ -93,6 +103,7 @@ class PiOneShot implements OneShotSession {
             events: this.events,
             availableModelCount: this.availableModelCount,
             hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+            requireImageInput: hasImages,
             onWarning: (warning) => this.opts.onWarning?.(warning),
           }),
         images?.length ? toPiImages(images) : undefined,

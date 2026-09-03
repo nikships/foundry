@@ -54,6 +54,17 @@ describe('validatePlanImages', () => {
     });
   });
 
+  it('rejects malformed and non-canonical base64', () => {
+    expect(validatePlanImages([{ mediaType: 'image/png', data: 'not!' }])).toEqual({
+      ok: false,
+      error: 'The image could not be read.',
+    });
+    expect(validatePlanImages([{ mediaType: 'image/png', data: '/x==' }])).toEqual({
+      ok: false,
+      error: 'The image could not be read.',
+    });
+  });
+
   it('rejects more than eight images', () => {
     const images = Array.from({ length: PLAN_IMAGE_MAX_COUNT + 1 }, () => ({
       mediaType: 'image/png' as const,

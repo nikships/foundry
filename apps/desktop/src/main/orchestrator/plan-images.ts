@@ -14,6 +14,9 @@ import {
   type PlanImageMime,
 } from '@shared/types.js';
 
+const MAX_ENCODED_IMAGE_BYTES = Math.ceil(PLAN_IMAGE_MAX_BYTES / 3) * 4;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
 export type PlanImagesCheck =
   { ok: true; images: PlanImageAttachment[] } | { ok: false; error: string };
 
@@ -50,8 +53,17 @@ function normalizePlanImage(
   if (item.name !== undefined && typeof item.name !== 'string') {
     return { ok: false, error: 'Use a PNG, JPEG, WebP, or GIF image.' };
   }
+  if (item.data.length > MAX_ENCODED_IMAGE_BYTES) {
+    return { ok: false, error: 'Keep each image under 4 MB.' };
+  }
+  if (item.data.length % 4 !== 0 || !BASE64.test(item.data)) {
+    return { ok: false, error: 'The image could not be read.' };
+  }
 
   const bytes = Buffer.from(item.data, 'base64');
+  if (bytes.toString('base64') !== item.data) {
+    return { ok: false, error: 'The image could not be read.' };
+  }
   if (bytes.length === 0) return { ok: false, error: 'The image was empty.' };
   if (bytes.length > PLAN_IMAGE_MAX_BYTES) {
     return { ok: false, error: 'Keep each image under 4 MB.' };

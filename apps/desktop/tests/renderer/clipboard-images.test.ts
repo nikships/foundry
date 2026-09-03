@@ -3,11 +3,13 @@ import {
   PLAN_IMAGE_MAX_BYTES,
   PLAN_IMAGE_MAX_COUNT,
   PLAN_IMAGE_MAX_TOTAL_BYTES,
+  type PlanImageAttachment,
 } from '@shared/types.js';
 import {
   attachmentsFromClipboardSources,
   bytesToBase64,
   imageSourcesFromFileList,
+  insertClipboardText,
   pastedImageName,
   type ClipboardImageSource,
 } from '@renderer/utils/clipboard-images.js';
@@ -23,6 +25,10 @@ function source(over: Partial<ClipboardImageSource> = {}): ClipboardImageSource 
   return { type: 'image/png', name: 'shot.png', bytes: pngBytes(), ...over };
 }
 
+function attachment(bytes = pngBytes()): PlanImageAttachment {
+  return { mediaType: 'image/png', data: Buffer.from(bytes).toString('base64') };
+}
+
 describe('pastedImageName', () => {
   it('keeps a real filename', () => {
     expect(pastedImageName('shot.png', 1)).toBe('shot.png');
@@ -35,6 +41,14 @@ describe('pastedImageName', () => {
   });
 });
 
+describe('insertClipboardText', () => {
+  it('replaces the snapshotted selection without reading the textarea later', () => {
+    expect(insertClipboardText('before selected after', 'pasted', 7, 15)).toBe(
+      'before pasted after',
+    );
+  });
+});
+
 describe('attachmentsFromClipboardSources', () => {
   it('accepts PNG, JPEG, WebP, and GIF', () => {
     const { attachments, errors } = attachmentsFromClipboardSources(
@@ -44,7 +58,7 @@ describe('attachmentsFromClipboardSources', () => {
         source({ type: 'image/webp', name: 'c.webp' }),
         source({ type: 'image/gif', name: 'd.gif' }),
       ],
-      0,
+      [],
     );
     expect(errors).toEqual([]);
     expect(attachments.map((image) => image.mediaType)).toEqual([
@@ -59,7 +73,7 @@ describe('attachmentsFromClipboardSources', () => {
   it('refuses SVG even when mixed with a valid image', () => {
     const { attachments, errors } = attachmentsFromClipboardSources(
       [source(), source({ type: 'image/svg+xml', name: 'icon.svg' })],
-      0,
+      [],
     );
     expect(attachments).toHaveLength(1);
     expect(errors).toEqual(['Use a PNG, JPEG, WebP, or GIF image.']);
@@ -68,7 +82,7 @@ describe('attachmentsFromClipboardSources', () => {
   it('refuses a nameless SVG whose type is empty', () => {
     const { attachments, errors } = attachmentsFromClipboardSources(
       [source({ type: '', name: 'icon.svg' })],
-      0,
+      [],
     );
     expect(attachments).toEqual([]);
     expect(errors).toEqual(['Use a PNG, JPEG, WebP, or GIF image.']);
@@ -77,7 +91,7 @@ describe('attachmentsFromClipboardSources', () => {
   it('ignores a text-only source list', () => {
     const { attachments, errors } = attachmentsFromClipboardSources(
       [{ type: 'text/plain', name: 'notes.txt', bytes: new Uint8Array([97]) }],
-      0,
+      [],
     );
     expect(attachments).toEqual([]);
     expect(errors).toEqual([]);
@@ -86,7 +100,7 @@ describe('attachmentsFromClipboardSources', () => {
   it('skips empty bytes', () => {
     const { attachments, errors } = attachmentsFromClipboardSources(
       [source({ bytes: new Uint8Array() })],
-      0,
+      [],
     );
     expect(attachments).toEqual([]);
     expect(errors).toEqual(['The image was empty.']);
@@ -95,7 +109,7 @@ describe('attachmentsFromClipboardSources', () => {
   it('refuses a per-image payload over 4 MB', () => {
     const { attachments, errors } = attachmentsFromClipboardSources(
       [source({ bytes: new Uint8Array(PLAN_IMAGE_MAX_BYTES + 1) })],
-      0,
+      [],
     );
     expect(attachments).toEqual([]);
     expect(errors).toEqual(['Keep each image under 4 MB.']);
@@ -110,7 +124,7 @@ describe('attachmentsFromClipboardSources', () => {
         source({ name: 'c.png', bytes: chunk }),
         source({ name: 'd.png', bytes: new Uint8Array(1) }),
       ],
-      0,
+      [],
     );
     expect(attachments).toHaveLength(3);
     expect(errors).toEqual(['Keep attached images under 12 MB total.']);
@@ -119,10 +133,20 @@ describe('attachmentsFromClipboardSources', () => {
     ).toBe(PLAN_IMAGE_MAX_TOTAL_BYTES);
   });
 
+  it('counts images attached by earlier pastes toward the total byte limit', () => {
+    const chunk = new Uint8Array(PLAN_IMAGE_MAX_BYTES);
+    const { attachments, errors } = attachmentsFromClipboardSources(
+      [source({ bytes: chunk }), source({ bytes: new Uint8Array(1) })],
+      [attachment(chunk), attachment(chunk)],
+    );
+    expect(attachments).toHaveLength(1);
+    expect(errors).toEqual(['Keep attached images under 12 MB total.']);
+  });
+
   it('refuses surplus images once eight are attached', () => {
     const { attachments, errors } = attachmentsFromClipboardSources(
       Array.from({ length: 3 }, (_, i) => source({ name: `extra-${i}.png` })),
-      PLAN_IMAGE_MAX_COUNT - 1,
+      Array.from({ length: PLAN_IMAGE_MAX_COUNT - 1 }, () => attachment()),
     );
     expect(attachments).toHaveLength(1);
     expect(errors).toEqual(['Attach at most 8 images.']);
@@ -132,7 +156,7 @@ describe('attachmentsFromClipboardSources', () => {
   it('numbers unnamed pastes from one, counting already attached images', () => {
     const { attachments } = attachmentsFromClipboardSources(
       [source({ name: '' }), source({ name: 'image.png' })],
-      2,
+      [attachment(), attachment()],
     );
     expect(attachments.map((image) => image.name)).toEqual(['Pasted image 3', 'Pasted image 4']);
   });

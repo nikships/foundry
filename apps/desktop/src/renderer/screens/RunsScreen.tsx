@@ -9,6 +9,7 @@ import { useApp } from '../stores/app.js';
 import {
   attachmentsFromClipboardSources,
   imageSourcesFromFileList,
+  insertClipboardText,
   type ClipboardImageSource,
 } from '../utils/clipboard-images.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
@@ -160,18 +161,6 @@ async function readClipboardImageSources(files: readonly File[]): Promise<Clipbo
   return imageSourcesFromFileList(snapshots);
 }
 
-function insertClipboardText(
-  request: string,
-  pasted: string,
-  target: HTMLTextAreaElement,
-  onRequestChange: (request: string) => void,
-): void {
-  if (!pasted) return;
-  const start = target.selectionStart ?? request.length;
-  const end = target.selectionEnd ?? request.length;
-  onRequestChange(request.slice(0, start) + pasted + request.slice(end));
-}
-
 function OrchestratedComposer({
   header,
   request,
@@ -251,14 +240,20 @@ function OrchestratedComposer({
     event.preventDefault();
     const pastedText = clipboardData.getData('text/plain');
     const target = event.currentTarget;
+    if (pastedText) {
+      onRequestChange(
+        insertClipboardText(
+          request,
+          pastedText,
+          target.selectionStart ?? request.length,
+          target.selectionEnd ?? request.length,
+        ),
+      );
+    }
     void (async () => {
       const sources = await readClipboardImageSources(files);
-      const { attachments, errors } = attachmentsFromClipboardSources(
-        sources,
-        orchestrator.images.length,
-      );
+      const { attachments, errors } = attachmentsFromClipboardSources(sources, orchestrator.images);
       if (attachments.length) orchestrator.addImages(attachments);
-      insertClipboardText(request, pastedText, target, onRequestChange);
       setAttachError(errors[0] ?? '');
     })();
   };

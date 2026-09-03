@@ -22,6 +22,7 @@ const GENERIC_PASTE_NAMES = new Set([
   'image.webp',
   'image.gif',
 ]);
+const BASE64_CHUNK_BYTES = 0x8000;
 
 export interface ClipboardImageSource {
   type: string;
@@ -43,8 +44,19 @@ export function pastedImageName(filename: string | undefined, indexFromOne: numb
 
 export function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_BYTES) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_BYTES));
+  }
   return btoa(binary);
+}
+
+export function insertClipboardText(
+  request: string,
+  pasted: string,
+  selectionStart: number,
+  selectionEnd: number,
+): string {
+  return request.slice(0, selectionStart) + pasted + request.slice(selectionEnd);
 }
 
 export function imageSourcesFromFileList(
@@ -59,12 +71,14 @@ export function imageSourcesFromFileList(
 
 export function attachmentsFromClipboardSources(
   sources: readonly ClipboardImageSource[],
-  alreadyAttached: number,
+  existing: readonly PlanImageAttachment[],
 ): { attachments: PlanImageAttachment[]; errors: string[] } {
   const attachments: PlanImageAttachment[] = [];
   const errors: string[] = [];
-  let remainingSlots = PLAN_IMAGE_MAX_COUNT - alreadyAttached;
-  let remainingBytes = PLAN_IMAGE_MAX_TOTAL_BYTES;
+  let remainingSlots = PLAN_IMAGE_MAX_COUNT - existing.length;
+  let remainingBytes =
+    PLAN_IMAGE_MAX_TOTAL_BYTES -
+    existing.reduce((total, image) => total + base64Bytes(image.data), 0);
 
   for (const source of sources) {
     if (!looksLikeImage(source)) continue;
@@ -94,11 +108,16 @@ export function attachmentsFromClipboardSources(
     attachments.push({
       mediaType: source.type,
       data: bytesToBase64(source.bytes),
-      name: pastedImageName(source.name, alreadyAttached + attachments.length + 1),
+      name: pastedImageName(source.name, existing.length + attachments.length + 1),
     });
   }
 
   return { attachments, errors };
+}
+
+function base64Bytes(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return Math.floor((data.length * 3) / 4) - padding;
 }
 
 function looksLikeImage(source: ClipboardImageSource): boolean {
