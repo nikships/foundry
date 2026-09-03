@@ -14,6 +14,7 @@ export const SMITH_SYSTEM_OPERATIONS = [
   'doctor',
   'orphans',
   'remove_orphan',
+  'remove_all_orphans',
   'apply_retention',
   'compact',
   'version',
@@ -39,6 +40,7 @@ const READS: Record<SystemReadOperation, string> = {
 
 const ACTION_CHANNELS: Record<SystemActionOperation, string> = {
   remove_orphan: IPC.maintenanceRemoveWorktree,
+  remove_all_orphans: IPC.maintenanceRemoveAllWorktrees,
   apply_retention: IPC.maintenanceRetention,
   compact: IPC.maintenanceCompact,
   open_external: IPC.appOpenExternal,
@@ -51,6 +53,7 @@ const ACTION_CHANNELS: Record<SystemActionOperation, string> = {
 
 const RISKS: Record<SystemActionOperation, SmithActionRisk> = {
   remove_orphan: 'destructive',
+  remove_all_orphans: 'destructive',
   apply_retention: 'destructive',
   compact: 'maintenance',
   open_external: 'external',
@@ -66,7 +69,7 @@ export function smithSystemTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_system',
     label: 'Smith system',
     description:
-      'Run diagnostics, maintenance, lifecycle, and updates. Operations: doctor, orphans, remove_orphan(projectId,path), apply_retention, compact, version, open_external(url), quit, relaunch, update_status, update_check, update_download, update_install.',
+      'Run diagnostics, maintenance, lifecycle, and updates. Operations: doctor, orphans, remove_orphan(projectId,path), remove_all_orphans, apply_retention, compact, version, open_external(url), quit, relaunch, update_status, update_check, update_download, update_install.',
     parameters: {
       type: 'object',
       properties: {
