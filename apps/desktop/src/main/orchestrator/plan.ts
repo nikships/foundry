@@ -63,7 +63,7 @@ Call submit_result exactly once with the complete plan object:
 }
 
 Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase it runs in is what names the model. Foundry appends the canonical envelope constitution to systemPrompt after you submit.
-Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"reasoningEffort"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases. Never emit an engineer/checkpoint phase.
+Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"reasoningEffort"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal"/"flakeRerun" for code phases. Never emit an engineer/checkpoint phase.
 Do not print the plan as prose or JSON. After submit_result succeeds, stop.`;
 
 export interface PlanPromptInputs {

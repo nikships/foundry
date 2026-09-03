@@ -229,10 +229,8 @@ export async function checkProject(project: ProjectDef): Promise<DoctorCheck[]> 
   checks.push({
     id: 'submodules',
     label: 'Submodules',
-    ok: !submodules,
-    detail: submodules
-      ? 'this repo has submodules: worktrees do not populate them automatically'
-      : 'none',
+    ok: true,
+    detail: submodules ? 'will be initialized in each run worktree' : 'none',
   });
 
   const dirty = await runCommand({
