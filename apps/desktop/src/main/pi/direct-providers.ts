@@ -45,7 +45,15 @@ export function registerDirectProviders(runtime: ModelRuntime): void {
     }
   }
 
+  applyDirectProviderOverrides(runtime);
+}
+
+/** Reapplies API overrides after pi refreshes its underlying model catalog. */
+export function applyDirectProviderOverrides(runtime: ModelRuntime): void {
   try {
+    if (runtime.getRegisteredProviderConfig('openrouter')) {
+      runtime.unregisterProvider('openrouter');
+    }
     runtime.registerProvider('openrouter', {
       models: runtime.getModels('openrouter').map((model) => ({
         ...model,
