@@ -92,11 +92,25 @@ describe('orchestrator composition rules', () => {
       ),
     ).toEqual([]);
 
-    // Prose slashes, URLs, and dates are not repository paths.
+    // Sentence-final punctuation, markdown emphasis, and casing do not turn an
+    // operator path into an invention.
+    expect(
+      briefIssues(
+        'only touch src/main/images.ts and docs/readme.md',
+        'Only touch *src/main/images.ts* and docs/README.md.',
+      ),
+    ).toEqual([]);
+
+    // A leading slash is not an escape hatch for an invented path.
+    expect(
+      briefIssues('let users paste images', 'Extend /src/renderer/composer.tsx to handle paste.'),
+    ).toHaveLength(1);
+
+    // Prose slashes, URLs, framework pairs, and dates are not repository paths.
     expect(
       briefIssues(
         'document the retry behavior',
-        'Cover read/write access, CI/CD notes, the 09/03/2026 cutoff, and https://linear.app/foundry/issue/FOU-190.',
+        'Cover read/write access, CI/CD notes on the React/Next.js page, the 09/03/2026 cutoff, and https://linear.app/foundry/issue/FOU-190.',
       ),
     ).toEqual([]);
 

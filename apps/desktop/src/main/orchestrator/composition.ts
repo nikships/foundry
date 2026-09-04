@@ -352,13 +352,16 @@ function synthesizedPromptIssues(ctx: CompositionContext): ValidationIssue[] {
 const PATH_TOKEN = /[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@*-]+)+/g;
 
 /**
- * Whether a slashed token reads as a repository path rather than prose like
- * "read/write": three or more segments, or a file extension on the last one.
- * All-digit tokens (dates such as 09/03/2026) are prose.
+ * Whether a slashed token reads as a repository path rather than prose. The
+ * first segment must carry a lowercase letter and no capital, which rules out
+ * "CI/CD", "React/Next.js", and dates like 09/03/2026 while keeping the
+ * lowercase directories real repositories use. Beyond that: three or more
+ * segments, or a file extension on the last of two.
  */
 function looksLikeRepoPath(token: string): boolean {
-  if (!/[A-Za-z]/.test(token)) return false;
   const segments = token.split('/');
+  const head = segments[0]!;
+  if (!/[a-z]/.test(head) || /[A-Z]/.test(head)) return false;
   if (segments.length >= 3) return true;
   return /\.[A-Za-z0-9]{1,5}$/.test(segments[segments.length - 1]!);
 }
@@ -374,13 +377,17 @@ function inventedPathIssues(ctx: CompositionContext): ValidationIssue[] {
   const request = ctx.request?.trim();
   const brief = ctx.refinedRequest;
   if (!request || !brief) return [];
+  const haystack = request.toLowerCase();
   const invented = new Set<string>();
   for (const match of brief.matchAll(PATH_TOKEN)) {
-    const token = match[0];
     // A token right after "//" is the host half of a URL, not a repo path.
     const at = match.index ?? 0;
-    if (at > 0 && brief[at - 1] === '/') continue;
-    if (looksLikeRepoPath(token) && !request.includes(token)) invented.add(token);
+    if (at > 1 && brief[at - 1] === '/' && brief[at - 2] === '/') continue;
+    // Sentence-final punctuation and markdown emphasis ride into the token.
+    const token = match[0].replace(/[.*]+$/, '');
+    if (looksLikeRepoPath(token) && !haystack.includes(token.toLowerCase())) {
+      invented.add(token);
+    }
   }
   return [...invented].map((token) => ({
     level: 'error' as const,
