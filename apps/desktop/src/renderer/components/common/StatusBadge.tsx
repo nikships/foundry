@@ -20,7 +20,7 @@ export default function StatusBadge({
       {dot && (
         <span
           className={cx(styles.dot, status === 'running' && styles.spinning)}
-          style={{ background: color }}
+          style={status === 'running' ? undefined : { background: color }}
         />
       )}
       {label ?? statusWord(status)}

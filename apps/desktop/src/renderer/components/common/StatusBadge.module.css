@@ -1,5 +1,5 @@
 /* StatusBadge inherits .badge (uppercase mono 10px) globally.
-   This module only owns the dot. The chip background/color are set
+   This module only owns the mark. The chip background/color are set
    inline via color-mix(… 14%, transparent) — a dim fill, not a glow. */
 .dot {
   width: 6px;
@@ -8,5 +8,16 @@
   flex: none;
 }
 .dot.spinning {
-  animation: pulse 1.4s var(--ease) infinite;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 900ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot.spinning {
+    animation: none;
+  }
 }
