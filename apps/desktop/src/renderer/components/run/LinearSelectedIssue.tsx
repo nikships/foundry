@@ -1,8 +1,21 @@
 import { ChevronDown, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import type { LinearIssueSnapshot } from '@shared/types.js';
+import MarkdownText from '../common/MarkdownText.js';
 import { linearStateColor } from './linear-state-view.js';
 import styles from './LinearComposer.module.css';
+
+export function LinearIssueDescription({
+  description,
+}: {
+  description: string;
+}): React.JSX.Element {
+  return (
+    <div className={`${styles.issueDescription} selectable`}>
+      {description ? <MarkdownText text={description} /> : 'No description.'}
+    </div>
+  );
+}
 
 export default function LinearSelectedIssue({
   issue,
@@ -62,11 +75,7 @@ export default function LinearSelectedIssue({
           </button>
         </div>
       </div>
-      {detailOpen && (
-        <p className={`${styles.issueDescription} selectable`}>
-          {issue.description || 'No description.'}
-        </p>
-      )}
+      {detailOpen && <LinearIssueDescription description={issue.description} />}
     </div>
   );
 }

@@ -387,7 +387,6 @@
   color: var(--text-dim);
   font-size: var(--text-sm);
   line-height: var(--leading);
-  white-space: pre-wrap;
 }
 
 .mapping {
