@@ -6,6 +6,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { LinearIssueSnapshot } from '@shared/types.js';
 import LinearIssueResults from '@renderer/components/run/LinearIssueResults.js';
+import { LinearIssueDescription } from '@renderer/components/run/LinearSelectedIssue.js';
+
+vi.mock('@renderer/api.js', () => ({
+  api: { app: { openExternal: vi.fn() } },
+}));
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (rel: string): string => readFileSync(join(here, '../..', rel), 'utf8');
@@ -41,6 +46,67 @@ describe('Linear run chrome', () => {
     expect(markup).toContain('data-active="true"');
     expect(markup).toContain('data-selected="false"');
     expect(markup).toContain('↑↓ highlight · ⏎ select');
+  });
+
+  it('renders representative Markdown in the expanded issue description', () => {
+    const description = [
+      '# Heading',
+      '',
+      'Plain line',
+      'Second line with **bold**, *emphasis*, `code`, and [docs](https://example.com).',
+      '',
+      '- First item',
+      '- Second item',
+      '',
+      '> Quoted text',
+      '',
+      '```ts',
+      'const ready = true;',
+      '```',
+    ].join('\n');
+    const markup = renderToStaticMarkup(createElement(LinearIssueDescription, { description }));
+
+    expect(markup).toContain('role="heading" aria-level="1"');
+    expect(markup).toContain('Plain line\nSecond line with ');
+    expect(markup).toContain('<strong><span>bold</span></strong>');
+    expect(markup).toContain('<em><span>emphasis</span></em>');
+    expect(markup).toContain('<code');
+    expect(markup).toContain('<a');
+    expect(markup).toContain('href="https://example.com"');
+    expect(markup).toContain('<ul');
+    expect(markup).toContain('<blockquote');
+    expect(markup).toContain('<pre');
+    expect(markup).toContain('data-language="ts"');
+    expect(markup).toContain('const ready = true;');
+  });
+
+  it('preserves the empty description message', () => {
+    const markup = renderToStaticMarkup(createElement(LinearIssueDescription, { description: '' }));
+
+    expect(markup).toContain('No description.');
+  });
+
+  it('renders unsafe HTML as inert text', () => {
+    const markup = renderToStaticMarkup(
+      createElement(LinearIssueDescription, {
+        description: '<script>alert("xss")</script>\n\n<img src=x onerror="alert(1)">',
+      }),
+    );
+
+    expect(markup).toContain('&lt;script&gt;');
+    expect(markup).toContain('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+    expect(markup).not.toContain('<script');
+    expect(markup).not.toContain('<img');
+  });
+
+  it('keeps the issue description selectable and scrollable', () => {
+    const component = read('src/renderer/components/run/LinearSelectedIssue.tsx');
+    const styles = read('src/renderer/components/run/LinearComposer.module.css');
+
+    expect(component).toContain('`${styles.issueDescription} selectable`');
+    expect(styles).toMatch(
+      /\.issueDescription \{[\s\S]*max-height: 132px;[\s\S]*overflow-y: auto;/,
+    );
   });
 
   it('shows why the primary action is blocked before an issue is selected', () => {
