@@ -17,8 +17,7 @@
 export type BridgeProviderId = 'claude' | 'codex' | 'gemini' | 'kimi' | 'grok';
 
 /** pi's API kinds, named here so `models.ts` never spells one wrong. */
-export type BridgeApi =
-  'anthropic-messages' | 'openai-responses' | 'openai-completions' | 'google-generative-ai';
+export type BridgeApi = 'anthropic-messages' | 'openai-responses';
 
 export interface BridgeProviderDef {
   id: BridgeProviderId;
@@ -72,10 +71,9 @@ export const BRIDGE_PROVIDERS: readonly BridgeProviderDef[] = [
     // claimed below.
     loginFlag: '-antigravity-login',
     authTypes: ['antigravity', 'gemini', 'gemini-cli'],
-    // Routed as OpenAI chat-completions rather than google-generative-ai: the
-    // Antigravity executor answers on the chat-completions path, and pi's
+    // Routed through OpenAI Responses rather than google-generative-ai: pi's
     // Google API kind would build v1beta URLs the Bridge does not serve.
-    api: 'openai-completions',
+    api: 'openai-responses',
     baseUrlSuffix: '/v1',
     icon: 'gemini',
   },
@@ -84,7 +82,7 @@ export const BRIDGE_PROVIDERS: readonly BridgeProviderDef[] = [
     label: 'Kimi',
     loginFlag: '-kimi-login',
     authTypes: ['kimi'],
-    api: 'openai-completions',
+    api: 'openai-responses',
     baseUrlSuffix: '/v1',
     icon: 'kimi',
   },
@@ -93,7 +91,7 @@ export const BRIDGE_PROVIDERS: readonly BridgeProviderDef[] = [
     label: 'Grok',
     loginFlag: '-xai-login',
     authTypes: ['grok', 'grok-cli', 'xai'],
-    api: 'openai-completions',
+    api: 'openai-responses',
     baseUrlSuffix: '/v1',
     icon: 'grok',
   },

@@ -126,13 +126,18 @@ describe('models.json generation', () => {
   });
 
   it('points Anthropic at the root and OpenAI-shaped providers at /v1', () => {
-    const providers = generateProviders(['claude', 'codex', 'gemini'], BASE_URL, catalog);
+    const providers = generateProviders(
+      ['claude', 'codex', 'gemini', 'kimi', 'grok'],
+      BASE_URL,
+      catalog,
+    );
     // The Anthropic SDK appends /v1/messages itself; a /v1 base would 404.
     expect(providers['bridge-claude']?.baseUrl).toBe(BASE_URL);
     expect(providers['bridge-claude']?.api).toBe('anthropic-messages');
-    expect(providers['bridge-codex']?.baseUrl).toBe(`${BASE_URL}/v1`);
-    expect(providers['bridge-codex']?.api).toBe('openai-responses');
-    expect(providers['bridge-gemini']?.baseUrl).toBe(`${BASE_URL}/v1`);
+    for (const id of ['codex', 'gemini', 'kimi', 'grok']) {
+      expect(providers[`bridge-${id}`]?.baseUrl).toBe(`${BASE_URL}/v1`);
+      expect(providers[`bridge-${id}`]?.api).toBe('openai-responses');
+    }
   });
 
   it('prices every model at zero, because the subscription is already paid', () => {
