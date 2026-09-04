@@ -8,7 +8,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.foundry.companion.ui.theme.LocalFoundryReduceMotion
 import com.foundry.companion.ui.theme.foundryPulseEnabled
 import com.foundry.companion.ui.theme.foundryReduceMotionEnabled
+import com.foundry.companion.ui.theme.foundrySpinRotation
 import com.foundry.companion.ui.theme.isAnimatorDurationOff
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -38,14 +40,17 @@ class MotionTest {
     fun composeReduceMotionSuppressesOnlyThePulseGate() {
         var reduced: Boolean? = null
         var pulse: Boolean? = null
+        var spin: Float? = null
         composeTestRule.setContent {
             CompositionLocalProvider(LocalFoundryReduceMotion provides true) {
                 reduced = foundryReduceMotionEnabled()
                 pulse = foundryPulseEnabled(true)
+                spin = foundrySpinRotation(true)
             }
         }
         assertTrue(reduced == true)
         assertFalse(pulse == true)
+        assertEquals(0f, spin)
     }
 
     @Test
@@ -55,11 +60,23 @@ class MotionTest {
 
         var reduced: Boolean? = null
         var pulse: Boolean? = null
+        var spin: Float? = null
         composeTestRule.setContent {
             reduced = foundryReduceMotionEnabled()
             pulse = foundryPulseEnabled(true)
+            spin = foundrySpinRotation(true)
         }
         assertTrue(reduced == true)
         assertFalse(pulse == true)
+        assertEquals(0f, spin)
+    }
+
+    @Test
+    fun robolectricDoesNotStartTheRunningStatusSpin() {
+        var spin: Float? = null
+        composeTestRule.setContent {
+            spin = foundrySpinRotation(true)
+        }
+        assertEquals(0f, spin)
     }
 }
