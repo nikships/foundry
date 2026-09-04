@@ -434,8 +434,9 @@ export function buildRefinePrompt(input: {
   currentPlan: ParsedPlanReply;
   conversation: { role: 'operator' | 'orchestrator'; text: string }[];
 }): string {
+  // JSON-encoded so a multi-line message cannot forge "Operator:" turns.
   const transcript = input.conversation
-    .map((m) => `${m.role === 'operator' ? 'Operator' : 'You'}: ${m.text}`)
+    .map((m) => `${m.role === 'operator' ? 'Operator' : 'You'}: ${JSON.stringify(m.text)}`)
     .join('\n');
   return [
     input.basePrompt,

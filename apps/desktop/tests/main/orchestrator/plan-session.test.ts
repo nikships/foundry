@@ -1157,6 +1157,44 @@ describe('PlanSession', () => {
     expect(failed.message('still there?')).toBe('there is no accepted plan to discuss');
   });
 
+  it('resumes the chat after a cancelled follow-up, with the plan still standing', async () => {
+    const oneShots = scriptedOneShots([
+      submitted(validReply()),
+      { hangUntilAbort: true },
+      { structuredOutput: { reply: 'Still here; the proposal stands.', plan: null } },
+    ]);
+    const session = new PlanSession({
+      projectId: 'p1',
+      projectPath: '/tmp/somewhere',
+      prompt: 'add a changes file',
+      model: 'inherit',
+      defaultModel: 'inherit',
+      reasoningEffort: 'medium',
+      contextSummary: '',
+      commands,
+      roster: [builder()],
+      envelopeDefs: [],
+      enabledModels: async () => enabled,
+      oneShot: oneShots.factory,
+      onChange: () => {},
+    });
+    await session.run();
+
+    expect(session.message('hanging question')).toBeNull();
+    await until(() => oneShots.calls.length === 2);
+    session.cancel();
+    await until(() => session.snapshot().status === 'cancelled');
+
+    // The accepted plan survived the cancel, so the conversation may resume
+    // once the aborted turn finishes settling (a refusal is a harmless no-op).
+    expect(session.snapshot().plan).not.toBeNull();
+    await until(() => session.message('are you still there?') === null);
+    await until(() => session.snapshot().messages.length === 3);
+    const state = session.snapshot();
+    expect(state.status).toBe('done');
+    expect(state.messages[2]!.text).toContain('the proposal stands');
+  });
+
   it('uses a placeholder request when only images are attached', async () => {
     const png: PlanImageAttachment = {
       mediaType: 'image/png',

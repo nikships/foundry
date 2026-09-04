@@ -763,7 +763,11 @@ export function createMockFoundryApi(): FoundryApi {
         };
         const startedAt = Date.now();
         const messages: PlanChatMessage[] = [];
+        // Revision only advances when a plan lands, mirroring the real session
+        // so the hook's override reset never fires on a mere chat exchange.
+        let revision = 0;
         const emit = (status: 'running' | 'done', detail: string): void => {
+          if (status === 'done' && revision === 0) revision = 1;
           notify('orchestrator-progress', {
             planId,
             projectId,
@@ -772,12 +776,12 @@ export function createMockFoundryApi(): FoundryApi {
             reasoningEffort,
             prompt,
             entries: [],
-            plan: status === 'done' ? plan : null,
+            plan: revision > 0 ? plan : null,
             rawReply: '',
             detail,
             startedAt,
             messages: messages.map((message) => ({ ...message })),
-            revision: status === 'done' ? 1 : 0,
+            revision,
             ...(status === 'done' ? { endedAt: Date.now() } : {}),
           });
         };

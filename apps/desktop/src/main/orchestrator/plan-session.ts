@@ -328,7 +328,11 @@ export class PlanSession {
     if (this.refining || state.status === 'running') {
       return 'the Orchestrator is still replying';
     }
-    if (state.status !== 'done' || !state.plan) return 'there is no accepted plan to discuss';
+    // A cancelled follow-up left the accepted plan standing, so the chat may
+    // resume; only a session that never produced a plan has nothing to discuss.
+    if (!state.plan || (state.status !== 'done' && state.status !== 'cancelled')) {
+      return 'there is no accepted plan to discuss';
+    }
     if (!this.basePrompt || !this.railsInputs) {
       return 'this planning session cannot take messages';
     }
