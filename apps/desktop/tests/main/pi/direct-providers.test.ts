@@ -127,6 +127,7 @@ describe('registering the table on a runtime', () => {
       expect(responsesModels).toEqual(
         builtinModels.map((model) => ({ ...model, api: 'openai-responses' })),
       );
+      expect(responsesModels[0]?.cost).not.toBe(builtinModels[0]?.cost);
       expect(responsesAuth).toEqual(builtinAuth);
     } finally {
       resetModelRuntimes();

@@ -56,9 +56,8 @@ export function applyDirectProviderOverrides(runtime: ModelRuntime): void {
     }
     runtime.registerProvider('openrouter', {
       models: runtime.getModels('openrouter').map((model) => ({
-        ...model,
+        ...structuredClone(model),
         api: 'openai-responses',
-        input: [...model.input],
       })),
     });
   } catch (error) {
