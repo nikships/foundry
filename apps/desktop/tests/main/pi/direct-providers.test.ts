@@ -1,5 +1,5 @@
 /**
- * The providers Foundry registers on pi itself.
+ * The direct-key providers Foundry configures on pi itself.
  *
  * Two things are worth pinning. The table's contract: a model whose thinking
  * map or rate card is wrong is a phase that fails at request time, not in the
@@ -110,13 +110,34 @@ describe('registering the table on a runtime', () => {
     }
   });
 
+  it('routes OpenRouter through Responses without dropping pi’s model catalog', async () => {
+    const support = tempDir('foundry-direct-providers-');
+    try {
+      const runtime = await modelRuntime(support);
+      const responsesModels = runtime.getModels('openrouter');
+      runtime.unregisterProvider('openrouter');
+      const builtinModels = runtime.getModels('openrouter');
+
+      expect(builtinModels.length).toBeGreaterThan(0);
+      expect(builtinModels.every((model) => model.api === 'openai-completions')).toBe(true);
+      expect(responsesModels.map((model) => model.id)).toEqual(
+        builtinModels.map((model) => model.id),
+      );
+      expect(responsesModels.every((model) => model.api === 'openai-responses')).toBe(true);
+    } finally {
+      resetModelRuntimes();
+    }
+  });
+
   it('is idempotent, so a re-registration does not duplicate the models', async () => {
     const support = tempDir('foundry-direct-providers-');
     try {
       const runtime = await modelRuntime(support);
+      const openrouterIds = runtime.getModels('openrouter').map((model) => model.id);
       registerDirectProviders(runtime);
       registerDirectProviders(runtime);
       expect(runtime.getModels('meta')).toHaveLength(meta?.models.length ?? 0);
+      expect(runtime.getModels('openrouter').map((model) => model.id)).toEqual(openrouterIds);
     } finally {
       resetModelRuntimes();
     }

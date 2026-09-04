@@ -1,18 +1,21 @@
 /**
- * Registers the providers from `shared/direct-providers.ts` on a pi runtime.
+ * Configures direct API-key providers on a pi runtime.
  *
  * Registration is in-memory rather than a `models.json` entry on purpose. That
  * file belongs to the operator (and, for `bridge-*` keys, to the Bridge);
- * writing a Foundry-owned provider into it would put shipped defaults in a
- * document a person is expected to edit, and a model list corrected in a
- * release could not then replace a stale copy on disk.
+ * writing Foundry-owned defaults into it would put shipped policy in a document
+ * a person is expected to edit.
+ *
+ * Pi already owns OpenRouter's model catalog and authentication. Foundry only
+ * replaces its Chat Completions API kind so direct-key turns use Responses,
+ * preserving the rest of every model entry and pi's credential handling.
  */
 
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
 
 /**
- * Teaches a runtime every provider in the table.
+ * Teaches a runtime every provider in the table and applies direct-key API overrides.
  *
  * A registration that throws is skipped rather than fatal: pi validates each
  * entry against its own model shape, and one malformed provider must not take
@@ -40,6 +43,20 @@ export function registerDirectProviders(runtime: ModelRuntime): void {
     } catch (error) {
       console.warn(`[pi] could not register the ${provider.id} provider: ${message(error)}`);
     }
+  }
+
+  try {
+    runtime.registerProvider('openrouter', {
+      models: runtime.getModels('openrouter').map((model) => ({
+        ...model,
+        api: 'openai-responses',
+        input: [...model.input],
+      })),
+    });
+  } catch (error) {
+    console.warn(
+      `[pi] could not route the openrouter provider through Responses: ${message(error)}`,
+    );
   }
 }
 
