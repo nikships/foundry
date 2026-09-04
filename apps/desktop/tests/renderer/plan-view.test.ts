@@ -12,7 +12,6 @@ import {
   planExportView,
   planHasActiveFailure,
   planPreviewPositions,
-  phaseNote,
   planCardView,
   togglePlanExportSelection,
   withPhaseModel,
@@ -118,14 +117,12 @@ describe('plan-view', () => {
       model: 'anthropic/claude-opus-4',
       reasoningEffort: 'high',
     });
-    expect(view.phases[1]?.note).toBe('runs "test" · fails back to build');
     // Only agent phases carry an appointment; a command has no model to override.
     expect(view.phases[1]?.model).toBeNull();
     expect(view.phases[2]).toMatchObject({
       synthesized: true,
       decides: true,
       reasoningEffort: 'low',
-      note: 'gates: verdict_consistent, disapproval_halts',
     });
 
     expect(view.agents[0]).toMatchObject({
@@ -280,22 +277,24 @@ describe('plan-view', () => {
   });
 
   it('summarizes builtin and argv command phases', () => {
-    expect(
-      phaseNote({
+    const plan = generatedPlan();
+    plan.pipeline.phases = [
+      {
         name: 'commit',
         kind: 'code',
         description: 'Commit the work.',
         command: { builtin: 'git_commit' },
-      }),
-    ).toBe('git commit');
-    expect(
-      phaseNote({
+      },
+      {
         name: 'custom_test',
         kind: 'code',
         description: 'Run a custom check.',
         command: { argv: ['npm', 'test', '--', 'search'] },
-      }),
-    ).toBe('npm test -- search');
+      },
+    ];
+    const view = planCardView(plan);
+    expect(view.phases[0]?.command).toBe('git commit');
+    expect(view.phases[1]?.command).toBe('npm test -- search');
   });
 
   it('shapes ordinary export identities without preserving the generated plan id', () => {

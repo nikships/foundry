@@ -288,6 +288,9 @@ export function Dropdown({
     }
     if (e.key === 'Escape' && open) {
       e.preventDefault();
+      // Escape means "close this menu", not the sheet or modal hosting the
+      // trigger — window-level Escape-to-close listeners must not also fire.
+      e.stopPropagation();
       close();
     }
   };
@@ -310,6 +313,9 @@ export function Dropdown({
       pickActive();
     } else if (e.key === 'Escape' || e.key === 'Tab') {
       e.preventDefault();
+      // Same shield as the trigger: dismissing the menu must not bubble on to
+      // close a hosting sheet in the same keystroke.
+      if (e.key === 'Escape') e.stopPropagation();
       close();
       triggerRef.current?.focus();
     }

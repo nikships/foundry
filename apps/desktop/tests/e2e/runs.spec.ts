@@ -233,6 +233,14 @@ test.describe('Runs / Orchestrator', () => {
       const compactBox = await menu.boundingBox();
       expect(compactBox).not.toBeNull();
       expect(compactBox!.width).toBeLessThan(280);
+
+      // Escape inside an open menu dismisses only the menu, not the sheet.
+      await window.keyboard.press('Escape');
+      await expect(menu).not.toBeVisible();
+      await expect(sheet).toBeVisible();
+
+      await window.getByTestId('plan-reasoning-build').click();
+      await expect(menu).toBeVisible();
       await menu.getByRole('option', { name: 'High' }).click();
       await expect(sheet).toContainText('overridden');
 

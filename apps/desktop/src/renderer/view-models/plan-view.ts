@@ -35,8 +35,6 @@ export interface PlanPhaseView {
   agent: string | null;
   /** Whether that agent is synthesized for this run rather than on the roster. */
   synthesized: boolean;
-  /** Compact machinery note: the command, the gates, or the checkpoint. */
-  note: string;
   /** Whether the acceptance rule reads this phase's outcome. */
   decides: boolean;
   /**
@@ -192,18 +190,6 @@ function gateNamesOf(phase: PhaseDef): string[] {
   return (phase.gates ?? []).map((g) => (typeof g === 'string' ? g : g.gate));
 }
 
-/** The compact machinery note under one phase row. */
-export function phaseNote(phase: PhaseDef): string {
-  const parts: string[] = [];
-  if (phase.kind === 'code') {
-    parts.push(commandNote(phase.command));
-  }
-  const names = gateNamesOf(phase);
-  if (names.length) parts.push(`gates: ${names.join(', ')}`);
-  if (phase.feedbackTo) parts.push(`fails back to ${phase.feedbackTo}`);
-  return parts.join(' · ');
-}
-
 /** Folds warnings by `where`, keeping first-seen order on both axes. */
 export function groupPlanWarnings(warnings: ValidationIssue[]): PlanWarningGroup[] {
   const groups = new Map<string, string[]>();
@@ -237,7 +223,6 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
     description: phase.description,
     agent: phase.agent ?? null,
     synthesized: Boolean(phase.agent && synthesized.has(phase.agent)),
-    note: phaseNote(phase),
     decides: marks.has(index),
     model: phase.kind === 'agent' ? (phase.model ?? 'inherit') : null,
     reasoningEffort:

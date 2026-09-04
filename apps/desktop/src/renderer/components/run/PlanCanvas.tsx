@@ -10,8 +10,10 @@ import styles from './PlanCanvas.module.css';
 const NODE_WIDTH = 300;
 const NODE_HEIGHT = 190;
 const FRAME_PAD = 28;
-const MIN_ZOOM = 0.35;
+const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2;
+/** How far below the rail a feedback arc dips, matching the edge geometry. */
+const RETURN_EDGE_DIP = 72;
 
 interface Viewport {
   x: number;
@@ -24,16 +26,21 @@ function clampZoom(zoom: number): number {
 }
 
 /** Pan/zoom that shows the whole rail, centered, never magnified past 1:1. */
-function fitViewport(rect: { width: number; height: number }, count: number): Viewport {
+function fitViewport(
+  rect: { width: number; height: number },
+  count: number,
+  hasReturns: boolean,
+): Viewport {
   const positions = planPreviewPositions(count);
   const contentW = (positions[count - 1]?.x ?? 0) + NODE_WIDTH;
-  const contentH = NODE_HEIGHT;
+  // Return arcs swing below the rail, so a plan with feedback frames them in.
+  const contentH = NODE_HEIGHT + (hasReturns ? RETURN_EDGE_DIP : 0);
   const zoom = clampZoom(
     Math.min(1, (rect.width - FRAME_PAD * 2) / contentW, (rect.height - FRAME_PAD * 2) / contentH),
   );
   return {
     x: (rect.width - contentW * zoom) / 2,
-    y: (rect.height - contentH * zoom) / 2,
+    y: (rect.height - (NODE_HEIGHT + (hasReturns ? RETURN_EDGE_DIP : 0)) * zoom) / 2,
     zoom,
   };
 }
@@ -170,14 +177,23 @@ export default function PlanCanvas({
     null,
   );
   const positions = planPreviewPositions(phases.length);
+  const returns = phases.flatMap((phase) => {
+    if (!phase.feedbackTo) return [];
+    const target = phases.findIndex((candidate) => candidate.name === phase.feedbackTo);
+    return target >= 0 ? [{ from: phase.index, to: target }] : [];
+  });
+  const hasReturns = returns.length > 0;
 
   const frame = useCallback((): void => {
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect || phases.length === 0) return;
-    setViewport(fitViewport(rect, phases.length));
-  }, [phases.length]);
+    setViewport(fitViewport(rect, phases.length, hasReturns));
+  }, [phases.length, hasReturns]);
 
   useLayoutEffect(() => {
+    // A structurally different plan reclaims the framing. Overrides keep the
+    // operator's pan/zoom: they change casting, not the board's shape.
+    userMoved.current = false;
     frame();
   }, [frame]);
 
@@ -284,17 +300,12 @@ export default function PlanCanvas({
     frame();
   };
 
-  const returns = phases.flatMap((phase) => {
-    if (!phase.feedbackTo) return [];
-    const target = phases.findIndex((candidate) => candidate.name === phase.feedbackTo);
-    return target >= 0 ? [{ from: phase.index, to: target }] : [];
-  });
-
   return (
     <div
       ref={boardRef}
       className={styles.canvas}
       data-testid="plan-canvas"
+      role="group"
       aria-label="Proposed pipeline. Click a phase to inspect it. Drag empty space to pan."
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -347,7 +358,8 @@ export default function PlanCanvas({
             const sourceX = positions[from]!.x + NODE_WIDTH / 2;
             const targetX = positions[to]!.x + NODE_WIDTH / 2;
             const y = NODE_HEIGHT;
-            const dip = y + 56 + (from - to) * 8;
+            // Longer loops dip deeper, capped inside the framed band below the rail.
+            const dip = y + Math.min(RETURN_EDGE_DIP - 8, 48 + (from - to) * 8);
             return (
               <path
                 key={`return-${from}-${to}`}
