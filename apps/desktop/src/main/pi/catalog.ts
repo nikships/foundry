@@ -21,6 +21,7 @@ import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { ModelInfo } from '@shared/types.js';
 import { isDirectProviderId } from '@shared/direct-providers.js';
 import { intelligenceFor } from '@shared/model-intelligence.js';
+import { applyDirectProviderOverrides } from './direct-providers.js';
 import { defaultEffortFor, effortsFor, modelKey } from './model.js';
 import { modelRuntime } from './runtime.js';
 
@@ -159,6 +160,7 @@ export async function availableModels(supportDir: string): Promise<ModelInfo[]> 
 export async function refreshCatalog(supportDir: string): Promise<void> {
   const runtime = await modelRuntime(supportDir);
   await runtime.refresh({ allowNetwork: false });
+  applyDirectProviderOverrides(runtime);
 }
 
 /**

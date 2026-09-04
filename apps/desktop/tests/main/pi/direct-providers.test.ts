@@ -1,5 +1,5 @@
 /**
- * The providers Foundry registers on pi itself.
+ * The direct-key providers Foundry configures on pi itself.
  *
  * Two things are worth pinning. The table's contract: a model whose thinking
  * map or rate card is wrong is a phase that fails at request time, not in the
@@ -12,11 +12,13 @@
  * `pi-runtime.test.ts` does. Nothing here logs in, so no network is touched.
  */
 
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DIRECT_PROVIDERS, isDirectProviderId } from '../../../src/shared/direct-providers.js';
 import { registerDirectProviders } from '../../../src/main/pi/direct-providers.js';
-import { toModelInfo } from '../../../src/main/pi/catalog.js';
-import { modelRuntime, resetModelRuntimes } from '../../../src/main/pi/runtime.js';
+import { refreshCatalog, toModelInfo } from '../../../src/main/pi/catalog.js';
+import { modelRuntime, piStateDir, resetModelRuntimes } from '../../../src/main/pi/runtime.js';
 import { REASONING_EFFORTS } from '../../../src/shared/reasoning-effort.js';
 import { tempDir } from '../../helpers/tmp.js';
 
@@ -110,13 +112,71 @@ describe('registering the table on a runtime', () => {
     }
   });
 
+  it('routes OpenRouter through Responses without dropping pi’s model catalog', async () => {
+    const support = tempDir('foundry-direct-providers-');
+    try {
+      const runtime = await modelRuntime(support);
+      const responsesModels = runtime.getModels('openrouter');
+      const responsesAuth = Object.keys(runtime.getProvider('openrouter')?.auth ?? {}).sort();
+      runtime.unregisterProvider('openrouter');
+      const builtinModels = runtime.getModels('openrouter');
+      const builtinAuth = Object.keys(runtime.getProvider('openrouter')?.auth ?? {}).sort();
+
+      expect(builtinModels.length).toBeGreaterThan(0);
+      expect(builtinModels.every((model) => model.api === 'openai-completions')).toBe(true);
+      expect(responsesModels).toEqual(
+        builtinModels.map((model) => ({ ...model, api: 'openai-responses' })),
+      );
+      expect(responsesModels[0]?.cost).not.toBe(builtinModels[0]?.cost);
+      expect(responsesAuth).toEqual(builtinAuth);
+    } finally {
+      resetModelRuntimes();
+    }
+  });
+
+  it('keeps the Responses override when models.json is refreshed', async () => {
+    const support = tempDir('foundry-direct-providers-');
+    try {
+      const runtime = await modelRuntime(support);
+      writeFileSync(
+        join(piStateDir(support), 'models.json'),
+        JSON.stringify({
+          providers: {
+            openrouter: {
+              models: [
+                {
+                  id: 'foundry-refresh-probe',
+                  name: 'Foundry refresh probe',
+                  api: 'openai-completions',
+                  reasoning: false,
+                  input: ['text'],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 8_192,
+                  maxTokens: 1_024,
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+      await refreshCatalog(support);
+
+      expect(runtime.getModel('openrouter', 'foundry-refresh-probe')?.api).toBe('openai-responses');
+    } finally {
+      resetModelRuntimes();
+    }
+  });
+
   it('is idempotent, so a re-registration does not duplicate the models', async () => {
     const support = tempDir('foundry-direct-providers-');
     try {
       const runtime = await modelRuntime(support);
+      const openrouterIds = runtime.getModels('openrouter').map((model) => model.id);
       registerDirectProviders(runtime);
       registerDirectProviders(runtime);
       expect(runtime.getModels('meta')).toHaveLength(meta?.models.length ?? 0);
+      expect(runtime.getModels('openrouter').map((model) => model.id)).toEqual(openrouterIds);
     } finally {
       resetModelRuntimes();
     }
