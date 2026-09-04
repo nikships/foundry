@@ -64,6 +64,8 @@ test.describe('Runs / Orchestrator', () => {
               detail: 'Plan ready.',
               startedAt,
               endedAt: Date.now(),
+              messages: [],
+              revision: 1,
             });
           }, 20);
           return { planId };
@@ -191,6 +193,8 @@ test.describe('Runs / Orchestrator', () => {
               detail: 'Plan ready.',
               startedAt,
               endedAt: Date.now(),
+              messages: [],
+              revision: 1,
             });
           }, 20);
           return { planId };
@@ -298,6 +302,165 @@ test.describe('Runs / Orchestrator', () => {
         name: 'build',
         model: 'fixture/alt',
       });
+    } finally {
+      await app?.close();
+    }
+  });
+
+  test('expands the canvas full screen and revises the proposal through the plan chat', async ({
+    browserName: _browserName,
+  }, testInfo) => {
+    const fixture = seedOnboardedFixture();
+    let app: ElectronApplication | undefined;
+    try {
+      const launched = await launchFoundry(fixture.userDataDir);
+      app = launched.app;
+      const { window } = launched;
+
+      // Replace the planner and its follow-up boundary; renderer, preload,
+      // IPC push channel, plan card, chat, and full-screen shell stay real.
+      await app.evaluate(({ BrowserWindow, ipcMain }) => {
+        const planId = 'plan-e2e-chat';
+        const basePipeline = {
+          id: `generated-${planId}`,
+          name: 'Chat proposal',
+          description: 'Build, then prove it with the test command.',
+          builtin: false,
+          acceptance: { kind: 'all_phases_pass' },
+          phases: [
+            {
+              name: 'build',
+              kind: 'agent',
+              description: 'Implement the scoped change.',
+              agent: 'builder',
+              model: 'fixture/model',
+              reasoningEffort: 'medium',
+              prompt: { inputs: ['request'] },
+            },
+            {
+              name: 'verify',
+              kind: 'code',
+              description: 'Run the focused checks.',
+              command: { ref: 'test' },
+              feedbackTo: 'build',
+            },
+          ],
+        };
+        const state = {
+          planId,
+          projectId: '',
+          status: 'done',
+          model: 'fixture/model',
+          reasoningEffort: 'medium',
+          prompt: '',
+          entries: [],
+          plan: null as unknown,
+          rawReply: '',
+          detail: 'Plan ready.',
+          startedAt: Date.now(),
+          messages: [] as unknown[],
+          revision: 1,
+        };
+        const push = (): void => {
+          BrowserWindow.getAllWindows()[0]?.webContents.send('event:orchestrator-progress', {
+            ...state,
+            messages: [...state.messages],
+          });
+        };
+        ipcMain.removeHandler('orchestrator:plan');
+        ipcMain.handle('orchestrator:plan', (_event, projectId, prompt, model, reasoningEffort) => {
+          state.projectId = projectId;
+          state.prompt = prompt;
+          state.model = model;
+          state.reasoningEffort = reasoningEffort;
+          state.plan = {
+            planId,
+            projectId,
+            prompt,
+            refinedRequest: 'Talk the proposal over before starting it.',
+            rationale: 'A build proven by the project test command.',
+            pipeline: basePipeline,
+            agents: [],
+            warnings: [],
+            model,
+            reasoningEffort,
+          };
+          setTimeout(push, 20);
+          return { planId };
+        });
+        ipcMain.removeHandler('orchestrator:message');
+        ipcMain.handle('orchestrator:message', (_event, id, text) => {
+          if (id !== planId) return 'session not found';
+          state.messages.push({
+            id: `op-${state.messages.length}`,
+            role: 'operator',
+            text,
+            at: Date.now(),
+          });
+          state.status = 'running';
+          state.detail = 'considering your message';
+          push();
+          setTimeout(() => {
+            state.messages.push({
+              id: `or-${state.messages.length}`,
+              role: 'orchestrator',
+              text: 'Renamed the verify phase as asked.',
+              revisedPlan: true,
+              at: Date.now(),
+            });
+            const plan = state.plan as { pipeline: typeof basePipeline };
+            state.plan = {
+              ...(state.plan as Record<string, unknown>),
+              pipeline: {
+                ...plan.pipeline,
+                phases: [plan.pipeline.phases[0], { ...plan.pipeline.phases[1], name: 'prove' }],
+              },
+            };
+            state.status = 'done';
+            state.detail = 'plan revised';
+            state.revision += 1;
+            push();
+          }, 40);
+          return null;
+        });
+      });
+
+      await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
+      await window.getByTestId('run-request').fill('Prove the plan chat end to end.');
+      await window.getByTestId('run-plan').click();
+
+      const planCard = window.getByTestId('plan-card');
+      await expect(planCard).toContainText('Chat proposal');
+
+      // Full screen: the same canvas fills a modal; Esc leaves it.
+      await window.getByTestId('plan-canvas-expand').click();
+      const fullscreen = window.getByTestId('plan-canvas-fullscreen');
+      await expect(fullscreen).toBeVisible();
+      await expect(fullscreen.getByTestId('plan-canvas-node-build')).toBeVisible();
+      const fullscreenProof = testInfo.outputPath('plan-canvas-fullscreen.png');
+      await window.screenshot({ path: fullscreenProof, animations: 'disabled' });
+      await testInfo.attach('plan canvas full screen', {
+        path: fullscreenProof,
+        contentType: 'image/png',
+      });
+      await window.keyboard.press('Escape');
+      await expect(fullscreen).not.toBeVisible();
+
+      // Chat: the reply lands in the transcript and the revision replaces the
+      // proposal without leaving the card.
+      await window.getByTestId('plan-chat-input').fill('rename the verify phase to prove');
+      await window.getByTestId('plan-chat-send').click();
+      await expect(window.getByTestId('plan-chat-operator')).toContainText('rename the verify');
+      await expect(window.getByTestId('plan-chat-orchestrator')).toContainText(
+        'Renamed the verify phase',
+      );
+      await expect(window.getByTestId('plan-chat-revised')).toBeVisible();
+      await expect(window.getByTestId('plan-canvas-node-prove')).toBeVisible();
+      await expect(planCard).toBeVisible();
+
+      const chatProof = testInfo.outputPath('plan-chat-revised.png');
+      await window.screenshot({ path: chatProof, fullPage: true, animations: 'disabled' });
+      await testInfo.attach('plan chat revision', { path: chatProof, contentType: 'image/png' });
     } finally {
       await app?.close();
     }

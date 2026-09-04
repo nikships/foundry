@@ -33,14 +33,18 @@ import {
 import {
   ORCHESTRATOR_PROMPT,
   buildPlanPrompt,
+  buildRefinePrompt,
   checkPlanRails,
   configuredCastModels,
   parsePlanReply,
+  parseRefineReply,
   planOutputFormat,
   planCorrection,
+  refineOutputFormat,
   toGeneratedPlan,
   type ParsedPlanReply,
   type PlanPromptInputs,
+  type PlanRailsInputs,
 } from './plan.js';
 
 export type { OrchestratorState };
@@ -81,6 +85,12 @@ export class PlanSession {
   // `generated-<planId>` and must pass the store's kebab-case id rail.
   readonly planId = `plan-${shortId()}`;
   private readonly panel: PanelSession<OrchestratorState>;
+  /** The first turn's full ask, restated on every correction and follow-up. */
+  private basePrompt: string | null = null;
+  /** The rails the accepted plan passed, reused verbatim for a revision. */
+  private railsInputs: Omit<PlanRailsInputs, 'request'> | null = null;
+  /** Serializes follow-ups: one refine turn at a time. */
+  private refining = false;
 
   constructor(private readonly deps: PlanSessionDeps) {
     this.panel = new PanelSession<OrchestratorState>(
@@ -96,10 +106,16 @@ export class PlanSession {
         rawReply: '',
         detail: 'starting',
         startedAt: Date.now(),
+        messages: [],
+        revision: 0,
       },
       {
         onChange: deps.onChange,
-        clone: (state) => ({ ...state, plan: state.plan ? structuredClone(state.plan) : null }),
+        clone: (state) => ({
+          ...state,
+          plan: state.plan ? structuredClone(state.plan) : null,
+          messages: state.messages.map((message) => ({ ...message })),
+        }),
         isTerminal: (state) => state.status === 'done' || state.status === 'failed',
         applyCancel: (state) => {
           state.status = 'cancelled';
@@ -174,6 +190,15 @@ export class PlanSession {
     // One parse-or-correct budget covers both the JSON shape and the rails,
     // exactly as an envelope's parser and validator share one budget.
     const basePrompt = buildPlanPrompt(promptInputs);
+    this.basePrompt = basePrompt;
+    this.railsInputs = {
+      roster: this.deps.roster,
+      commandNames: this.deps.commands.map((c) => c.name),
+      knownEnvelopes: this.deps.envelopeDefs.map((e) => e.name),
+      allowedModelIds,
+      allowedModels: castPool.models,
+      scaffold: this.deps.scaffold,
+    };
     let ask = basePrompt;
     const attempts = 1 + FIXED_ENGINE_DEFAULTS.envelopeRetries;
     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -208,7 +233,11 @@ export class PlanSession {
     });
   }
 
-  private askTurn(prompt: string, model: string): Promise<OneShotResult | null> {
+  private askTurn(
+    prompt: string,
+    model: string,
+    outputFormat = planOutputFormat(),
+  ): Promise<OneShotResult | null> {
     // The Orchestrator reads the operator's own checkout, where nothing
     // would revert a write, so the session has no tool that could make one.
     return this.panel.ask({
@@ -218,7 +247,7 @@ export class PlanSession {
       model,
       reasoningEffort: this.deps.reasoningEffort,
       systemPrompt: ORCHESTRATOR_PROMPT,
-      outputFormat: planOutputFormat(),
+      outputFormat,
       prompt,
       ...(this.deps.images?.length ? { images: this.deps.images } : {}),
     });
@@ -281,9 +310,138 @@ export class PlanSession {
       reasoningEffort: this.deps.reasoningEffort,
     });
     state.status = 'done';
+    state.revision += 1;
     state.detail = warnings.length
       ? `plan ready, with ${warnings.length} warning(s)`
       : 'plan ready';
+  }
+
+  /**
+   * A follow-up message about the accepted plan. Returns the refusal reason,
+   * or null once the message is taken — the reply then arrives over progress
+   * like everything else, because the caller is a click.
+   */
+  message(text: string): string | null {
+    const trimmed = text.trim();
+    const state = this.panel.state;
+    if (!trimmed) return 'a message needs text';
+    if (this.refining || state.status === 'running') {
+      return 'the Orchestrator is still replying';
+    }
+    // A cancelled follow-up left the accepted plan standing, so the chat may
+    // resume; only a session that never produced a plan has nothing to discuss.
+    if (!state.plan || (state.status !== 'done' && state.status !== 'cancelled')) {
+      return 'there is no accepted plan to discuss';
+    }
+    if (!this.basePrompt || !this.railsInputs) {
+      return 'this planning session cannot take messages';
+    }
+    this.refining = true;
+    this.panel.clearCancelled();
+    state.messages.push({ id: shortId(), role: 'operator', text: trimmed, at: this.panel.now() });
+    state.status = 'running';
+    state.detail = 'considering your message';
+    delete state.endedAt;
+    this.panel.emit();
+    void this.runRefine();
+    return null;
+  }
+
+  /** Never rejects, like run(): a failed follow-up becomes a chat reply. */
+  private async runRefine(): Promise<void> {
+    try {
+      await this.refine();
+    } catch (e) {
+      this.settleRefine(`I could not answer: ${(e as Error).message}. The proposal is unchanged.`);
+    } finally {
+      this.refining = false;
+      this.panel.finish();
+    }
+  }
+
+  private async refine(): Promise<void> {
+    const state = this.panel.state;
+    const { model } = this.deps;
+    const plan = state.plan!;
+    // The plan as it stands, operator re-casts included, so the Orchestrator
+    // discusses what the operator is actually looking at.
+    const currentPlan: ParsedPlanReply = {
+      refinedRequest: plan.refinedRequest,
+      rationale: plan.rationale,
+      pipeline: structuredClone(plan.pipeline),
+      agents: structuredClone(plan.agents),
+    };
+    const base = buildRefinePrompt({
+      basePrompt: this.basePrompt!,
+      currentPlan,
+      conversation: state.messages.map((m) => ({ role: m.role, text: m.text })),
+    });
+    let ask = base;
+    const attempts = 1 + FIXED_ENGINE_DEFAULTS.envelopeRetries;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      this.noteAttempt(attempt, attempts, model);
+      const turn = await this.askTurn(ask, model, refineOutputFormat());
+      if (!turn) return;
+      const structuredReply = turn.structuredOutput ? JSON.stringify(turn.structuredOutput) : null;
+      state.rawReply = structuredReply ?? turn.text;
+      const parsed = parseRefineReply(turn.structuredOutput, this.planId);
+      const rails =
+        parsed.ok && parsed.reply
+          ? checkPlanRails(parsed.reply, { ...this.railsInputs!, request: this.deps.prompt })
+          : null;
+      if (parsed.ok && (parsed.reply === null || rails?.ok)) {
+        this.acceptRefine(parsed.text, parsed.reply, rails?.ok ? rails.warnings : []);
+        return;
+      }
+      const issues = parsed.ok ? (rails && !rails.ok ? rails.issues : []) : parsed.issues;
+      for (const issue of issues) {
+        this.panel.push({ kind: 'note', text: `Rejected: ${issue.where}: ${issue.message}` });
+      }
+      ask = correctionPrompt(
+        base,
+        structuredReply ?? `(submit_result was not called)\n${turn.text}`,
+        issues,
+      );
+    }
+    this.settleRefine(
+      'I could not produce a valid revision within the correction budget. The proposal is unchanged.',
+    );
+  }
+
+  private acceptRefine(
+    text: string,
+    reply: ParsedPlanReply | null,
+    warnings: ValidationIssue[],
+  ): void {
+    const state = this.panel.state;
+    if (reply) {
+      this.acceptPlan(reply, warnings, this.deps.model);
+      state.detail = warnings.length
+        ? `plan revised, with ${warnings.length} warning(s)`
+        : 'plan revised';
+    } else {
+      state.status = 'done';
+      state.detail = 'plan unchanged';
+    }
+    state.messages.push({
+      id: shortId(),
+      role: 'orchestrator',
+      text,
+      ...(reply ? { revisedPlan: true } : {}),
+      at: this.panel.now(),
+    });
+    this.panel.emit();
+  }
+
+  /** The accepted plan stands; the failure is reported in the conversation. */
+  private settleRefine(text: string): void {
+    const state = this.panel.state;
+    if (state.status !== 'done') {
+      state.status = 'done';
+      state.detail = 'plan unchanged';
+    }
+    state.messages.push({ id: shortId(), role: 'orchestrator', text, at: this.panel.now() });
+    this.panel.emit();
   }
 }
 
@@ -309,5 +467,6 @@ export function createPlans(
     isLive: (state) => state.status === 'running',
     run: (session) => session.run(),
     onProgress,
+    message: (session, text) => session.message(text),
   });
 }

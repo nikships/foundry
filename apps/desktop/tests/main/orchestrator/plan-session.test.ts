@@ -1029,6 +1029,172 @@ describe('PlanSession', () => {
     expect(JSON.stringify(states.at(-1))).not.toContain(png.data);
   });
 
+  it('answers a follow-up question without touching the accepted plan', async () => {
+    const { session, oneShots } = await run({
+      turns: [
+        submitted(validReply()),
+        {
+          structuredOutput: {
+            reply: 'Opus reviews more reliably here; the cost difference is small.',
+            plan: null,
+          },
+        },
+      ],
+    });
+
+    expect(session.message('why opus for the build phase?')).toBeNull();
+    await until(() => session.snapshot().messages.length === 2);
+
+    const state = session.snapshot();
+    expect(state.status).toBe('done');
+    expect(state.detail).toBe('plan unchanged');
+    expect(state.revision).toBe(1);
+    expect(state.messages[0]).toMatchObject({
+      role: 'operator',
+      text: 'why opus for the build phase?',
+    });
+    expect(state.messages[1]).toMatchObject({ role: 'orchestrator' });
+    expect(state.messages[1]!.revisedPlan).toBeUndefined();
+    expect(state.plan!.pipeline.phases[0]?.model).toBe('anthropic/claude-opus-4');
+    // The follow-up restates the full planning context plus the conversation.
+    expect(oneShots.prompts[1]).toContain('## The proposal under discussion');
+    expect(oneShots.prompts[1]).toContain('why opus for the build phase?');
+    expect(oneShots.prompts[1]).toContain('## Phase model cast pool');
+  });
+
+  it('accepts a revised plan from a follow-up and bumps the revision', async () => {
+    const revised = JSON.parse(
+      validReply().replace(
+        '"model":"anthropic/claude-opus-4"',
+        '"model":"anthropic/claude-haiku-4"',
+      ),
+    ) as Record<string, unknown>;
+    const { session } = await run({
+      turns: [
+        submitted(validReply()),
+        { structuredOutput: { reply: 'Recast the build onto Haiku as asked.', plan: revised } },
+      ],
+    });
+
+    expect(session.message('use the cheaper model for the build')).toBeNull();
+    await until(() => session.snapshot().revision === 2);
+
+    const state = session.snapshot();
+    expect(state.status).toBe('done');
+    expect(state.plan!.pipeline.phases[0]?.model).toBe('anthropic/claude-haiku-4');
+    expect(state.messages[1]).toMatchObject({ role: 'orchestrator', revisedPlan: true });
+  });
+
+  it('sends a revision that fails the rails back as a correction', async () => {
+    const broken = JSON.parse(
+      validReply().replace('"agent":"builder"', '"agent":"nobody"'),
+    ) as Record<string, unknown>;
+    const good = JSON.parse(validReply()) as Record<string, unknown>;
+    const { session } = await run({
+      turns: [
+        submitted(validReply()),
+        { structuredOutput: { reply: 'Revised.', plan: broken } },
+        { structuredOutput: { reply: 'Revised, this time with the roster builder.', plan: good } },
+      ],
+    });
+
+    expect(session.message('rework the build phase')).toBeNull();
+    await until(() => session.snapshot().revision === 2);
+
+    const state = session.snapshot();
+    expect(state.status).toBe('done');
+    expect(state.entries.some((e) => e.text.includes('no agent named "nobody"'))).toBe(true);
+    expect(state.messages[1]!.text).toContain('roster builder');
+  });
+
+  it('keeps the accepted plan and reports in chat when the follow-up budget is spent', async () => {
+    const attempts = 1 + FIXED_ENGINE_DEFAULTS.envelopeRetries;
+    const { session } = await run({
+      turns: [
+        submitted(validReply()),
+        ...Array.from({ length: attempts }, () => ({ text: 'not a submission' })),
+      ],
+    });
+
+    expect(session.message('please revise')).toBeNull();
+    await until(() => session.snapshot().messages.length === 2);
+
+    const state = session.snapshot();
+    expect(state.status).toBe('done');
+    expect(state.plan).not.toBeNull();
+    expect(state.revision).toBe(1);
+    expect(state.messages[1]!.text).toContain('The proposal is unchanged');
+  });
+
+  it('refuses a message with no accepted plan, an empty text, or a busy session', async () => {
+    const { session } = await run({
+      turns: [
+        submitted(validReply()),
+        { structuredOutput: { reply: 'Thinking it over.', plan: null } },
+      ],
+    });
+
+    expect(session.message('   ')).toBe('a message needs text');
+    expect(session.message('first question')).toBeNull();
+    expect(session.message('second question')).toBe('the Orchestrator is still replying');
+    await until(() => session.snapshot().messages.length === 2);
+
+    const failed = new PlanSession({
+      projectId: 'p1',
+      projectPath: '/tmp/somewhere',
+      prompt: 'add a changes file',
+      model: 'inherit',
+      defaultModel: 'inherit',
+      reasoningEffort: 'medium',
+      contextSummary: '',
+      commands,
+      roster: [builder()],
+      envelopeDefs: [],
+      oneShot: scriptedOneShots([{ throws: 'blocked' }]).factory,
+      onChange: () => {},
+    });
+    await failed.run();
+    expect(failed.message('still there?')).toBe('there is no accepted plan to discuss');
+  });
+
+  it('resumes the chat after a cancelled follow-up, with the plan still standing', async () => {
+    const oneShots = scriptedOneShots([
+      submitted(validReply()),
+      { hangUntilAbort: true },
+      { structuredOutput: { reply: 'Still here; the proposal stands.', plan: null } },
+    ]);
+    const session = new PlanSession({
+      projectId: 'p1',
+      projectPath: '/tmp/somewhere',
+      prompt: 'add a changes file',
+      model: 'inherit',
+      defaultModel: 'inherit',
+      reasoningEffort: 'medium',
+      contextSummary: '',
+      commands,
+      roster: [builder()],
+      envelopeDefs: [],
+      enabledModels: async () => enabled,
+      oneShot: oneShots.factory,
+      onChange: () => {},
+    });
+    await session.run();
+
+    expect(session.message('hanging question')).toBeNull();
+    await until(() => oneShots.calls.length === 2);
+    session.cancel();
+    await until(() => session.snapshot().status === 'cancelled');
+
+    // The accepted plan survived the cancel, so the conversation may resume
+    // once the aborted turn finishes settling (a refusal is a harmless no-op).
+    expect(session.snapshot().plan).not.toBeNull();
+    await until(() => session.message('are you still there?') === null);
+    await until(() => session.snapshot().messages.length === 3);
+    const state = session.snapshot();
+    expect(state.status).toBe('done');
+    expect(state.messages[2]!.text).toContain('the proposal stands');
+  });
+
   it('uses a placeholder request when only images are attached', async () => {
     const png: PlanImageAttachment = {
       mediaType: 'image/png',

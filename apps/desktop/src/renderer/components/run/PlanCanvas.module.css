@@ -14,6 +14,44 @@
   cursor: grabbing;
 }
 
+/* Filling a full-screen surface: the host owns the size. */
+.canvasExpanded {
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Fully inside the board: overflow is hidden, so a straddling strip would
+   lose its lower half to clipping and shrink the drag target. */
+.resizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.resizeHandle::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 44px;
+  height: 3px;
+  border-radius: var(--r-full);
+  background: var(--line-strong);
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity var(--fast) var(--ease);
+}
+
+.resizeHandle:hover::after,
+.resizeHandle:active::after {
+  opacity: 1;
+}
+
 .grid {
   position: absolute;
   inset: 0;

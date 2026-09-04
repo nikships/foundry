@@ -41,5 +41,14 @@ export function register(ctx: Ctx, handle: Handle): void {
     },
   );
 
+  /**
+   * Takes one follow-up message about the accepted plan and returns
+   * immediately; the reply arrives on `orchestrator-progress` like the plan
+   * itself did. A non-null return is the refusal reason.
+   */
+  handle(IPC.orchestratorMessage, (planId: string, text: string): string | null =>
+    ctx.plans.message(planId, text),
+  );
+
   handle(IPC.orchestratorCancel, (planId: string) => ctx.plans.cancel(planId));
 }

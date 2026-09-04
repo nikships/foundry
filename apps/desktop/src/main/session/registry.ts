@@ -46,6 +46,11 @@ export class SessionRegistry<T extends Cancellable> {
     this.endedAt.set(id, this.now());
   }
 
+  /** A session that resumed work must not be swept as finished. */
+  markLive(id: string): void {
+    this.endedAt.delete(id);
+  }
+
   get(id: string): T | undefined {
     return this.sessions.get(id);
   }
@@ -83,13 +88,16 @@ export class SessionRegistry<T extends Cancellable> {
 
 /**
  * The public surface every panel registry exposes: start a turn, read it,
- * cancel it. Everything else stays internal.
+ * cancel it, and — where the feature supports one — send a follow-up message
+ * to a session it still retains. Everything else stays internal.
  */
 export interface PanelRegistry<TStart, TState> {
   start(deps: TStart): string;
   get(id: string): TState | null;
   cancel(id: string): boolean;
   cancelAll(): void;
+  /** Returns the refusal reason, or null when the session took the message. */
+  message(id: string, text: string): string | null;
 }
 
 export function createPanelRegistry<TSession extends Cancellable, TStart, TState>(opts: {
@@ -99,6 +107,8 @@ export function createPanelRegistry<TSession extends Cancellable, TStart, TState
   isLive: (state: TState) => boolean;
   run: (session: TSession) => Promise<void>;
   onProgress: (state: TState) => void;
+  /** Feature-specific follow-up; absent means the panel takes no messages. */
+  message?: (session: TSession, text: string) => string | null;
   keepMs?: number;
   maxKept?: number;
   now?: () => number;
@@ -111,7 +121,10 @@ export function createPanelRegistry<TSession extends Cancellable, TStart, TState
   return {
     start(deps) {
       const session = opts.create(deps, (state) => {
-        if (!opts.isLive(state)) registry.markEnded(opts.idOf(session));
+        // A finished session may resume on a follow-up message, so liveness is
+        // re-read on every change rather than latched by the first finish.
+        if (opts.isLive(state)) registry.markLive(opts.idOf(session));
+        else registry.markEnded(opts.idOf(session));
         opts.onProgress(state);
       });
       registry.add(opts.idOf(session), session);
@@ -130,6 +143,12 @@ export function createPanelRegistry<TSession extends Cancellable, TStart, TState
     },
     cancelAll() {
       registry.cancelAll();
+    },
+    message(id, text) {
+      if (!opts.message) return 'this panel does not take messages';
+      const session = registry.get(id);
+      if (!session) return 'session not found';
+      return opts.message(session, text);
     },
   };
 }
