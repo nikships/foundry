@@ -99,13 +99,13 @@ describe('Linear run chrome', () => {
     expect(markup).not.toContain('<img');
   });
 
-  it('keeps the issue description selectable and scrollable', () => {
+  it('keeps the issue description selectable, scrollable, and vertically resizable', () => {
     const component = read('src/renderer/components/run/LinearSelectedIssue.tsx');
     const styles = read('src/renderer/components/run/LinearComposer.module.css');
 
     expect(component).toContain('`${styles.issueDescription} selectable`');
     expect(styles).toMatch(
-      /\.issueDescription \{[\s\S]*max-height: 132px;[\s\S]*overflow-y: auto;/,
+      /\.issueDescription \{[\s\S]*height: 132px;[\s\S]*max-height: min\(60vh, 640px\);[\s\S]*overflow-y: auto;[\s\S]*resize: vertical;/,
     );
   });
 
