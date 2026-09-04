@@ -268,8 +268,8 @@ export default function Sidebar({
                   <span
                     className={cx(styles.runDot, running && styles.runDotLive)}
                     style={{
-                      background: statusColor(run.status),
                       color: statusColor(run.status),
+                      ...(running ? undefined : { background: statusColor(run.status) }),
                     }}
                   />
                   <span className={styles.runBody}>

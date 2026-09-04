@@ -1,7 +1,7 @@
 /**
  * Live Activity rows in the sidebar must read as still working at a glance.
- * Finished rows stay static. The live treatment is a local persistent-core
- * ping, not the global opacity pulse used by StatusBadge and Waterfall.
+ * Finished rows stay a filled 6px dot. The live treatment is a compact
+ * indeterminate ring, not the global opacity pulse used by Waterfall.
  */
 
 import { readFileSync } from 'node:fs';
@@ -14,17 +14,25 @@ const read = (rel: string): string => readFileSync(join(here, '../..', rel), 'ut
 
 const sidebarSrc = read('src/renderer/components/layout/Sidebar.tsx');
 const sidebarCss = read('src/renderer/components/layout/Sidebar.module.css');
+const badgeSrc = read('src/renderer/components/common/StatusBadge.tsx');
+const badgeCss = read('src/renderer/components/common/StatusBadge.module.css');
 const tokensBase = read('src/renderer/design/tokens-base.css');
 
 function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
-/** First `.run-dot-live` ruleset that is not a `::after` / `:after` selector. */
 function liveCoreRuleset(css: string): string {
   const stripped = stripCssComments(css);
   const match = stripped.match(/\.run-dot-live(?!::?after)[^{]*\{([^}]*)\}/);
   if (!match) throw new Error('missing .run-dot-live core ruleset');
+  return match[1];
+}
+
+function spinningRuleset(css: string): string {
+  const stripped = stripCssComments(css);
+  const match = stripped.match(/\.dot\.spinning[^{]*\{([^}]*)\}/);
+  if (!match) throw new Error('missing .dot.spinning ruleset');
   return match[1];
 }
 
@@ -60,43 +68,56 @@ describe('Activity live mark gating', () => {
   });
 });
 
-describe('Activity live animation is local, not the global pulse', () => {
-  it('does not use the shared opacity pulse on the Activity mark', () => {
+describe('Activity live animation is a spinning ring, not a pulse or ping', () => {
+  it('does not use the shared opacity pulse or the old ping halo', () => {
     expect(sidebarCss).not.toMatch(/animation:\s*pulse\b/);
-    expect(sidebarCss).toContain('@keyframes run-dot-ping');
-    expect(sidebarCss).toContain('animation: run-dot-ping');
-    expect(sidebarCss).toMatch(/\.run-dot-live::?after/);
+    expect(sidebarCss).not.toContain('@keyframes run-dot-ping');
+    expect(sidebarCss).not.toMatch(/\.run-dot-live::?after/);
+    expect(sidebarCss).toContain('animation: spin 900ms linear infinite');
   });
 
-  it('animates only the ping copy, never the 6px core', () => {
+  it('draws a hollow ring with a gap on the live mark', () => {
     const core = liveCoreRuleset(sidebarCss);
-    expect(core).not.toMatch(/animation\s*:/);
-    expect(core).toContain('box-shadow:');
-
-    const stripped = stripCssComments(sidebarCss);
-    const animationDecls = [...stripped.matchAll(/animation\s*:/g)];
-    expect(animationDecls.length).toBeGreaterThanOrEqual(2);
-    expect(stripped).toMatch(/\.run-dot-live::?after[^{]*\{[^}]*animation:\s*run-dot-ping/);
-    expect(stripped).toMatch(
-      /@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)[\s\S]*\.run-dot-live::?after[^{]*\{[^}]*animation:\s*none/,
-    );
+    expect(core).toContain('border: 1.5px solid currentColor');
+    expect(core).toContain('border-right-color: transparent');
+    expect(core).toContain('animation: spin 900ms linear infinite');
+    expect(core).not.toMatch(/background\s*:/);
+    expect(core).not.toMatch(/box-shadow\s*:/);
   });
 
   it('leaves the global pulse keyframes untouched', () => {
     expect(tokensBase).toMatch(/@keyframes\s+pulse[\s\S]*opacity:\s*0\.35/);
+    expect(tokensBase).toMatch(/@keyframes\s+spin/);
   });
 });
 
 describe('reduced motion keeps a static live vs finished distinction', () => {
-  it('stops the looping ping without dropping the halo', () => {
+  it('stops the spin without filling the ring', () => {
     expect(sidebarCss).toContain('@media (prefers-reduced-motion: reduce)');
     const reduced = reducedMotionBlock(sidebarCss);
-    expect(reduced).toMatch(/\.run-dot-live::?after/);
+    expect(reduced).toMatch(/\.run-dot-live/);
     expect(reduced).toMatch(/animation:\s*none/);
     expect(reduced).not.toMatch(/box-shadow\s*:/);
 
     const core = liveCoreRuleset(sidebarCss);
-    expect(core).toContain('box-shadow:');
-    expect(core).toMatch(/0 0 0 1px currentColor/);
+    expect(core).toContain('border-right-color: transparent');
+  });
+});
+
+describe('StatusBadge running mark matches Activity', () => {
+  it('spins a hollow ring only while status is running', () => {
+    expect(badgeSrc).toContain("status === 'running' && styles.spinning");
+    expect(badgeSrc).toContain("status === 'running' ? undefined : { background: color }");
+    const spinning = spinningRuleset(badgeCss);
+    expect(spinning).toContain('border: 1.5px solid currentColor');
+    expect(spinning).toContain('border-right-color: transparent');
+    expect(spinning).toContain('animation: spin 900ms linear infinite');
+    expect(spinning).not.toMatch(/background\s*:/);
+  });
+
+  it('stops the badge spin under reduced motion', () => {
+    const reduced = reducedMotionBlock(badgeCss);
+    expect(reduced).toMatch(/\.dot\.spinning/);
+    expect(reduced).toMatch(/animation:\s*none/);
   });
 });

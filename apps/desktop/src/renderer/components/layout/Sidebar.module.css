@@ -256,46 +256,24 @@
 }
 .run-dot {
   flex: none;
-  position: relative;
-  isolation: isolate;
   width: 6px;
   height: 6px;
   border-radius: 50%;
 }
 
-/* Live vs finished: a 1px halo that never animates and never dims the core. */
+/* Live vs finished: a hollow spinning ring instead of a filled ping-dot. */
 .run-dot-live {
-  box-shadow: 0 0 0 1px currentColor;
-}
-
-/* Ping sits behind the core (z-index: -1 + isolation) so the 6px fill
-   stays at full opacity on every frame. */
-.run-dot-live::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: inherit;
-  z-index: -1;
-  pointer-events: none;
-  animation: run-dot-ping 1.1s var(--ease) infinite;
-}
-
-@keyframes run-dot-ping {
-  0% {
-    transform: scale(1);
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(2.5);
-    opacity: 0;
-  }
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 900ms linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .run-dot-live::after {
+  .run-dot-live {
     animation: none;
-    content: none;
   }
 }
 .run-body {
