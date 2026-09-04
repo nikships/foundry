@@ -16,6 +16,7 @@ import {
   type StoredProviderKey,
 } from '@shared/ipc-contract.js';
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
+import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
 import { MODEL_UNSET, MODEL_UNSET_MESSAGE } from '@shared/model-choice.js';
 import { modelLabel } from '@shared/model-label.js';
 import {
@@ -106,8 +107,12 @@ const COMPACTION_PERCENT = { min: 50, max: 95 } as const;
  *
  * Deliberately a short list of the ones an operator is likely to hold a key
  * for rather than pi's full provider table: a key row for every provider pi
- * knows would bury the four that matter. A provider outside this list that
+ * knows would bury the few that matter. A provider outside this list that
  * already has a stored key still gets a row, so nothing is unreachable.
+ *
+ * The providers Foundry registers itself are appended rather than spelled out
+ * again: a key row is the only way to reach one, so a provider added to that
+ * table without a row here would be unusable.
  */
 const KEY_PROVIDERS: { id: string; label: string; icon: string }[] = [
   { id: 'anthropic', label: 'Anthropic', icon: 'anthropic' },
@@ -115,6 +120,11 @@ const KEY_PROVIDERS: { id: string; label: string; icon: string }[] = [
   { id: 'google', label: 'Google AI Studio', icon: 'google' },
   { id: 'openrouter', label: 'OpenRouter', icon: 'openrouter' },
   { id: 'xai', label: 'xAI', icon: 'xai' },
+  ...DIRECT_PROVIDERS.map((provider) => ({
+    id: provider.id,
+    label: provider.label,
+    icon: provider.icon,
+  })),
 ];
 
 const NOTIFY_LABELS: Record<'accepted' | 'rejected' | 'failed', string> = {

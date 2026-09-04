@@ -51,11 +51,21 @@ const EFFORT_SUFFIXES = [
   '-256k',
 ];
 
+/**
+ * Suffixes that name a billing tier rather than a different model. Meta's
+ * `-contributor` ids are the same weights at a lower price in exchange for
+ * training rights, so they fold onto the measured model.
+ */
+const TIER_SUFFIXES = ['-contributor'];
+
 export function normalizeModelId(id) {
   let value = id.toLowerCase().split('/').pop() ?? '';
   value = value.split(':')[0];
   value = value.replace(/-20\d{6}/g, '');
   value = value.replace(/-(preview|latest|exp)\b/g, '');
+  for (const suffix of TIER_SUFFIXES) {
+    if (value.endsWith(suffix)) value = value.slice(0, -suffix.length);
+  }
   for (;;) {
     const hit = EFFORT_SUFFIXES.find((suffix) => value.endsWith(suffix));
     if (!hit) break;

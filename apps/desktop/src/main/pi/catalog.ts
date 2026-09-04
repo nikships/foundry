@@ -19,6 +19,7 @@
 
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { ModelInfo } from '@shared/types.js';
+import { isDirectProviderId } from '@shared/direct-providers.js';
 import { intelligenceFor } from '@shared/model-intelligence.js';
 import { defaultEffortFor, effortsFor, modelKey } from './model.js';
 import { modelRuntime } from './runtime.js';
@@ -56,7 +57,10 @@ const MODEL_BRANDS = [
   { provider: 'minimax', matches: ['minimax'] },
   { provider: 'nvidia', matches: ['nemotron'] },
   { provider: 'grok', matches: ['grok'] },
-  { provider: 'meta', matches: ['meta', 'llama'] },
+  // `muse` rather than only the corporate name: Meta's Model API ids carry the
+  // family (`muse-spark-1.3`) and never the lab, so a match on `meta` alone
+  // would leave every Muse model wearing the fallback mark.
+  { provider: 'meta', matches: ['meta', 'llama', 'muse'] },
 ] as const;
 
 /**
@@ -80,9 +84,11 @@ export function toModelInfo(model: PiModel): ModelInfo {
     provider: providerOf(model.id, model.name),
     supportedReasoningEfforts: efforts,
     defaultReasoningEffort: defaultEffortFor(efforts),
-    // "Custom" means "not one of pi's built-ins": everything that arrived
-    // through models.json, which is exactly what the Bridge writes.
-    isCustom: !BUILTIN_PI_PROVIDERS.has(model.provider),
+    // "Custom" means "nothing Foundry ships": everything that arrived through
+    // models.json, which is exactly what the Bridge writes. A provider from
+    // `direct-providers.ts` is shipped and reviewed like a built-in, so it is
+    // not badged either.
+    isCustom: !BUILTIN_PI_PROVIDERS.has(model.provider) && !isDirectProviderId(model.provider),
     deprecated: false,
     contextWindow: model.contextWindow,
     // Advisory, and absent for a model the published index does not name.

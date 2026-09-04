@@ -33,6 +33,17 @@ describe('normalizeModelId', () => {
   it('reads a dash-separated version the same as a dotted one', () => {
     expect(normalizeModelId('claude-opus-4-5')).toBe(normalizeModelId('claude-opus-4.5'));
   });
+
+  it('folds a billing tier onto the model it mirrors', () => {
+    // Meta's contributor ids are the same weights at a lower price, so they
+    // must not rank as unrated beside their identical twin.
+    expect(normalizeModelId('meta/muse-spark-1.3-contributor')).toBe(
+      normalizeModelId('meta/muse-spark-1.3'),
+    );
+    expect(intelligenceFor('meta/muse-spark-1.3-contributor')).toBe(
+      intelligenceFor('meta/muse-spark-1.3'),
+    );
+  });
 });
 
 describe('intelligenceFor', () => {

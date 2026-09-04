@@ -4,6 +4,7 @@ import {
   type BridgeProviderInfo,
   type BridgeState,
 } from '@shared/ipc-contract.js';
+import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
 import { modelLabel } from '@shared/model-label.js';
 import { ProviderIcon } from '../../components/media/BrandIcon.js';
 import { Button } from '../../components/ui/Button.js';
@@ -27,6 +28,10 @@ const KEY_PROVIDERS: { id: string; label: string }[] = [
   { id: 'google', label: 'Google AI Studio' },
   { id: 'openrouter', label: 'OpenRouter' },
   { id: 'xai', label: 'xAI' },
+  // The providers Foundry registers itself, appended rather than spelled out
+  // again: a key is the only way to reach one, so leaving it out of this list
+  // would make it unreachable during onboarding.
+  ...DIRECT_PROVIDERS.map((provider) => ({ id: provider.id, label: provider.label })),
 ];
 
 function statusFor(provider: BridgeProviderInfo): { label: string; tone: Tone } {

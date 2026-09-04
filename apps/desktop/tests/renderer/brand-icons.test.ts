@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FoundryGlyph, PiGlyph, providerMark } from '@renderer/components/media/BrandIcon.js';
 import { providerOf } from '@main/pi/catalog.js';
 import { BRIDGE_PROVIDERS } from '@main/bridge/providers.js';
+import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
 
 describe('app chrome marks', () => {
   it('draws Foundry and pi, neither of which lobehub publishes', () => {
@@ -49,6 +50,26 @@ describe('provider marks', () => {
     // Mirrors KEY_PROVIDERS in SettingsScreen and ProvidersScreen.
     for (const provider of ['anthropic', 'openai', 'google', 'openrouter', 'xai']) {
       expect(providerMark(provider), provider).toBeTruthy();
+    }
+  });
+
+  it('draws every icon key the direct-provider table names', () => {
+    // Both key panes append this table and render `provider.icon` off it, so
+    // an unmapped key is a key row with a blank header.
+    for (const provider of DIRECT_PROVIDERS) {
+      expect(providerMark(provider.icon), `${provider.id} -> ${provider.icon}`).toBeTruthy();
+    }
+  });
+
+  it('draws the models Foundry registers itself, whose ids never name the lab', () => {
+    // `muse-spark-1.3` carries the family and not the vendor, so the brand has
+    // to be readable from the id alone.
+    for (const provider of DIRECT_PROVIDERS) {
+      for (const model of provider.models) {
+        const brand = providerOf(model.id, model.name);
+        expect(brand, `${model.id} -> ${brand}`).toBe(provider.icon);
+        expect(providerMark(brand), model.id).toBeTruthy();
+      }
     }
   });
 

@@ -8,6 +8,7 @@ Shared code is imported by main and renderer. It must remain side-effect free: n
 - `ipc-contract.ts` — `FoundryApi` and `IPC.*` channel constants.
 - `builtin-agents.ts` / `builtin-pipelines.ts` — pure shipped seed definitions, not store behavior.
 - `model-intelligence.ts` and its vendored data — offline model capability scores.
+- `direct-providers.ts` — providers pi's own table lacks, pinned with their models. Shared because main registers under the same id the renderer's key row stores against.
 
 Boundary values are contractual: `null` means unrestricted except protected paths, `[]` means read-only, and allowlists support segment `*` and recursive `**`.
 
