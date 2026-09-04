@@ -45,6 +45,12 @@ export interface DropdownProps {
   placeholder?: string;
   /** Override the closed-face content. Defaults to the selected option's label. */
   renderValue?: (option: DropdownOption | null) => ReactNode;
+  /**
+   * Menu sizing. `wide` (default) opens at least 320px for rich option
+   * content; `compact` hugs the trigger for short plain-label option sets.
+   * Both stay viewport-clamped.
+   */
+  menuWidth?: 'wide' | 'compact';
   /** Test ID for the trigger button, so agent-browser can target it reliably. */
   'data-testid'?: string;
 }
@@ -52,7 +58,8 @@ export interface DropdownProps {
 interface MenuPos {
   top: number;
   left: number;
-  width: number;
+  /** Fixed menu width, or null when the menu sizes to its own content. */
+  width: number | null;
   maxHeight: number;
   openUp: boolean;
 }
@@ -60,6 +67,7 @@ interface MenuPos {
 const MENU_GAP = 4;
 const VIEWPORT_PAD = 8;
 const MIN_MENU_WIDTH = 320;
+const MIN_COMPACT_MENU_WIDTH = 120;
 
 function samePos(a: MenuPos, b: MenuPos): boolean {
   return (
@@ -106,6 +114,7 @@ export function Dropdown({
   'aria-invalid': ariaInvalid,
   placeholder = 'Select…',
   renderValue,
+  menuWidth = 'wide',
   'data-testid': dataTestId,
 }: DropdownProps): React.JSX.Element {
   const listId = useId();
@@ -142,9 +151,14 @@ export function Dropdown({
       140,
       Math.min(480, openUp ? spaceAbove - MENU_GAP : spaceBelow - MENU_GAP),
     );
-    const width = Math.min(Math.max(rect.width, MIN_MENU_WIDTH), viewportW - VIEWPORT_PAD * 2);
+    // A compact menu hugs its own short labels instead of stretching to a
+    // full-width trigger; the render pass below clamps it back on screen.
+    const width =
+      menuWidth === 'compact'
+        ? null
+        : Math.min(Math.max(rect.width, MIN_MENU_WIDTH), viewportW - VIEWPORT_PAD * 2);
     let left = rect.left;
-    if (left + width > viewportW - VIEWPORT_PAD) {
+    if (width !== null && left + width > viewportW - VIEWPORT_PAD) {
       left = Math.max(VIEWPORT_PAD, viewportW - VIEWPORT_PAD - width);
     }
     const next: MenuPos = {
@@ -157,7 +171,7 @@ export function Dropdown({
     // Re-anchoring now runs per scroll frame, so skip the render when nothing moved.
     setPos((prev) => (prev && samePos(prev, next) ? prev : next));
     return anchorVisible(trigger);
-  }, []);
+  }, [menuWidth]);
 
   const openMenu = useCallback((): void => {
     if (disabled) return;
@@ -209,6 +223,18 @@ export function Dropdown({
     if (!open) return;
     measure();
   }, [open, measure, options.length]);
+
+  // A content-sized menu's width is only known after it paints; nudge it back
+  // inside the viewport once measured rather than guessing beforehand.
+  useLayoutEffect(() => {
+    if (!open || !pos || pos.width !== null) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    const rect = menu.getBoundingClientRect();
+    const maxLeft = window.innerWidth - VIEWPORT_PAD - rect.width;
+    const left = Math.max(VIEWPORT_PAD, Math.min(pos.left, maxLeft));
+    if (left !== pos.left) setPos({ ...pos, left });
+  }, [open, pos]);
 
   useEffect(() => {
     if (!open) return;
@@ -262,6 +288,9 @@ export function Dropdown({
     }
     if (e.key === 'Escape' && open) {
       e.preventDefault();
+      // Escape means "close this menu", not the sheet or modal hosting the
+      // trigger — window-level Escape-to-close listeners must not also fire.
+      e.stopPropagation();
       close();
     }
   };
@@ -284,6 +313,9 @@ export function Dropdown({
       pickActive();
     } else if (e.key === 'Escape' || e.key === 'Tab') {
       e.preventDefault();
+      // Same shield as the trigger: dismissing the menu must not bubble on to
+      // close a hosting sheet in the same keystroke.
+      if (e.key === 'Escape') e.stopPropagation();
       close();
       triggerRef.current?.focus();
     }
@@ -300,7 +332,9 @@ export function Dropdown({
         top: pos.openUp ? undefined : pos.top,
         bottom: pos.openUp ? window.innerHeight - pos.top : undefined,
         left: pos.left,
-        width: pos.width,
+        width: pos.width ?? undefined,
+        minWidth: pos.width === null ? MIN_COMPACT_MENU_WIDTH : undefined,
+        maxWidth: pos.width === null ? window.innerWidth - VIEWPORT_PAD * 2 : undefined,
         maxHeight: pos.maxHeight,
       }
     : undefined;

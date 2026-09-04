@@ -1,0 +1,152 @@
+.title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.titleKind {
+  margin-left: var(--s2);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.description {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-dim);
+}
+
+.sectionLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.overrides {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--r-sm);
+}
+
+.overridesHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.overriddenBadge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  border-radius: var(--r-sm);
+  padding: 0 var(--s1);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.fieldLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.overridesHint {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-faint);
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.row {
+  display: flex;
+  gap: var(--s3);
+  align-items: baseline;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+.rowLabel {
+  flex: none;
+  width: 104px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.rowValue {
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--s2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.synthBadge {
+  margin-left: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--purple);
+  border: 1px solid color-mix(in srgb, var(--purple) 40%, transparent);
+  border-radius: var(--r-sm);
+  padding: 0 var(--s1);
+}
+
+.decides {
+  color: var(--green);
+}

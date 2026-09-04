@@ -11,7 +11,7 @@ import {
   planExportSelectionCount,
   planExportView,
   planHasActiveFailure,
-  phaseNote,
+  planPreviewPositions,
   planCardView,
   togglePlanExportSelection,
   withPhaseModel,
@@ -117,14 +117,12 @@ describe('plan-view', () => {
       model: 'anthropic/claude-opus-4',
       reasoningEffort: 'high',
     });
-    expect(view.phases[1]?.note).toBe('runs "test" · fails back to build');
     // Only agent phases carry an appointment; a command has no model to override.
     expect(view.phases[1]?.model).toBeNull();
     expect(view.phases[2]).toMatchObject({
       synthesized: true,
       decides: true,
       reasoningEffort: 'low',
-      note: 'gates: verdict_consistent, disapproval_halts',
     });
 
     expect(view.agents[0]).toMatchObject({
@@ -137,6 +135,43 @@ describe('plan-view', () => {
       boundary: 'read-only',
       readOnly: true,
     });
+  });
+
+  it('exposes the execution details the phase inspector shows', () => {
+    const view = planCardView(generatedPlan());
+
+    // The agent phase carries its casting and machinery for inspection.
+    expect(view.phases[0]).toMatchObject({
+      gates: ['boundary_respected'],
+      command: null,
+      inputs: [],
+      retries: 0,
+      feedbackTo: null,
+      feedbackRetries: null,
+      optional: false,
+      heals: false,
+    });
+    // The command phase names its command, feedback target, and healing.
+    expect(view.phases[1]).toMatchObject({
+      command: 'runs "test"',
+      gates: [],
+      feedbackTo: 'build',
+      feedbackRetries: 1,
+      heals: true,
+    });
+    // GateSpec objects reduce to their names alongside plain strings.
+    expect(view.phases[2]?.gates).toEqual(['verdict_consistent', 'disapproval_halts']);
+  });
+
+  it('lays preview nodes on a deterministic rail without reading any saved canvas', () => {
+    expect(planPreviewPositions(0)).toEqual([]);
+    expect(planPreviewPositions(3)).toEqual([
+      { x: 0, y: 0 },
+      { x: 340, y: 0 },
+      { x: 680, y: 0 },
+    ]);
+    // Deterministic: the same count always frames the same rail.
+    expect(planPreviewPositions(3)).toEqual(planPreviewPositions(3));
   });
 
   it('credits an inherit orchestrator as the default model and its effort', () => {
@@ -242,22 +277,24 @@ describe('plan-view', () => {
   });
 
   it('summarizes builtin and argv command phases', () => {
-    expect(
-      phaseNote({
+    const plan = generatedPlan();
+    plan.pipeline.phases = [
+      {
         name: 'commit',
         kind: 'code',
         description: 'Commit the work.',
         command: { builtin: 'git_commit' },
-      }),
-    ).toBe('git commit');
-    expect(
-      phaseNote({
+      },
+      {
         name: 'custom_test',
         kind: 'code',
         description: 'Run a custom check.',
         command: { argv: ['npm', 'test', '--', 'search'] },
-      }),
-    ).toBe('npm test -- search');
+      },
+    ];
+    const view = planCardView(plan);
+    expect(view.phases[0]?.command).toBe('git commit');
+    expect(view.phases[1]?.command).toBe('npm test -- search');
   });
 
   it('shapes ordinary export identities without preserving the generated plan id', () => {
