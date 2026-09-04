@@ -63,7 +63,7 @@ Call submit_result exactly once with the complete plan object:
 }
 
 Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase it runs in is what names the model. Foundry appends the canonical envelope constitution to systemPrompt after you submit.
-Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"reasoningEffort"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases. Never emit an engineer/checkpoint phase.
+Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"reasoningEffort"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal"/"flakeRerun" for code phases. Never emit an engineer/checkpoint phase.
 Do not print the plan as prose or JSON. After submit_result succeeds, stop.`;
 
 export interface PlanPromptInputs {
@@ -78,6 +78,8 @@ export interface PlanPromptInputs {
   preferredModelIds?: string[];
   /** Whether gh can open PRs here, which decides the acceptance guidance. */
   ghAvailable?: boolean;
+  /** Count of in-memory images on this turn; never the bytes themselves. */
+  attachedImageCount?: number;
 }
 
 /** Compact one-line summary per roster agent — not prompts, to keep context lean. */
@@ -160,7 +162,20 @@ function fewShotPipelines(models: readonly ModelInfo[]): string {
 }
 
 export function buildPlanPrompt(inputs: PlanPromptInputs): string {
-  const parts = ['Compose the pipeline for this request.', '', `## Request`, inputs.request];
+  const attachedImageCount = inputs.attachedImageCount ?? 0;
+  const requestBody = inputs.request.trim()
+    ? inputs.request
+    : attachedImageCount > 0
+      ? '(see attached images)'
+      : inputs.request;
+  const parts = ['Compose the pipeline for this request.', '', `## Request`, requestBody];
+  if (attachedImageCount > 0) {
+    parts.push(
+      '',
+      '## Attached images',
+      `${attachedImageCount} image(s) are attached to this turn. Treat them as the visual specification.`,
+    );
+  }
   if (inputs.contextSummary) {
     parts.push('', '## Repository', inputs.contextSummary);
   }

@@ -44,6 +44,7 @@ import {
   sessionContextBreakdown,
   sessionContextStats,
 } from './open-session.js';
+import { resolveBundledPackages } from './packages.js';
 import { smithExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { BUILTIN_TOOLS } from './tool-names.js';
@@ -89,6 +90,7 @@ export class SmithPiTransport implements AgentTransport {
   private resolvedModel: PiModel | null = null;
   private effort: ReasoningEffort;
   private closed = false;
+  private loadedPackageTools: string[] = [];
   private readonly events = new VendorEventReader();
 
   constructor(private readonly opts: SmithTransportOptions) {
@@ -114,6 +116,10 @@ export class SmithPiTransport implements AgentTransport {
 
   get lastUserMessageId(): string | null {
     return lastUserMessageId(this.session);
+  }
+
+  get packageTools(): readonly string[] {
+    return this.loadedPackageTools;
   }
 
   get availableModels(): TransportModel[] {
@@ -159,12 +165,19 @@ export class SmithPiTransport implements AgentTransport {
     );
     const agentDir = join(this.opts.supportDir, 'pi');
     const settingsManager = foundrySettings();
+    // Smith is a full coding agent in the operator's own checkout, so it loads
+    // the same resources a build phase does.
+    const packageResources = await resolveBundledPackages({
+      supportDir: this.opts.supportDir,
+      onWarning: (message) => this.opts.onModelWarning?.(message),
+    });
     const resourceLoader = foundryResourceLoader({
       cwd: this.opts.cwd,
       agentDir,
       settingsManager,
       harness: this.opts.harness,
       extensionFactory: this.extension.factory,
+      packageResources,
     });
     const opened = await openFoundrySession({
       cwd: this.opts.cwd,
@@ -182,6 +195,7 @@ export class SmithPiTransport implements AgentTransport {
     });
     if (opened.modelFallbackMessage) this.opts.onModelWarning?.(opened.modelFallbackMessage);
 
+    this.loadedPackageTools = opened.packageTools;
     this.session = opened.session;
     this.unsubscribe = subscribeSessionEvents(opened.session, this.events, this.opts.onEvent);
   }

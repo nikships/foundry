@@ -68,6 +68,8 @@ describe('Smith run and PR tools', () => {
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsRestorableCheckpoints, 'session', 'r1');
     await h.execute({ operation: 'linear_issues', query: 'FOU-190' });
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.linearIssues, 'FOU-190');
+    await h.execute({ operation: 'linear_issue', issueId: 'issue-uuid' });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.linearIssue, 'issue-uuid');
     await h.execute({ operation: 'linear_workflow_states', teamId: 'team-1' });
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.linearWorkflowStates, 'team-1');
   });
@@ -78,6 +80,7 @@ describe('Smith run and PR tools', () => {
     ['context', { runId: 'r' }, 'agent'],
     ['start', {}, 'pipelineId and request'],
     ['linear_start', {}, 'pipelineId and issueId'],
+    ['linear_issue', {}, 'issueId'],
     ['linear_workflow_states', {}, 'teamId'],
     ['archive', { runId: 'r' }, 'archived'],
     ['export_plan', { runId: 'r' }, 'pipeline or at least one agent'],

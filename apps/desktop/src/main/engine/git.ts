@@ -430,6 +430,21 @@ export async function addWorktree(
   return git(repo, ['worktree', 'add', '-b', branch, path]);
 }
 
+/** Populate submodules inside a run worktree. Never run against the operator checkout. */
+export async function initSubmodules(cwd: string): Promise<GitResult> {
+  // `protocol.file.allow` lets a repo whose `.gitmodules` uses a local path
+  // (the shape of our fixtures and of some monorepos) clone into the worktree.
+  // https remotes ignore the setting.
+  return git(cwd, [
+    '-c',
+    'protocol.file.allow=always',
+    'submodule',
+    'update',
+    '--init',
+    '--recursive',
+  ]);
+}
+
 export async function removeWorktree(repo: string, path: string, force = true): Promise<GitResult> {
   return git(repo, ['worktree', 'remove', ...(force ? ['--force'] : []), path]);
 }

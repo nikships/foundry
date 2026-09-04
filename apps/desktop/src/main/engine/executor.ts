@@ -64,6 +64,7 @@ import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateAgent } from '../store/roster.js';
 import { preflightForRun } from './preflight.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
+import { linearIssueEvidence } from '@shared/linear.js';
 import { activeRowsForPipeline } from './phase-history.js';
 import type { RunSourceLifecycle, RunSourceStage } from './source-lifecycle.js';
 
@@ -325,48 +326,8 @@ export class Executor {
     });
     await this.advanceSource('started');
 
-    // Per-project bootstrap: install deps in a fresh worktree so agents
-    // find their binaries. Fail-fast with evidence; the worktree is kept
-    // for inspection (settle() still decides, but the status is already failed).
-    if (isolate && this.handle && project.setupScript?.trim()) {
-      const script = project.setupScript.trim();
-      tracer.event({ runId, type: 'log', name: 'worktree setup', payload: { script } });
-      const setupEvent = tracer.event({
-        runId,
-        type: 'tool_call',
-        name: 'setup',
-        payload: { script, cwd: this.handle.path },
-      });
-      const result = await runCommand({
-        argv: ['sh', '-c', script],
-        cwd: this.handle.path,
-        name: 'setup',
-        runId,
-        onPid: (pid, command) =>
-          tracer.recordProcess({ runId, kind: 'code', name: 'setup', pid, command }),
-      });
-      tracer.writeRunFile(runId, 'setup.log', result.outputTail);
-      tracer.endEvent(setupEvent, {
-        exitCode: result.exitCode,
-        passed: result.passed,
-        result: result.outputTail.slice(-2000),
-      });
-      this.setupExecution = { command: script, exitCode: result.exitCode };
-      if (!result.passed) {
-        tracer.event({
-          runId,
-          type: 'error',
-          name: 'setup',
-          payload: {
-            message: `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-1500)}`,
-          },
-        });
-        return this.finish(
-          'failed',
-          `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-800).trim() || 'see setup.log'}`,
-        );
-      }
-    }
+    const setupFailed = await this.runWorktreeSetup();
+    if (setupFailed) return setupFailed;
 
     mkdirSync(join(this.cwd, HANDOFF_DIR), { recursive: true });
 
@@ -948,6 +909,10 @@ export class Executor {
       project: this.deps.project,
       pipeline: this.pipeline,
       request: this.deps.request,
+      untrustedEvidence:
+        this.deps.source?.kind === 'linear'
+          ? linearIssueEvidence(this.deps.source.snapshot)
+          : undefined,
       cwd: this.cwd,
       handoffDir: HANDOFF_DIR,
       branch: this.handle?.branch ?? null,
@@ -1022,6 +987,83 @@ export class Executor {
     return id;
   }
 
+  /**
+   * Worktree bootstrap. Returns a failed outcome when setup exits non-zero
+   * (unless this is a scaffold). `null` means phases may start. Continue
+   * never calls this: an existing worktree is already set up.
+   */
+  private async runWorktreeSetup(): Promise<RunOutcome | null> {
+    const { tracer, project, runId } = this.deps;
+    const isolate = this.pipeline.isolation !== false && project.isolation;
+    if (!(isolate && this.handle && project.setupScript?.trim())) return null;
+
+    const script = project.setupScript.trim();
+    const argv = ['sh', '-c', script];
+    tracer.event({ runId, type: 'log', name: 'worktree setup', payload: { script, argv } });
+    const setupEvent = tracer.event({
+      runId,
+      type: 'tool_call',
+      name: 'setup',
+      payload: { script, argv, cwd: this.handle.path },
+    });
+    const result = await runCommand({
+      argv,
+      cwd: this.handle.path,
+      name: 'setup',
+      runId,
+      onPid: (pid, command) =>
+        tracer.recordProcess({ runId, kind: 'code', name: 'setup', pid, command }),
+    });
+    tracer.writeRunFile(runId, 'setup.log', result.outputTail);
+    tracer.writeRunFile(
+      runId,
+      'setup.json',
+      `${JSON.stringify(
+        { argv, exitCode: result.exitCode, durationMs: result.durationMs, passed: result.passed },
+        null,
+        2,
+      )}\n`,
+    );
+    tracer.endEvent(setupEvent, {
+      exitCode: result.exitCode,
+      passed: result.passed,
+      durationMs: result.durationMs,
+      argv,
+      result: result.outputTail.slice(-2000),
+    });
+    this.setupExecution = {
+      command: script,
+      exitCode: result.exitCode,
+      argv,
+      durationMs: result.durationMs,
+    };
+    if (result.passed) return null;
+    if (project.scaffold) {
+      tracer.event({
+        runId,
+        type: 'log',
+        name: 'worktree setup',
+        payload: {
+          detail: `setup exited ${result.exitCode ?? '—'} on a scaffold project; continuing`,
+          exitCode: result.exitCode,
+        },
+      });
+      return null;
+    }
+    tracer.event({
+      runId,
+      type: 'error',
+      name: 'setup',
+      payload: {
+        message: `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-1500)}`,
+      },
+    });
+    return this.finish(
+      'failed',
+      `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-800).trim() || 'see setup.log'}`,
+    );
+  }
+
   private currentSetupExecution(): SetupExecution | null {
     if (this.setupExecution) return this.setupExecution;
     const setup = this.deps.tracer
@@ -1032,7 +1074,16 @@ export class Executor {
     if (typeof command !== 'string' || (typeof exitCode !== 'number' && exitCode !== null)) {
       return null;
     }
-    this.setupExecution = { command, exitCode };
+    const argv = setup?.payload.argv;
+    const durationMs = setup?.payload.durationMs;
+    this.setupExecution = {
+      command,
+      exitCode,
+      ...(Array.isArray(argv) && argv.every((item) => typeof item === 'string')
+        ? { argv: argv as string[] }
+        : {}),
+      ...(typeof durationMs === 'number' ? { durationMs } : {}),
+    };
     return this.setupExecution;
   }
 

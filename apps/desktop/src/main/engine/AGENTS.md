@@ -30,8 +30,9 @@ New phase kinds or gates require shared types, registry/schema/check wiring, run
 - **Commands are frozen.** A `{ref}` command changes only when a fresh sniff proves run-scoped drift. Persist drift to project settings only after successful landing.
 - **Settlement goes through `settle.ts`.** `recordLanding` alone marks a run merged; preserve branch-point, worktree-clear, drift, and notification ordering.
 - **Cancellation outranks acceptance.** Once killed, stop recovery and settle killed.
-- **Setup runs at the worktree root before phases.** Keep failed worktrees for inspection. Scaffold projects may skip a missing referenced code command.
-- **Healing does not judge itself.** Re-run the exact frozen command after each bounded repair attempt. Exhaustion falls through to existing feedback or run failure.
+- **Setup runs at the worktree root before phases.** A non-zero setup exit fails the run before phase 1 (scaffold excepted). Do not re-run setup on continue when the worktree still exists. Keep failed worktrees for inspection. Scaffold projects may skip a missing referenced code command.
+- After `git worktree add`, if `.gitmodules` exists, initialize submodules inside the run worktree (`git submodule update --init --recursive`). Fail closed if init fails. Never write the operator's primary checkout.
+- **Healing does not judge itself.** `{ref}` proof phases re-run without edits (default 2) before a healer may write; a pass with no healer is a flake (`heal_class`). Then re-run the exact frozen command after each bounded repair attempt. Exhaustion reverts in-phase edits (not earlier phases) and falls through to existing feedback or run failure.
 - Healing uses normal boundary checks, never handles optional/skipped/setup failures, and keeps one budget per phase per run across feedback re-entry.
 - **Model-blocking work registers a cancellation interrupt** and releases it when complete. A cancellation that arrived first must abort immediately.
 

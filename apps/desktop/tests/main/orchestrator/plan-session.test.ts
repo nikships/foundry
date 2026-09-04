@@ -11,7 +11,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { FIXED_ENGINE_DEFAULTS } from '../../../src/shared/types.js';
-import type { AgentDef, ModelInfo, ProjectCommand } from '../../../src/shared/types.js';
+import type {
+  AgentDef,
+  ModelInfo,
+  PlanImageAttachment,
+  ProjectCommand,
+} from '../../../src/shared/types.js';
 import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
 import { ORCHESTRATOR_PROMPT } from '../../../src/main/orchestrator/plan.js';
 import { PlanSession } from '../../../src/main/orchestrator/plan-session.js';
@@ -129,11 +134,14 @@ async function run(opts: {
   defaultModel?: string;
   orchestratorModel?: string;
   ghAvailable?: () => Promise<boolean>;
+  prompt?: string;
+  images?: PlanImageAttachment[];
 }): Promise<{
   session: PlanSession;
   state: OrchestratorState;
   oneShots: ReturnType<typeof scriptedOneShots>;
   prompts: string[];
+  states: OrchestratorState[];
 }> {
   const oneShots = scriptedOneShots(opts.turns);
   const prompts: string[] = [];
@@ -141,9 +149,9 @@ async function run(opts: {
     const session = oneShots.factory(options);
     return {
       abort: () => session.abort(),
-      send: (prompt) => {
+      send: (prompt, images) => {
         prompts.push(prompt);
-        return session.send(prompt);
+        return session.send(prompt, images);
       },
     };
   };
@@ -151,7 +159,7 @@ async function run(opts: {
   const session = new PlanSession({
     projectId: 'p1',
     projectPath: '/tmp/somewhere',
-    prompt: 'add a changes file',
+    prompt: opts.prompt ?? 'add a changes file',
     model: opts.orchestratorModel ?? 'inherit',
     defaultModel: opts.defaultModel ?? 'inherit',
     reasoningEffort: 'high',
@@ -161,12 +169,13 @@ async function run(opts: {
     envelopeDefs: [],
     enabledModels: async () => opts.models ?? enabled,
     ghAvailable: opts.ghAvailable,
+    ...(opts.images?.length ? { images: opts.images } : {}),
     oneShot,
     onChange: (state) => states.push(state),
   });
   await session.run();
   expect(states.length).toBeGreaterThan(0);
-  return { session, state: session.snapshot(), oneShots, prompts };
+  return { session, state: session.snapshot(), oneShots, prompts, states };
 }
 
 describe('ORCHESTRATOR_PROMPT', () => {
@@ -221,9 +230,9 @@ describe('PlanSession', () => {
       const session = oneShots.factory(opts);
       return {
         abort: () => session.abort(),
-        send: (prompt) => {
+        send: (prompt, images) => {
           prompts.push(prompt);
-          return session.send(prompt);
+          return session.send(prompt, images);
         },
       };
     };
@@ -970,6 +979,42 @@ describe('PlanSession', () => {
     expect(state.status).toBe('cancelled');
     expect(state.plan).toBeNull();
     expect(state.entries.some((e) => e.text === 'Cancelled.')).toBe(true);
+  });
+
+  it('forwards attached images on the first ask and every correction retry', async () => {
+    const png: PlanImageAttachment = {
+      mediaType: 'image/png',
+      data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      name: 'shot.png',
+    };
+    const { oneShots, prompts, states } = await run({
+      turns: [{ text: 'still not JSON' }, submitted(validReply())],
+      images: [png],
+    });
+
+    expect(oneShots.images).toHaveLength(2);
+    expect(oneShots.images[0]).toEqual([png]);
+    expect(oneShots.images[1]).toEqual([png]);
+    expect(prompts[0]).toContain('## Attached images');
+    expect(prompts[0]).toContain(
+      '1 image(s) are attached to this turn. Treat them as the visual specification.',
+    );
+    expect(JSON.stringify(states.at(-1))).not.toContain(png.data);
+  });
+
+  it('uses a placeholder request when only images are attached', async () => {
+    const png: PlanImageAttachment = {
+      mediaType: 'image/png',
+      data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    };
+    const { prompts, states } = await run({
+      turns: [submitted(validReply())],
+      prompt: '   ',
+      images: [png],
+    });
+    expect(prompts[0]).toContain('(see attached images)');
+    expect(prompts[0]).toContain('## Attached images');
+    expect(JSON.stringify(states.at(-1))).not.toContain(png.data);
   });
 });
 

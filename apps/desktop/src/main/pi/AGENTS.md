@@ -14,6 +14,7 @@ Before changing this integration, read `references/README.md`, then the vendored
 - `runtime.ts` owns the memoized runtime under Foundry Application Support.
 - `catalog.ts` owns reachable models and credential operations.
 - `direct-providers.ts` registers the providers pi's own table lacks, from `shared/direct-providers.ts`.
+- `packages.ts` declares the pi packages this build ships and resolves them to loadable paths.
 
 Do not import pi’s transitive packages directly. Derive needed types from `pi-coding-agent`’s public surface.
 
@@ -21,6 +22,11 @@ Do not import pi’s transitive packages directly. Derive needed types from `pi-
 
 - **Never touch `~/.pi`.** Pin runtime, auth, catalog, and session paths under Foundry’s support directory.
 - **Discovery stays off.** Extensions, skills, prompt templates, themes, context files, and appended system prompts do not come from the user’s pi installation.
+- **Packages ship with the app.** `BUNDLED_PACKAGES` in `packages.ts` is the whole list, vendored under `resources/pi-packages/` and copied out by `extraResources` (jiti reads an extension from disk, and an asar path is not a file). There is no install path: nothing at runtime — no operator, agent, plan, or repository — adds a package. Adding one is a source change plus a release.
+- **Package resources are named, never discovered.** Resolved paths reach a session through `additionalExtensionPaths` / `additionalSkillPaths` while every `no*` flag stays true. Resolution uses `cwd = supportDir` and `projectTrusted: false`, so a checkout’s `.pi/` contributes nothing and a run does not change behavior based on which repository is open.
+- **A read-only profile takes skills, not extension tools.** A skill instructs; an extension hands over a capability. The engine verifies a review phase wrote nothing by diffing git afterwards, so a write-capable package tool reaching one breaks that check. Override per package with `extensionsForReadOnly` only when the package is genuinely read-only.
+- **Package tool names are read after `reload()` and before `createAgentSession`,** because that array is the registry allowlist — a loaded tool absent from it does not exist. They are derived from what loaded, not gated a second time: resolution already decided which extensions a profile may have, and a second switch could only disagree with it. The policy’s `package` category allows them on the same footing as `command`, while `unknown` stays fail-closed for anything unattributed.
+- Read `references/packages.md` before changing package resolution.
 - **Install the Foundry identity as system context.** The phase ask remains the user message.
 - **The tool list is the capability boundary.** A read-only session has no write or shell tool, not merely a policy denial. Preserve a narrow `git_diff` replacement where review work needs it.
 - **Every tool call receives a verdict.** Unknown tools fail closed. Engine post-call diffing remains the final write-boundary enforcement.

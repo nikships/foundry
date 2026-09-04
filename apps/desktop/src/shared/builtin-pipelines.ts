@@ -95,6 +95,7 @@ function testPhase(feedbackTo: string, name = 'test'): PhaseDef {
     command: { ref: 'test' },
     feedbackTo,
     feedbackRetries: 2,
+    flakeRerun: 2,
   };
 }
 

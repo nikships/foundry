@@ -19,11 +19,11 @@ function repoWithPackage(): string {
   return dir;
 }
 
-async function run(opts: { turn: ScriptedTurn; projectPath: string }): Promise<{
+async function run(opts: { turn: ScriptedTurn | ScriptedTurn[]; projectPath: string }): Promise<{
   state: SetupState;
   oneShots: ReturnType<typeof scriptedOneShots>;
 }> {
-  const oneShots = scriptedOneShots([opts.turn]);
+  const oneShots = scriptedOneShots(Array.isArray(opts.turn) ? opts.turn : [opts.turn]);
   const session = new SetupSession({
     projectId: 'p1',
     projectPath: opts.projectPath,
@@ -58,13 +58,35 @@ describe('SetupSession', () => {
     expect(oneShots.calls[0]!.cwd).toBe(projectPath);
   });
 
+  it('parses a setup reply that only calls submit_result', async () => {
+    const { state, oneShots } = await run({
+      turn: { structuredOutput: { script: 'npm ci' } },
+      projectPath: repoWithPackage(),
+    });
+    expect(state.script).toBe('npm ci');
+    expect(state.status).toBe('done');
+    expect(oneShots.calls[0]!.outputFormat?.type).toBe('json_schema');
+    expect(oneShots.calls[0]!.systemPrompt).toContain('Call submit_result exactly once');
+  });
+
+  it('retries once when submit_result is missing, then accepts a structured correction', async () => {
+    const { state, oneShots } = await run({
+      turn: [{ text: 'I would run npm install.' }, { structuredOutput: { script: 'npm ci' } }],
+      projectPath: repoWithPackage(),
+    });
+    expect(state.status).toBe('done');
+    expect(state.script).toBe('npm ci');
+    expect(oneShots.calls).toHaveLength(2);
+    expect(oneShots.prompts[1]).toContain('Call submit_result exactly once');
+  });
+
   it('keeps the raw reply when the answer cannot be parsed', async () => {
     const { state } = await run({
-      turn: { text: 'I would run npm install.' },
+      turn: [{ text: 'I would run npm install.' }, { text: 'Still just prose.' }],
       projectPath: repoWithPackage(),
     });
     expect(state.status).toBe('failed');
-    expect(state.rawReply).toContain('npm install');
+    expect(state.rawReply).toContain('Still just prose');
     expect(state.detail).toMatch(/no JSON/);
   });
 });

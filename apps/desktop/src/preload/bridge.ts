@@ -136,6 +136,7 @@ const api: FoundryApi = {
     test: () => call(IPC.linearTest),
     clearApiKey: () => call(IPC.linearClearApiKey),
     issues: (query) => call(IPC.linearIssues, query),
+    issue: (issueId) => call(IPC.linearIssue, issueId),
     workflowStates: (teamId) => call(IPC.linearWorkflowStates, teamId),
     startRun: (input) => call(IPC.linearStartRun, input),
   },
@@ -166,8 +167,8 @@ const api: FoundryApi = {
     restoreCheckpoint: (projectId, input) => call(IPC.runsRestoreCheckpoint, projectId, input),
   },
   orchestrator: {
-    plan: (projectId, prompt, model, reasoningEffort) =>
-      call(IPC.orchestratorPlan, projectId, prompt, model, reasoningEffort),
+    plan: (projectId, prompt, model, reasoningEffort, images) =>
+      call(IPC.orchestratorPlan, projectId, prompt, model, reasoningEffort, images),
     cancel: (planId) => call(IPC.orchestratorCancel, planId),
   },
   prs: {

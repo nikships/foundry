@@ -21,6 +21,9 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, join, relative } from 'node:path';
+import { z } from 'zod';
+import { jsonSchemaWithoutDialect } from '@shared/zod-json-schema.js';
+import type { OutputFormat } from '../pi/transport.js';
 
 export type CommandRole = 'test' | 'lint' | 'typecheck' | 'build';
 
@@ -439,9 +442,11 @@ Read the build and dependency manifests (including one directory down from the g
 
 If the repository has no automated test suite, report the primary verification command (usually build or lint) as the "test" role. A pipeline's test phase needs something real to run.
 
-Reply with a single JSON object and nothing else:
+Call submit_result exactly once with:
 
 {"commands":[{"name":"test","argv":["swift","build","--package-path","App"],"source":"App/Package.swift"}]}
+
+Do not print the answer as prose or JSON. After submit_result succeeds, stop.
 
 Rules for the reply:
 - Prefer these names where they apply: test, lint, typecheck, build. Other names are allowed when the repo really has that command (for example e2e, format, bench). At most one entry per name.
@@ -502,6 +507,48 @@ export interface DetectReply {
   parseError?: string;
 }
 
+const detectCommandSchema = z
+  .object({
+    name: z.string(),
+    argv: z.array(z.string()).min(1),
+    source: z.string().optional(),
+  })
+  .strict();
+
+const detectReplySchema = z
+  .object({
+    commands: z.array(detectCommandSchema),
+  })
+  .strict();
+
+const DETECT_OUTPUT_FORMAT: OutputFormat = {
+  type: 'json_schema',
+  schema: jsonSchemaWithoutDialect(detectReplySchema),
+};
+
+/** Schema-bound `submit_result` channel for detection. */
+export function detectOutputFormat(): OutputFormat {
+  return DETECT_OUTPUT_FORMAT;
+}
+
+export function detectCorrection(parseError: string): string {
+  return [
+    `Foundry could not read that reply: ${parseError}.`,
+    'Call submit_result exactly once with {"commands":[{"name":"...","argv":["..."],"source":"..."}]} then stop.',
+  ].join(' ');
+}
+
+/**
+ * Prefer a `submit_result` object; fall back to extracting JSON from prose so
+ * a release that still dumps the object in text does not fail closed.
+ */
+export function parseDetectResult(structured: unknown, text: string): DetectReply {
+  if (structured != null && typeof structured === 'object' && !Array.isArray(structured)) {
+    return parseDetectCommands(structured, text || JSON.stringify(structured));
+  }
+  return parseDetectReply(text);
+}
+
 /**
  * The agent's reply is parsed defensively: a detected command is written into
  * project config and later executed, so a shell operator is never accepted.
@@ -534,6 +581,10 @@ export function parseDetectReply(text: string): DetectReply {
     };
   }
 
+  return parseDetectCommands(parsed, rawReply);
+}
+
+function parseDetectCommands(parsed: unknown, rawReply: string): DetectReply {
   const list = (parsed as { commands?: unknown })?.commands;
   if (!Array.isArray(list)) {
     return {

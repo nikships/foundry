@@ -647,6 +647,7 @@ describe('token auth, fail closed', () => {
     ['POST', '/v1/orchestrator/plans/plan/cancel'],
     ['GET', '/v1/linear'],
     ['GET', '/v1/linear/issues'],
+    ['GET', '/v1/linear/issues/issue'],
     ['GET', '/v1/linear/teams/team/workflow-states'],
     ['POST', '/v1/linear/runs'],
     ['POST', '/v1/projects/x/runs/y/pr'],
@@ -1024,6 +1025,8 @@ describe('Linear routes', () => {
 
     const issues = await authed(paired.token, '/v1/linear/issues?query=FOU-204');
     expect(await issues.json()).toMatchObject([{ id: 'issue-204', identifier: 'FOU-204' }]);
+    const issue = await authed(paired.token, '/v1/linear/issues/issue-204');
+    expect(await issue.json()).toMatchObject({ id: 'issue-204', identifier: 'FOU-204' });
     const workflow = await authed(paired.token, '/v1/linear/teams/team-foundry/workflow-states');
     expect(await workflow.json()).toMatchObject([
       { id: 'started' },

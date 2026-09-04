@@ -43,7 +43,7 @@ export interface PolicyOutcome {
  * through, because the write boundary can only see inside the worktree and a
  * tool nobody classified could act outside it.
  */
-export type ToolCategory = 'read' | 'write' | 'command' | 'foundry' | 'unknown';
+export type ToolCategory = 'read' | 'write' | 'command' | 'foundry' | 'package' | 'unknown';
 
 /** Pi's read-only built-ins. None of them can change the worktree. */
 const READ_TOOLS = new Set(['read', 'grep', 'find', 'ls']);
@@ -52,11 +52,18 @@ const WRITE_TOOLS = new Set(['edit', 'write']);
 /** Pi's command runner. */
 const COMMAND_TOOLS = new Set(['bash']);
 
-export function categorize(tool: string, foundryTools: readonly string[] = []): ToolCategory {
+export function categorize(
+  tool: string,
+  foundryTools: readonly string[] = [],
+  packageTools: readonly string[] = [],
+): ToolCategory {
   if (READ_TOOLS.has(tool)) return 'read';
   if (WRITE_TOOLS.has(tool)) return 'write';
   if (COMMAND_TOOLS.has(tool)) return 'command';
   if (foundryTools.includes(tool)) return 'foundry';
+  // Named by the session that opened it, never inferred: a tool this build
+  // cannot attribute to a package the operator installed is still unknown.
+  if (packageTools.includes(tool)) return 'package';
   return 'unknown';
 }
 
@@ -64,9 +71,10 @@ export function evaluate(
   ask: PermissionAsk,
   ctx: PolicyContext,
   foundryTools: readonly string[] = [],
+  packageTools: readonly string[] = [],
 ): PolicyOutcome {
   const tool = ask.tool;
-  const category = categorize(tool, foundryTools);
+  const category = categorize(tool, foundryTools, packageTools);
 
   switch (category) {
     case 'read':
@@ -76,6 +84,13 @@ export function evaluate(
       // Foundry's own tools read app state, write the trace, or capture a
       // structured answer in memory. None can write the governed worktree.
       return allow(`${tool} is a Foundry tool and does not write the worktree`);
+
+    case 'package':
+      // Same standing as `command`, and for the same reason: the tool runs
+      // unattended and the post-hoc git diff is what catches a worktree write
+      // it should not have made. The trust decision was the install, not this
+      // verdict — a package's module code already ran when the session opened.
+      return allow(`${tool} comes from a package you installed`);
 
     case 'command': {
       const command = ask.command ?? pickString(ask.input, ['command']);

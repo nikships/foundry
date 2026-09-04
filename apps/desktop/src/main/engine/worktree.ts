@@ -16,6 +16,7 @@ import {
   deleteBranch,
   excludeLocally,
   headSha,
+  initSubmodules,
   listWorktrees,
   mergeBranch,
   pruneWorktrees,
@@ -55,6 +56,12 @@ export async function create(input: {
   const result = await addWorktree(input.repo, path, branch, input.baseRef);
   if (!result.ok) {
     throw new Error(`could not create worktree at ${path}: ${result.stdout.trim()}`);
+  }
+  if (existsSync(join(path, '.gitmodules'))) {
+    const sub = await initSubmodules(path);
+    if (!sub.ok) {
+      throw new Error(`could not initialize submodules at ${path}: ${sub.stdout.trim()}`);
+    }
   }
   return { path, branch, baseRef: input.baseRef, branchPointSha };
 }

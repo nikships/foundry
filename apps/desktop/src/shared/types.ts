@@ -114,6 +114,12 @@ export interface PhaseDef {
    * failure fails the run wants. `false` opts one out.
    */
   heal?: boolean;
+  /**
+   * `{ref}` proof phases: how many times to re-run a failed command without
+   * edits before a healer may write. Absent uses the engine default (2) for
+   * `{ref}` phases and 0 for argv/builtin. Explicit `0` opts out.
+   */
+  flakeRerun?: number;
 }
 
 /** A freely positioned point on the Pipelines canvas, in canvas coordinates. */
@@ -364,9 +370,33 @@ export const FIXED_ENGINE_DEFAULTS = {
    * than per pipeline: an unbounded healer is a run that never ends.
    */
   healingAttempts: 2,
+  /**
+   * `{ref}` proof phases re-run this many times without edits before healing,
+   * so a flaky test is not rewritten. `PhaseDef.flakeRerun` overrides.
+   */
+  flakeReruns: 2,
   /** Mid-run pipeline amendments an orchestrated run may request. */
   replanAttempts: 2,
 } as const;
+
+/** How a failed proof command was classified after flake reruns and/or healing. */
+export type HealClass = 'flake' | 'healed' | 'failed';
+
+/**
+ * How many no-edit reruns a failed code phase gets before healing.
+ *
+ * Optional phases have nothing to classify. An explicit `flakeRerun` wins,
+ * including `0` to opt out. Otherwise `{ref}` proof phases use the engine
+ * default so a flaky test is not rewritten; argv and builtin commands stay off.
+ */
+export function flakeRerunCount(
+  phase: Pick<PhaseDef, 'kind' | 'optional' | 'command' | 'flakeRerun'>,
+): number {
+  if (phase.kind !== 'code' || phase.optional) return 0;
+  if (typeof phase.flakeRerun === 'number') return Math.max(0, phase.flakeRerun);
+  if (phase.command && 'ref' in phase.command) return FIXED_ENGINE_DEFAULTS.flakeReruns;
+  return 0;
+}
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
 
@@ -698,6 +728,13 @@ export interface LinearWorkflowState {
   type: string;
 }
 
+export interface LinearIssueComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: string;
+}
+
 export interface LinearIssueSnapshot {
   id: string;
   identifier: string;
@@ -707,6 +744,14 @@ export interface LinearIssueSnapshot {
   updatedAt: string;
   team: { id: string; name: string };
   state: LinearWorkflowState;
+  /** Present when Linear returned labels; omitted on older snapshots. */
+  labels?: string[];
+  /** Parent issue when this ticket is a sub-issue. */
+  parent?: { identifier: string; title: string } | null;
+  /** Recent comments, newest first. */
+  comments?: LinearIssueComment[];
+  /** True when Linear has more comments than this snapshot fetched. */
+  commentsTruncated?: boolean;
 }
 
 export interface LinearRunSource {
@@ -1291,6 +1336,27 @@ export interface GeneratedRunPlan {
   warnings: ValidationIssue[];
   model: string;
   reasoningEffort: ReasoningEffort;
+}
+
+export const PLAN_IMAGE_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+] as const;
+export type PlanImageMime = (typeof PLAN_IMAGE_MIME_TYPES)[number];
+
+export const PLAN_IMAGE_MAX_COUNT = 8;
+/** Decoded size, per image. */
+export const PLAN_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+/** Decoded size, all images combined. */
+export const PLAN_IMAGE_MAX_TOTAL_BYTES = 12 * 1024 * 1024;
+
+/** Clone-safe planning attachment. `data` is raw base64, no `data:` prefix. */
+export interface PlanImageAttachment {
+  mediaType: PlanImageMime;
+  data: string;
+  name?: string;
 }
 
 /** One mid-run amendment: replaces the not-yet-run tail of the pipeline. */

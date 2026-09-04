@@ -46,6 +46,7 @@ describe('orchestrator composition rules', () => {
       'independent-review-before-pr',
       'phase-model',
       'feedback-to',
+      'flake-rerun',
       'acceptance',
       'prefer-roster',
       'synthesized-agent',

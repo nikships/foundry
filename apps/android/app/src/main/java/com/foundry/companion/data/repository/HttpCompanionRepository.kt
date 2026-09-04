@@ -316,6 +316,11 @@ class HttpCompanionRepository(
         return getJson("/v1/linear/issues?query=$encoded", ListSerializer(LinearIssueSnapshot.serializer()))
     }
 
+    override suspend fun getLinearIssue(issueId: String): Result<LinearIssueSnapshot> {
+        val encoded = URLEncoder.encode(issueId, StandardCharsets.UTF_8.name())
+        return getJson("/v1/linear/issues/$encoded", LinearIssueSnapshot.serializer())
+    }
+
     override suspend fun getLinearWorkflowStates(
         teamId: String
     ): Result<List<LinearWorkflowState>> =

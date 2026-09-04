@@ -44,6 +44,7 @@ import type {
   StartRunInput,
   PanelEntry,
   PanelStateCore,
+  PlanImageAttachment,
   UpdateStatus,
   ValidationIssue,
 } from './types.js';
@@ -627,6 +628,8 @@ export interface FoundryApi {
     clearApiKey(): Promise<LinearActionResult>;
     /** Empty query browses recent accessible issues; text filters key/title. */
     issues(query: string): Promise<LinearIssueSnapshot[]>;
+    /** Loads the selected issue with bounded comments and other planning evidence. */
+    issue(issueId: string): Promise<LinearIssueSnapshot>;
     workflowStates(teamId: string): Promise<LinearWorkflowState[]>;
     startRun(
       input: LinearStartRunInput,
@@ -713,6 +716,7 @@ export interface FoundryApi {
       prompt: string,
       model: string,
       reasoningEffort: ReasoningEffort,
+      images?: PlanImageAttachment[],
     ): Promise<{ planId: string } | { error: string }>;
     cancel(planId: string): Promise<boolean>;
   };
@@ -905,6 +909,7 @@ export const IPC = {
   linearTest: 'linear:test',
   linearClearApiKey: 'linear:clearApiKey',
   linearIssues: 'linear:issues',
+  linearIssue: 'linear:issue',
   linearWorkflowStates: 'linear:workflowStates',
   linearStartRun: 'linear:startRun',
   runsStart: 'runs:start',

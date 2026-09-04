@@ -1,4 +1,4 @@
-import type { ReasoningEffort } from '@shared/types.js';
+import type { PlanImageAttachment, ReasoningEffort } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import { enabledModels } from '../pi/enabled-models.js';
@@ -24,11 +24,12 @@ export function register(ctx: Ctx, handle: Handle): void {
       prompt: string,
       model: string,
       reasoningEffort: ReasoningEffort,
+      images?: PlanImageAttachment[],
     ): { planId: string } | { error: string } => {
       return startPlan(
         ctx.plans,
         ctx.projects.get(projectId),
-        { prompt, model, reasoningEffort },
+        { prompt, model, reasoningEffort, images },
         {
           rosterFor: (id) => ctx.rosterFor(id),
           envelopeDefs: ctx.envelopes.list(),

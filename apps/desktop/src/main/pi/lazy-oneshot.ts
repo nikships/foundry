@@ -5,7 +5,7 @@
  * the vendor package before a window existed. The wrapper answers `abort()`
  * immediately and only pays for the runtime when a turn actually starts.
  */
-import type { OneShotFactory, OneShotOptions, OneShotSession } from './oneshot.js';
+import type { OneShotFactory, OneShotImage, OneShotOptions, OneShotSession } from './oneshot.js';
 
 export function lazyOneShots(load: () => Promise<OneShotFactory>): OneShotFactory {
   let factory: OneShotFactory | null = null;
@@ -28,7 +28,7 @@ export function lazyOneShots(load: () => Promise<OneShotFactory>): OneShotFactor
         aborted = true;
         inner?.abort();
       },
-      async send(prompt: string) {
+      async send(prompt: string, images?: readonly OneShotImage[]) {
         const session = (inner ??= (await ready())(opts));
         if (aborted) {
           session.abort();
@@ -40,7 +40,7 @@ export function lazyOneShots(load: () => Promise<OneShotFactory>): OneShotFactor
             structuredOutput: null,
           };
         }
-        return session.send(prompt);
+        return session.send(prompt, images);
       },
     };
   };

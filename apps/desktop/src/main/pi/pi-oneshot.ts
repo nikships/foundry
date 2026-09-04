@@ -16,9 +16,10 @@
 import {
   SessionManager,
   type AgentSession as PiAgentSession,
+  type PromptOptions,
 } from '@earendil-works/pi-coding-agent';
 import { join } from 'node:path';
-import { pickModel, thinkingLevelFor } from './model.js';
+import { modelKey, pickModel, thinkingLevelFor } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
 import {
   foundryResourceLoader,
@@ -34,7 +35,13 @@ import { FOUNDRY_ONESHOT_HARNESS } from './system-prompt.js';
 import { BUILTIN_TOOLS, ONESHOT_OUTPUT_TOOL_NAME, READ_ONLY_TOOLS } from './tool-names.js';
 import { submitResultTool, type SubmissionTool } from './tools.js';
 import { subscribeSessionEvents, VendorEventReader } from './vendor-events.js';
-import type { OneShotFactory, OneShotOptions, OneShotResult, OneShotSession } from './oneshot.js';
+import type {
+  OneShotFactory,
+  OneShotImage,
+  OneShotOptions,
+  OneShotResult,
+  OneShotSession,
+} from './oneshot.js';
 import type { PermissionAsk, PermissionDecision } from './transport.js';
 
 /** What every one-shot needs that only the composition root knows. */
@@ -59,7 +66,7 @@ class PiOneShot implements OneShotSession {
     this.extension = policyOnlyExtension((ask) => this.decide(ask), this.outputTool ?? undefined);
   }
 
-  async send(prompt: string): Promise<OneShotResult> {
+  async send(prompt: string, images?: readonly OneShotImage[]): Promise<OneShotResult> {
     const session = await this.open();
     try {
       // An abort that landed while the session was still opening must not be
@@ -74,17 +81,32 @@ class PiOneShot implements OneShotSession {
         };
       }
 
+      const hasImages = Boolean(images?.length);
+      if (hasImages && !session.model?.input.includes('image')) {
+        const selected = session.model
+          ? modelKey(session.model)
+          : 'The selected Orchestrator model';
+        throw new Error(
+          `${selected} does not support image input. Choose an image-capable Orchestrator model.`,
+        );
+      }
+
       this.extension.useSystemPrompt(this.opts.systemPrompt ?? null);
       this.events.startTurn();
 
-      const last = await promptUntilIdle(session, prompt, () =>
-        continueWithModelFailover({
-          session,
-          events: this.events,
-          availableModelCount: this.availableModelCount,
-          hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
-          onWarning: (warning) => this.opts.onWarning?.(warning),
-        }),
+      const last = await promptUntilIdle(
+        session,
+        prompt,
+        () =>
+          continueWithModelFailover({
+            session,
+            events: this.events,
+            availableModelCount: this.availableModelCount,
+            hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+            requireImageInput: hasImages,
+            onWarning: (warning) => this.opts.onWarning?.(warning),
+          }),
+        images?.length ? toPiImages(images) : undefined,
       );
 
       return {
@@ -180,6 +202,14 @@ class PiOneShot implements OneShotSession {
       // Disposal is best effort; the caller already has its answer.
     }
   }
+}
+
+function toPiImages(images: readonly OneShotImage[]): NonNullable<PromptOptions['images']> {
+  return images.map((image) => ({
+    type: 'image' as const,
+    data: image.data,
+    mimeType: image.mediaType,
+  }));
 }
 
 /** The production factory, bound to the directory Foundry keeps pi state in. */

@@ -8,6 +8,7 @@ import {
   mergeCommandsFillMissing,
   parseCommandDrift,
   parseDetectReply,
+  parseDetectResult,
   resolveRefCommand,
   sniffCommands,
 } from '../../../src/main/engine/detect.js';
@@ -273,6 +274,25 @@ describe('parseDetectReply', () => {
       ]),
     );
     expect(out.commands.map((c) => c.name)).toEqual(['test', 'build', 'e2e']);
+  });
+});
+
+describe('parseDetectResult', () => {
+  it('prefers a submit_result object over assistant prose', () => {
+    const out = parseDetectResult(
+      { commands: [{ name: 'test', argv: ['npm', 'test'], source: 'package.json' }] },
+      'Here is some prose that is not the answer.',
+    );
+    expect(out.commands).toEqual([{ name: 'test', argv: ['npm', 'test'], source: 'package.json' }]);
+    expect(out.parseError).toBeUndefined();
+  });
+
+  it('falls back to extracting JSON from prose when submit_result was not called', () => {
+    const out = parseDetectResult(
+      null,
+      '{"commands":[{"name":"lint","argv":["npm","run","lint"]}]}',
+    );
+    expect(out.commands).toEqual([{ name: 'lint', argv: ['npm', 'run', 'lint'], source: 'agent' }]);
   });
 });
 
