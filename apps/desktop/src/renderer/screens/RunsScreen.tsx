@@ -270,7 +270,7 @@ function OrchestratedComposer({
           value={request}
           onChange={(event) => onRequestChange(event.target.value)}
           rows={orchestrator.stage === 'compose' ? 4 : 2}
-          placeholder="Describe the change. The Orchestrator rewrites it into a full brief and composes the pipeline."
+          placeholder="Describe the change. The Orchestrator rewrites it into a behavior-level brief and composes the pipeline."
           onKeyDown={onRequestKeyDown}
           onPaste={onRequestPaste}
           aria-label="Run request"

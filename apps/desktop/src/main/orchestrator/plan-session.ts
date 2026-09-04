@@ -244,6 +244,7 @@ export class PlanSession {
           allowedModelIds: opts.allowedModelIds,
           allowedModels: opts.allowedModels,
           scaffold: this.deps.scaffold,
+          request: this.deps.prompt,
         })
       : null;
     if (parsed.ok && rails?.ok) {

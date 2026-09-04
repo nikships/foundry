@@ -200,6 +200,7 @@ export async function startRun(
         knownEnvelopes,
         allowedModelIds,
         scaffold: project.scaffold === true,
+        request: plan.prompt,
       })
     : null;
   let issues: ValidationIssue[];

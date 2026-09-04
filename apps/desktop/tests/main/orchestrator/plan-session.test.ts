@@ -453,6 +453,33 @@ describe('PlanSession', () => {
     expect(state.entries.some((e) => e.text.includes('no agent named "nobody"'))).toBe(true);
   });
 
+  it('sends an invented-path brief back as a correction, keeping the brief behavioral', async () => {
+    const prescriptive = validReply({
+      refinedRequest:
+        'Add a CHANGES.md with release notes by editing src/release/notes.ts and updating scripts/changelog/generate.ts.',
+    });
+    const { state } = await run({ turns: [submitted(prescriptive), submitted(validReply())] });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((e) => e.text.includes('invents repository path'))).toBe(true);
+    expect(state.entries.some((e) => e.text.includes('src/release/notes.ts'))).toBe(true);
+    expect(state.plan!.refinedRequest).not.toContain('src/release/notes.ts');
+  });
+
+  it('keeps an operator-stated path in the brief without tripping the invented-path rail', async () => {
+    const scoped = validReply({
+      refinedRequest:
+        'Add release notes in docs/CHANGES.md only, keeping the existing intro untouched.',
+    });
+    const { state } = await run({
+      turns: [submitted(scoped)],
+      prompt: 'add release notes in docs/CHANGES.md only',
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.plan!.refinedRequest).toContain('docs/CHANGES.md');
+  });
+
   it('rejects engine-owned fields in the submitted object', async () => {
     const withId = JSON.parse(validReply()) as Record<string, unknown>;
     (withId.pipeline as Record<string, unknown>).id = 'model-owned-id';
