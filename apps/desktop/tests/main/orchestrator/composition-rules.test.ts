@@ -13,6 +13,7 @@ import {
 import {
   COMPOSITION_RULES,
   compositionRuleBullets,
+  generatedCompositionIssues,
 } from '../../../src/main/orchestrator/composition.js';
 import type { ModelInfo } from '../../../src/shared/types.js';
 
@@ -68,6 +69,39 @@ describe('orchestrator composition rules', () => {
         expect(phase.reasoningEffort).toBeTruthy();
       }
     }
+  });
+
+  it('keeps the refined brief behavioral: invented repository paths are errors', () => {
+    const briefIssues = (request: string | undefined, refinedRequest: string) =>
+      generatedCompositionIssues({ phases: [] }, [], [], [], { request, refinedRequest });
+
+    const invented = briefIssues(
+      'let users paste images into the composer',
+      'Add paste support by extending src/renderer/components/Composer.tsx and storing blobs via src/main/images.ts.',
+    );
+    expect(invented).toHaveLength(2);
+    expect(invented[0]!.where).toBe('refinedRequest');
+    expect(invented[0]!.message).toContain('src/renderer/components/Composer.tsx');
+    expect(invented[1]!.message).toContain('src/main/images.ts');
+
+    // An operator-stated path is a constraint the brief must keep, not an invention.
+    expect(
+      briefIssues(
+        'tighten the cast pool in apps/desktop/src/main/orchestrator/plan.ts only',
+        'Tighten the cast pool in apps/desktop/src/main/orchestrator/plan.ts only; change nothing else.',
+      ),
+    ).toEqual([]);
+
+    // Prose slashes, URLs, and dates are not repository paths.
+    expect(
+      briefIssues(
+        'document the retry behavior',
+        'Cover read/write access, CI/CD notes, the 09/03/2026 cutoff, and https://linear.app/foundry/issue/FOU-190.',
+      ),
+    ).toEqual([]);
+
+    // Amendments and image-only planning carry no raw request: the rail stands down.
+    expect(briefIssues(undefined, 'Rewrite src/invented/path.ts anyway.')).toEqual([]);
   });
 
   it('lists more than two cast-pool ids when more are enabled', () => {

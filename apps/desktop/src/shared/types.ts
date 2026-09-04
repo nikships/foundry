@@ -1324,7 +1324,7 @@ export interface GeneratedRunPlan {
   projectId: string;
   /** The operator's raw prompt, kept verbatim for the trace. */
   prompt: string;
-  /** The Orchestrator's rewritten full brief; becomes the run `request`. */
+  /** The Orchestrator's behavior-level brief; becomes the run `request`. */
   refinedRequest: string;
   /** Why the pipeline has this shape, operator-facing. */
   rationale: string;

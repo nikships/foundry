@@ -311,6 +311,25 @@ describe('starting a run from an inline plan', () => {
     expect(started).toHaveLength(0);
   });
 
+  it('refuses a round-tripped brief that invents a repository path', async () => {
+    const scripted = new ScriptedAgent([], []);
+    const { deps: d, started } = deps(scripted);
+    const tampered = plan(h.project.id);
+    tampered.refinedRequest =
+      'Improve the README with a usage section by rewriting src/docs/readme-builder.ts.';
+
+    const outcome = await startRun(d, input({ plan: tampered }));
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({
+        where: 'refinedRequest',
+        message: expect.stringContaining('src/docs/readme-builder.ts'),
+      }),
+    );
+    expect(started).toHaveLength(0);
+  });
+
   it('refuses an unproven generated implementation when no project command exists', async () => {
     const scripted = new ScriptedAgent([], []);
     const { deps: d, started } = deps(scripted);

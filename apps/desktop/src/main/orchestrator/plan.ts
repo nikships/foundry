@@ -56,7 +56,7 @@ Security boundary:
 
 Call submit_result exactly once with the complete plan object:
 {
-  "refinedRequest": "<the full brief>",
+  "refinedRequest": "<the behavior-level brief>",
   "rationale": "<why the pipeline has this shape, one short paragraph>",
   "pipeline": { "name": ..., "description": ..., "acceptance": ..., "phases": [...] },
   "agents": [ <synthesized agents only; empty when the roster covers every phase> ]
@@ -288,7 +288,9 @@ const generatedPipelineSchema = pipelineSchema
 
 const planReplySchema = z
   .object({
-    refinedRequest: z.string().min(1, 'the plan must rewrite the request into a full brief'),
+    refinedRequest: z
+      .string()
+      .min(1, 'the plan must rewrite the request into a behavior-level brief'),
     rationale: z.string().min(1, 'say why the pipeline has this shape'),
     pipeline: generatedPipelineSchema,
     agents: z.array(synthesizedAgentSchema),
@@ -364,6 +366,12 @@ export interface PlanRailsInputs {
   roster: AgentDef[];
   commandNames: string[];
   knownEnvelopes: string[];
+  /**
+   * The operator's raw prompt, so the brief rail can tell an operator-stated
+   * path from an invented one. Absent (image-only planning) the rail stands
+   * down rather than judging a brief against nothing.
+   */
+  request?: string;
   /**
    * Ids this boundary permits the plan to appoint. Planning passes the
    * enabled catalog; confirmation passes the live enabled catalog so an
@@ -502,6 +510,8 @@ export function checkPlanRails(reply: ParsedPlanReply, inputs: PlanRailsInputs):
     ...generatedCompositionIssues(reply.pipeline, reply.agents, union, inputs.commandNames, {
       scaffold: inputs.scaffold,
       allowedModelIds,
+      request: inputs.request,
+      refinedRequest: reply.refinedRequest,
     }),
   );
   const errors = issues.filter((i) => i.level === 'error');

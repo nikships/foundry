@@ -21,6 +21,10 @@ export interface CompositionContext {
   scaffold?: boolean;
   /** Ids the current cast pool permits; used for the same-provider warning. */
   allowedModelIds?: readonly string[];
+  /** The operator's raw prompt, when the caller has one (planning; not amendments). */
+  request?: string;
+  /** The brief under scrutiny; absent for amendments, which cannot rewrite it. */
+  refinedRequest?: string;
 }
 
 export interface CompositionRule {
@@ -344,6 +348,47 @@ function synthesizedPromptIssues(ctx: CompositionContext): ValidationIssue[] {
   return issues;
 }
 
+/** Slashed tokens that could name a repository location. */
+const PATH_TOKEN = /[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@*-]+)+/g;
+
+/**
+ * Whether a slashed token reads as a repository path rather than prose like
+ * "read/write": three or more segments, or a file extension on the last one.
+ * All-digit tokens (dates such as 09/03/2026) are prose.
+ */
+function looksLikeRepoPath(token: string): boolean {
+  if (!/[A-Za-z]/.test(token)) return false;
+  const segments = token.split('/');
+  if (segments.length >= 3) return true;
+  return /\.[A-Za-z0-9]{1,5}$/.test(segments[segments.length - 1]!);
+}
+
+/**
+ * The brief must stay behavioral: a repository path belongs in refinedRequest
+ * only when the operator wrote it. Compared against the raw request rather
+ * than the repository, because the summary is exactly where an invented
+ * location would have come from. Stands down when there is no raw prompt to
+ * compare against (image-only planning, run amendments).
+ */
+function inventedPathIssues(ctx: CompositionContext): ValidationIssue[] {
+  const request = ctx.request?.trim();
+  const brief = ctx.refinedRequest;
+  if (!request || !brief) return [];
+  const invented = new Set<string>();
+  for (const match of brief.matchAll(PATH_TOKEN)) {
+    const token = match[0];
+    // A token right after "//" is the host half of a URL, not a repo path.
+    const at = match.index ?? 0;
+    if (at > 0 && brief[at - 1] === '/') continue;
+    if (looksLikeRepoPath(token) && !request.includes(token)) invented.add(token);
+  }
+  return [...invented].map((token) => ({
+    level: 'error' as const,
+    where: 'refinedRequest',
+    message: `the brief invents repository path "${token}" — refinedRequest stays behavioral and names a path only when the operator did`,
+  }));
+}
+
 function engineerPhaseIssues(ctx: CompositionContext): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const [index, phase] of ctx.pipeline.phases.entries()) {
@@ -435,8 +480,8 @@ export const COMPOSITION_RULES: CompositionRule[] = [
   {
     id: 'refined-request',
     bullet:
-      'Always rewrite the operator\'s prompt into a full brief first. That brief is "refinedRequest" and becomes the run request; keep every constraint the operator stated.',
-    check: () => [],
+      'Always rewrite the operator\'s prompt into a behavior-level brief first. That brief is "refinedRequest" and becomes the run request: state the user goal and the observable behavior to deliver, keep every explicit requirement and named interface, format, compatibility, or scope constraint verbatim, keep stated or strongly implied edge cases (empty states, errors, boundaries, retries, lifecycle), and keep any testable acceptance evidence the request provides. Do not prescribe implementation in the brief: never add repository paths, filenames, components, symbols, test IDs, APIs, libraries, architecture, data models, or an implementation sequence the operator did not state — downstream agents inspect the repository and decide how. A path or implementation detail belongs in the brief only when the operator wrote it.',
+    check: inventedPathIssues,
   },
   {
     id: 'proof',
@@ -534,6 +579,8 @@ export function generatedCompositionIssues(
     indexOffset?: number;
     scaffold?: boolean;
     allowedModelIds?: readonly string[];
+    request?: string;
+    refinedRequest?: string;
   } = {},
 ): ValidationIssue[] {
   const ctx: CompositionContext = {
@@ -544,6 +591,8 @@ export function generatedCompositionIssues(
     indexOffset: opts.indexOffset ?? 0,
     scaffold: opts.scaffold,
     allowedModelIds: opts.allowedModelIds,
+    request: opts.request,
+    refinedRequest: opts.refinedRequest,
   };
   return COMPOSITION_RULES.flatMap((rule) => rule.check(ctx));
 }

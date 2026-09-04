@@ -284,6 +284,20 @@ const GOLDENS: Golden[] = [
     }),
   },
   {
+    id: 'invented-path-brief',
+    expect: 'reject',
+    request: 'let users paste images from the clipboard into the composer',
+    contextSummary:
+      'An Electron app. The composer lives in src/renderer/components/Composer.tsx and images flow through src/main/images/store.ts.',
+    commands: TEST_CMD,
+    models: POOL,
+    roster: [builder()],
+    reply: buildThenTest({
+      refinedRequest:
+        'Add clipboard image paste to the composer: extend src/renderer/components/Composer.tsx to handle paste events and persist blobs through src/main/images/store.ts.',
+    }),
+  },
+  {
     id: 'missing-test-command',
     expect: 'reject',
     request: 'add a CHANGES.md with release notes',
@@ -491,6 +505,7 @@ describe('orchestrator-golden', () => {
           knownEnvelopes: [],
           allowedModelIds: golden.models.map((entry) => entry.id),
           allowedModels: golden.models,
+          request: golden.request,
         });
         expect(rails.ok).toBe(false);
         return;
@@ -506,6 +521,7 @@ describe('orchestrator-golden', () => {
         knownEnvelopes: [],
         allowedModelIds: golden.models.map((entry) => entry.id),
         allowedModels: golden.models,
+        request: golden.request,
       });
       expect(rails.ok).toBe(true);
       expect(
