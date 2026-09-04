@@ -1,31 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { GeneratedRunPlan, ReasoningEffort, ValidationIssue } from '@shared/types.js';
-import {
-  modelForEffortPicker,
-  normalizeReasoningEffortForModelChoice,
-} from '@shared/reasoning-effort.js';
 import { useApp } from '../../stores/app.js';
-import { useAgentModels } from '../../hooks/useAgentModels.js';
-import { phaseKindColor } from '../../utils/derive.js';
 import { overriddenPhases, planCardView } from '../../view-models/plan-view.js';
 import {
   isMissingProjectCommandWarning,
   missingProjectCommandRefs,
 } from '../../view-models/project-commands-view.js';
-import ModelPicker from '../common/ModelPicker.js';
-import ReasoningEffortPicker from '../common/ReasoningEffortPicker.js';
-import PipelineRibbon from '../pipeline/PipelineRibbon.js';
-import { PhaseGlyph } from '../pipeline/PhaseGlyphs.js';
 import ProjectCommandsModal from '../project/ProjectCommandsModal.js';
 import { Button } from '../ui/Button.js';
+import PlanCanvas from './PlanCanvas.js';
+import PlanPhaseSheet from './PlanPhaseSheet.js';
 import styles from './PlanCard.module.css';
 
 /**
  * The Orchestrator's proposal, laid out for confirmation: the refined brief,
- * the ordered phases with the model each is appointed to, the agents it
- * synthesized, the acceptance rule, and why the pipeline has this shape.
- * Nothing here starts anything — the operator disposes, and may re-cast any
- * agent phase onto a different model before doing so.
+ * the proposed pipeline as an inspectable board, the agents it synthesized,
+ * the acceptance rule, and why the pipeline has this shape. Nothing here
+ * starts anything — the operator disposes, and may re-cast any agent phase
+ * onto a different model or reasoning level before doing so.
  */
 export default function PlanCard({
   plan,
@@ -62,8 +54,9 @@ export default function PlanCard({
   sourceDetail?: string;
 }): React.JSX.Element {
   const { agentColor, project, refreshAll } = useApp();
-  const { models, refresh } = useAgentModels();
   const [configuringCommands, setConfiguringCommands] = useState(false);
+  const [inspecting, setInspecting] = useState<string | null>(null);
+  const cardRef = useRef<HTMLElement>(null);
   const planProject = project?.id === plan.projectId ? project : null;
   const missingCommandRefs = useMemo(
     () => (planProject ? missingProjectCommandRefs(plan.pipeline, planProject.commands) : []),
@@ -80,14 +73,35 @@ export default function PlanCard({
   );
   const view = useMemo(() => planCardView(visiblePlan), [visiblePlan]);
   const overridden = useMemo(() => overriddenPhases(original, plan), [original, plan]);
-  const synthColor = (name: string | null): string => {
-    if (!name) return 'var(--text-faint)';
-    return plan.agents.find((a) => a.name === name)?.color ?? agentColor(name);
-  };
+  const synthColor = useCallback(
+    (name: string | null): string => {
+      if (!name) return 'var(--text-faint)';
+      return plan.agents.find((a) => a.name === name)?.color ?? agentColor(name);
+    },
+    [plan.agents, agentColor],
+  );
+
+  const inspectedPhase = useMemo(
+    () => view.phases.find((phase) => phase.name === inspecting) ?? null,
+    [view.phases, inspecting],
+  );
+
+  /** Escape or Done returns focus to the node the operator was inspecting. */
+  const closeInspector = useCallback((): void => {
+    const name = inspecting;
+    setInspecting(null);
+    if (!name) return;
+    requestAnimationFrame(() => {
+      cardRef.current
+        ?.querySelector<HTMLElement>(`[data-plan-node="${CSS.escape(name)}"]`)
+        ?.focus();
+    });
+  }, [inspecting]);
+
   const commandPronoun = missingCommandRefs.length === 1 ? 'it' : 'them';
 
   return (
-    <section className={`${styles.card} card`} data-testid="plan-card">
+    <section ref={cardRef} className={`${styles.card} card`} data-testid="plan-card">
       <header className={styles.head}>
         <div className={styles.headText}>
           <h2 className={styles.title}>{view.title}</h2>
@@ -97,7 +111,6 @@ export default function PlanCard({
           </p>
         </div>
         <p className={styles.description}>{view.description}</p>
-        <PipelineRibbon pipeline={plan.pipeline} />
       </header>
 
       <div className={styles.section}>
@@ -109,7 +122,7 @@ export default function PlanCard({
 
       <div className={styles.section}>
         <div className={styles.sectionHead}>
-          <p className={styles.label}>Phases</p>
+          <p className={styles.label}>The pipeline</p>
           {overridden.size > 0 && (
             <button
               type="button"
@@ -122,71 +135,16 @@ export default function PlanCard({
             </button>
           )}
         </div>
-        <ol className={styles.phases}>
-          {view.phases.map((phase) => {
-            const color = phaseKindColor(phase.kind, synthColor(phase.agent));
-            return (
-              <li key={phase.name} className={styles.phase}>
-                <span className={styles.phaseIcon} style={{ color }}>
-                  <PhaseGlyph kind={phase.kind} />
-                </span>
-                <div className={styles.phaseBody}>
-                  <div className={styles.phaseTop}>
-                    <span className={styles.phaseName} style={{ color }}>
-                      {phase.name}
-                    </span>
-                    {phase.agent && (
-                      <span className={`faint ${styles.phaseAgent}`}>
-                        {phase.agent}
-                        {phase.synthesized && (
-                          <span className={styles.synthBadge}>synthesized</span>
-                        )}
-                      </span>
-                    )}
-                    {phase.decides && <span className={styles.decides}>decides</span>}
-                  </div>
-                  <p className={styles.phaseDesc}>{phase.description}</p>
-                  {phase.note && <p className={`faint ${styles.phaseNote}`}>{phase.note}</p>}
-                  {phase.model !== null && (
-                    <div className={styles.phaseModel} data-testid={`plan-model-${phase.name}`}>
-                      <span className={styles.phaseModelLabel}>Model</span>
-                      <ModelPicker
-                        value={phase.model}
-                        models={models}
-                        showNotes={false}
-                        disabled={starting}
-                        onChange={(model) => {
-                          onPhaseModelChange(phase.name, model);
-                          const normalized = normalizeReasoningEffortForModelChoice(
-                            phase.reasoningEffort ?? 'medium',
-                            model,
-                            models,
-                          );
-                          if (normalized !== phase.reasoningEffort) {
-                            onPhaseReasoningEffortChange(phase.name, normalized);
-                          }
-                        }}
-                        onRefresh={() => void refresh()}
-                      />
-                      <span className={styles.phaseModelLabel}>Reasoning</span>
-                      <ReasoningEffortPicker
-                        value={phase.reasoningEffort ?? 'medium'}
-                        model={modelForEffortPicker(phase.model, models)}
-                        disabled={starting}
-                        ariaLabel={`Reasoning effort for ${phase.name}`}
-                        data-testid={`plan-reasoning-${phase.name}`}
-                        onChange={(effort) => onPhaseReasoningEffortChange(phase.name, effort)}
-                      />
-                      {overridden.has(phase.name) && (
-                        <span className={styles.overridden}>overridden</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+        <PlanCanvas
+          phases={view.phases}
+          overridden={overridden}
+          selectedPhase={inspecting}
+          onInspect={setInspecting}
+          agentColor={synthColor}
+        />
+        <p className={`faint ${styles.acceptanceUnderCanvas}`} data-testid="plan-acceptance">
+          {view.acceptance}
+        </p>
       </div>
 
       {view.agents.length > 0 && (
@@ -214,11 +172,6 @@ export default function PlanCard({
           </div>
         </div>
       )}
-
-      <div className={styles.section}>
-        <p className={styles.label}>Acceptance</p>
-        <p className={styles.acceptance}>{view.acceptance}</p>
-      </div>
 
       <div className={styles.section}>
         <p className={styles.label}>Why this shape</p>
@@ -286,6 +239,16 @@ export default function PlanCard({
         {sourceDetail && <span className={styles.sourceDetail}>{sourceDetail}</span>}
         {startBlocked && <span className={`faint ${styles.blocked}`}>{startBlocked}</span>}
       </div>
+
+      <PlanPhaseSheet
+        phase={inspectedPhase}
+        overridden={inspectedPhase ? overridden.has(inspectedPhase.name) : false}
+        starting={starting}
+        onPhaseModelChange={onPhaseModelChange}
+        onPhaseReasoningEffortChange={onPhaseReasoningEffortChange}
+        onClose={closeInspector}
+      />
+
       {planProject && configuringCommands && (
         <ProjectCommandsModal
           project={planProject}

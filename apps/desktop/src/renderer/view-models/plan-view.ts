@@ -4,15 +4,17 @@
  * what these functions return, so the wording is testable without a DOM.
  */
 
-import type {
-  CommandSpec,
-  GeneratedRunPlan,
-  PhaseDef,
-  PhaseKind,
-  PhaseRow,
-  ReasoningEffort,
-  ValidationIssue,
-  WriteBoundary,
+import {
+  healingEligible,
+  type CommandSpec,
+  type GeneratedRunPlan,
+  type PhaseDef,
+  type PhaseKind,
+  type PhaseRow,
+  type PipelineCanvasPoint,
+  type ReasoningEffort,
+  type ValidationIssue,
+  type WriteBoundary,
 } from '@shared/types.js';
 import type { RunPlanExportSelection } from '@shared/ipc-contract.js';
 import { modelLabel } from '@shared/model-label.js';
@@ -23,7 +25,7 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-/** One row in the card's ordered phase list. */
+/** One phase of the proposal, carrying everything the canvas and inspector show. */
 export interface PlanPhaseView {
   index: number;
   name: string;
@@ -46,6 +48,23 @@ export interface PlanPhaseView {
   model: string | null;
   /** Agent phases only: the reasoning level appointed for this phase. */
   reasoningEffort: ReasoningEffort | null;
+  /** Every gate name on the phase, in declaration order. */
+  gates: string[];
+  /** Code phases only: the command line it runs. */
+  command: string | null;
+  /** Agent phases only: declared prompt inputs. */
+  inputs: string[];
+  /** Agent phases: check-failure retries. */
+  retries: number;
+  /** Where a failure hands its evidence, or null to fail the run. */
+  feedbackTo: string | null;
+  feedbackRetries: number | null;
+  /** Explicit envelope override; null inherits the agent's. */
+  envelope: string | null;
+  /** Code phases: a non-zero exit is recorded but does not fail the run. */
+  optional: boolean;
+  /** Code phases: whether a failure gets a bounded healing turn. */
+  heals: boolean;
 }
 
 /** One synthesized agent as the card presents it. */
@@ -169,16 +188,18 @@ function commandNote(command: CommandSpec | undefined): string {
   return command.argv.join(' ');
 }
 
+function gateNamesOf(phase: PhaseDef): string[] {
+  return (phase.gates ?? []).map((g) => (typeof g === 'string' ? g : g.gate));
+}
+
 /** The compact machinery note under one phase row. */
 export function phaseNote(phase: PhaseDef): string {
   const parts: string[] = [];
   if (phase.kind === 'code') {
     parts.push(commandNote(phase.command));
   }
-  if (phase.gates?.length) {
-    const names = phase.gates.map((g) => (typeof g === 'string' ? g : g.gate));
-    parts.push(`gates: ${names.join(', ')}`);
-  }
+  const names = gateNamesOf(phase);
+  if (names.length) parts.push(`gates: ${names.join(', ')}`);
   if (phase.feedbackTo) parts.push(`fails back to ${phase.feedbackTo}`);
   return parts.join(' · ');
 }
@@ -192,6 +213,16 @@ export function groupPlanWarnings(warnings: ValidationIssue[]): PlanWarningGroup
     groups.set(warning.where, list);
   }
   return [...groups.entries()].map(([where, messages]) => ({ where, messages }));
+}
+
+/**
+ * Deterministic, throwaway node placement for the proposal preview canvas: a
+ * left-to-right rail matching execution order. Never read from or written to
+ * the saved pipeline's canvas — the preview frames a plan that does not exist
+ * as a stored document yet.
+ */
+export function planPreviewPositions(count: number): PipelineCanvasPoint[] {
+  return Array.from({ length: count }, (_, index) => ({ x: index * 340, y: 0 }));
 }
 
 /** Everything the Plan card renders, shaped once. */
@@ -213,6 +244,15 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
       phase.kind === 'agent'
         ? (phase.reasoningEffort ?? agentEfforts.get(phase.agent ?? '') ?? 'medium')
         : null,
+    gates: gateNamesOf(phase),
+    command: phase.kind === 'code' ? commandNote(phase.command) : null,
+    inputs: phase.kind === 'agent' ? (phase.prompt?.inputs ?? []) : [],
+    retries: phase.retries ?? 0,
+    feedbackTo: phase.feedbackTo ?? null,
+    feedbackRetries: phase.feedbackTo ? (phase.feedbackRetries ?? 1) : null,
+    envelope: phase.envelope ?? null,
+    optional: Boolean(phase.optional),
+    heals: phase.kind === 'code' && healingEligible(phase),
   }));
 
   const inventory = [plural(plan.pipeline.phases.length, 'phase')];

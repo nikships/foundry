@@ -65,6 +65,9 @@ export default function ReasoningEffortPicker({
       onChange={(next) => onChange(next as ReasoningEffort)}
       disabled={disabled}
       aria-label={ariaLabel}
+      // Seven short labels at most: the menu hugs the trigger instead of
+      // opening at the rich-content width the model menu needs.
+      menuWidth="compact"
       data-testid={testId}
     />
   );
