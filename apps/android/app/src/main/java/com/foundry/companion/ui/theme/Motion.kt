@@ -21,10 +21,11 @@ import androidx.compose.ui.platform.LocalInspectionMode
  */
 val LocalFoundryReduceMotion = staticCompositionLocalOf { false }
 
-/** Persistent pulses are the only animation in the companion. Tests and
- *  inspection previews must not start an infinite transition or Espresso
- *  never goes idle. OS "remove animations" (animator duration scale == 0)
- *  and [LocalFoundryReduceMotion] also suppress the running-status pulse. */
+/** Persistent pulses and the running-status spin are the only animations in
+ *  the companion. Tests and inspection previews must not start an infinite
+ *  transition or Espresso never goes idle. OS "remove animations"
+ *  (animator duration scale == 0) and [LocalFoundryReduceMotion] also
+ *  suppress them. */
 @Composable
 fun foundryPulseEnabled(active: Boolean): Boolean {
     if (!active) return false
@@ -47,6 +48,22 @@ fun foundryPulseAlpha(active: Boolean): Float {
         label = "alpha"
     )
     return alpha
+}
+
+@Composable
+fun foundrySpinRotation(active: Boolean): Float {
+    if (!foundryPulseEnabled(active)) return 0f
+    val infiniteTransition = rememberInfiniteTransition(label = "spin")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+    return rotation
 }
 
 @Composable
