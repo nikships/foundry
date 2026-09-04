@@ -351,6 +351,10 @@ function OrchestratedComposer({
           starting={starting}
           startBlocked={baseSyncing ? `Updating ${project?.baseRef ?? 'base branch'} first` : null}
           issues={startIssues}
+          messages={orchestrator.messages}
+          replying={orchestrator.replying}
+          chatError={orchestrator.chatError}
+          onSendMessage={(text) => void orchestrator.sendMessage(text)}
           onPhaseModelChange={orchestrator.setPhaseModel}
           onPhaseReasoningEffortChange={orchestrator.setPhaseReasoningEffort}
           onResetPhaseOverrides={orchestrator.resetPhaseOverrides}

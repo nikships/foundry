@@ -26,6 +26,7 @@ import type {
 import type {
   EventPage,
   FoundryApi,
+  PlanChatMessage,
   RunDetail,
   SaveResult,
   SmithChatState,
@@ -328,6 +329,10 @@ export function createMockFoundryApi(): FoundryApi {
   const listeners = new Map<string, Set<(data?: unknown) => void>>();
   const smithStates = new Map<string, SmithChatState>();
   const orchestratorTimers = new Map<string, number[]>();
+  const orchestratorChats = new Map<
+    string,
+    { messages: PlanChatMessage[]; emit: (status: 'running' | 'done', detail: string) => void }
+  >();
   let orchestratorSequence = 0;
 
   function on(channel: string, handler: (data?: unknown) => void): () => void {
@@ -757,6 +762,7 @@ export function createMockFoundryApi(): FoundryApi {
           reasoningEffort,
         };
         const startedAt = Date.now();
+        const messages: PlanChatMessage[] = [];
         const emit = (status: 'running' | 'done', detail: string): void => {
           notify('orchestrator-progress', {
             planId,
@@ -770,6 +776,8 @@ export function createMockFoundryApi(): FoundryApi {
             rawReply: '',
             detail,
             startedAt,
+            messages: messages.map((message) => ({ ...message })),
+            revision: status === 'done' ? 1 : 0,
             ...(status === 'done' ? { endedAt: Date.now() } : {}),
           });
         };
@@ -778,9 +786,27 @@ export function createMockFoundryApi(): FoundryApi {
           window.setTimeout(() => emit('done', 'Plan ready.'), 500),
         ];
         orchestratorTimers.set(planId, timers);
+        orchestratorChats.set(planId, { messages, emit });
         return { planId };
       },
+      message: async (planId, text) => {
+        const chat = orchestratorChats.get(planId);
+        if (!chat) return 'session not found';
+        chat.messages.push({ id: `m${Date.now()}`, role: 'operator', text, at: Date.now() });
+        chat.emit('running', 'considering your message');
+        window.setTimeout(() => {
+          chat.messages.push({
+            id: `m${Date.now()}`,
+            role: 'orchestrator',
+            text: 'web preview — the fixture Orchestrator keeps the proposal as it stands.',
+            at: Date.now(),
+          });
+          chat.emit('done', 'plan unchanged');
+        }, 400);
+        return null;
+      },
       cancel: async (planId) => {
+        orchestratorChats.delete(planId);
         const timers = orchestratorTimers.get(planId);
         if (!timers) return false;
         timers.forEach((timer) => window.clearTimeout(timer));

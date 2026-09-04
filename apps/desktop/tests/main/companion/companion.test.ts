@@ -426,6 +426,8 @@ beforeEach(async () => {
             detail: 'Plan ready.',
             startedAt: 1,
             endedAt: 2,
+            messages: [],
+            revision: 1,
           });
           return { planId };
         },

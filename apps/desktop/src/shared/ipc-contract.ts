@@ -205,9 +205,25 @@ export interface DetectionState extends PanelStateCore {
 export type SetupEntry = PanelEntry;
 
 /**
+ * One exchange in the operator's back-and-forth with the Orchestrator about
+ * an accepted plan. Presentation data only — the plan itself always travels
+ * as `OrchestratorState.plan`, never inside a message.
+ */
+export interface PlanChatMessage {
+  id: string;
+  role: 'operator' | 'orchestrator';
+  text: string;
+  /** Set on an orchestrator reply that also revised the plan. */
+  revisedPlan?: boolean;
+  at: number;
+}
+
+/**
  * The live state of one Orchestrator planning session. Like detection it is
  * not a run: no worktree, no trace rows, progress pushed over
- * `orchestrator-progress`. `plan` is set exactly when `status` is `done`.
+ * `orchestrator-progress`. `plan` is set once a plan passed the rails; while
+ * a follow-up message is being considered `status` returns to `running` with
+ * the accepted plan still standing.
  */
 export interface OrchestratorState extends PanelStateCore {
   planId: string;
@@ -220,6 +236,10 @@ export interface OrchestratorState extends PanelStateCore {
   plan: GeneratedRunPlan | null;
   /** The last reply verbatim, so an unusable answer stays diagnosable. */
   rawReply: string;
+  /** The operator's back-and-forth about the accepted plan, in order. */
+  messages: PlanChatMessage[];
+  /** Bumps every time an accepted plan lands, so overrides can reset. */
+  revision: number;
 }
 
 export interface SetupState extends PanelStateCore {
@@ -718,6 +738,12 @@ export interface FoundryApi {
       reasoningEffort: ReasoningEffort,
       images?: PlanImageAttachment[],
     ): Promise<{ planId: string } | { error: string }>;
+    /**
+     * Sends one follow-up message about the accepted plan. Returns as soon as
+     * the session takes it; the reply — and any revised plan — arrives on
+     * `orchestrator-progress`. A non-null return is the refusal reason.
+     */
+    message(planId: string, text: string): Promise<string | null>;
     cancel(planId: string): Promise<boolean>;
   };
   prs: {
@@ -933,6 +959,7 @@ export const IPC = {
   runsRestorableCheckpoints: 'runs:restorableCheckpoints',
   runsRestoreCheckpoint: 'runs:restoreCheckpoint',
   orchestratorPlan: 'orchestrator:plan',
+  orchestratorMessage: 'orchestrator:message',
   orchestratorCancel: 'orchestrator:cancel',
   prsStatus: 'prs:status',
   prsList: 'prs:list',

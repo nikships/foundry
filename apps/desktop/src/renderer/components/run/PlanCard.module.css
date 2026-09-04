@@ -192,3 +192,22 @@
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
+.fullscreen-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  width: calc(100vw - var(--s6) * 2);
+  height: calc(100vh - var(--s6) * 2);
+  padding: var(--s4);
+}
+.fullscreen-head {
+  flex: none;
+}
+.fullscreen-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+}

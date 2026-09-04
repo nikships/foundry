@@ -169,6 +169,7 @@ const api: FoundryApi = {
   orchestrator: {
     plan: (projectId, prompt, model, reasoningEffort, images) =>
       call(IPC.orchestratorPlan, projectId, prompt, model, reasoningEffort, images),
+    message: (planId, text) => call(IPC.orchestratorMessage, planId, text),
     cancel: (planId) => call(IPC.orchestratorCancel, planId),
   },
   prs: {

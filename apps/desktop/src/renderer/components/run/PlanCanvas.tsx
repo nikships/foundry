@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { modelLabel } from '@shared/model-label.js';
 import { KIND_LABEL, phaseKindColor } from '../../utils/derive.js';
 import { planPreviewPositions, type PlanPhaseView } from '../../view-models/plan-view.js';
@@ -14,6 +14,9 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2;
 /** How far below the rail a feedback arc dips, matching the edge geometry. */
 const RETURN_EDGE_DIP = 72;
+/** Operator-resized board bounds; the default clamp stays in the CSS. */
+const MIN_BOARD_HEIGHT = 200;
+const MAX_BOARD_HEIGHT = 900;
 
 interface Viewport {
   x: number;
@@ -160,6 +163,8 @@ export default function PlanCanvas({
   selectedPhase,
   onInspect,
   agentColor,
+  expanded = false,
+  onToggleExpand,
 }: {
   phases: PlanPhaseView[];
   /** Names of phases the operator re-cast, marked on their nodes. */
@@ -168,9 +173,16 @@ export default function PlanCanvas({
   selectedPhase: string | null;
   onInspect: (name: string) => void;
   agentColor: (name: string | null) => string;
+  /** Filling a full-screen surface: no drag-to-resize, exit control instead. */
+  expanded?: boolean;
+  /** Enters or leaves the full-screen view; absent hides the control. */
+  onToggleExpand?: () => void;
 }): React.JSX.Element {
   const boardRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
+  /** Operator-chosen board height; null keeps the default CSS clamp. */
+  const [boardHeight, setBoardHeight] = useState<number | null>(null);
+  const resize = useRef<{ pointerId: number; startY: number; fromHeight: number } | null>(null);
   /** Once the operator pans or zooms, resizes stop re-framing under them. */
   const userMoved = useRef(false);
   const pan = useRef<{ pointerId: number; startX: number; startY: number; from: Viewport } | null>(
@@ -261,7 +273,9 @@ export default function PlanCanvas({
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0 || !boardRef.current) return;
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    // Element, not HTMLElement: a press on a control's SVG icon must not fall
+    // through to the pan capture, which would swallow the button's click.
+    const target = event.target instanceof Element ? event.target : null;
     // Nodes are plain buttons here — no drag-to-place on a read-only board —
     // so a gesture that starts on one is a click, not a pan.
     if (target?.closest('[data-canvas-control]') || target?.closest('[data-plan-node]')) return;
@@ -300,10 +314,32 @@ export default function PlanCanvas({
     frame();
   };
 
+  const onResizeStart = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resize.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      fromHeight: boardRef.current?.getBoundingClientRect().height ?? MIN_BOARD_HEIGHT,
+    };
+  };
+
+  const onResizeMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const active = resize.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    const next = active.fromHeight + (event.clientY - active.startY);
+    setBoardHeight(Math.min(MAX_BOARD_HEIGHT, Math.max(MIN_BOARD_HEIGHT, next)));
+  };
+
+  const onResizeEnd = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (resize.current?.pointerId === event.pointerId) resize.current = null;
+  };
+
   return (
     <div
       ref={boardRef}
-      className={styles.canvas}
+      className={cx(styles.canvas, expanded && styles.canvasExpanded)}
+      style={boardHeight !== null && !expanded ? { height: boardHeight } : undefined}
       data-testid="plan-canvas"
       role="group"
       aria-label="Proposed pipeline. Click a phase to inspect it. Drag empty space to pan."
@@ -429,7 +465,38 @@ export default function PlanCanvas({
         >
           <RotateCcw size={13} strokeWidth={1.7} aria-hidden="true" />
         </button>
+        {onToggleExpand && (
+          <button
+            type="button"
+            aria-label={expanded ? 'Exit full screen' : 'View full screen'}
+            title={expanded ? 'Exit full screen (Esc)' : 'View full screen'}
+            className={styles.iconButton}
+            onClick={onToggleExpand}
+            data-testid="plan-canvas-expand"
+          >
+            {expanded ? (
+              <Minimize2 size={13} strokeWidth={1.7} aria-hidden="true" />
+            ) : (
+              <Maximize2 size={13} strokeWidth={1.7} aria-hidden="true" />
+            )}
+          </button>
+        )}
       </div>
+
+      {!expanded && (
+        <div
+          className={styles.resizeHandle}
+          data-canvas-control
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize the pipeline board"
+          title="Drag to resize"
+          onPointerDown={onResizeStart}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeEnd}
+          onPointerCancel={onResizeEnd}
+        />
+      )}
     </div>
   );
 }

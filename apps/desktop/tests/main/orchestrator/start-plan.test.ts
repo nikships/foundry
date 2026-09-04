@@ -32,6 +32,7 @@ function registry(): PanelRegistry<PlanStart, OrchestratorState> & {
     get: () => null,
     cancel: () => false,
     cancelAll: () => undefined,
+    message: () => 'session not found',
   };
 }
 

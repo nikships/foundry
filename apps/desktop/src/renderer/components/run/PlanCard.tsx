@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { GeneratedRunPlan, ReasoningEffort, ValidationIssue } from '@shared/types.js';
+import type { PlanChatMessage } from '@shared/ipc-contract.js';
 import { useApp } from '../../stores/app.js';
 import { overriddenPhases, planCardView } from '../../view-models/plan-view.js';
 import {
@@ -8,7 +9,9 @@ import {
 } from '../../view-models/project-commands-view.js';
 import ProjectCommandsModal from '../project/ProjectCommandsModal.js';
 import { Button } from '../ui/Button.js';
+import { ModalShell } from '../ui/ModalShell.js';
 import PlanCanvas from './PlanCanvas.js';
+import PlanChat from './PlanChat.js';
 import PlanPhaseSheet from './PlanPhaseSheet.js';
 import styles from './PlanCard.module.css';
 
@@ -16,8 +19,8 @@ import styles from './PlanCard.module.css';
  * The Orchestrator's proposal, laid out for confirmation: the refined brief,
  * the proposed pipeline as an inspectable board, the agents it synthesized,
  * the acceptance rule, and why the pipeline has this shape. Nothing here
- * starts anything — the operator disposes, and may re-cast any agent phase
- * onto a different model or reasoning level before doing so.
+ * starts anything — the operator disposes, and may re-cast any agent phase,
+ * or talk the proposal over with the Orchestrator, before doing so.
  */
 export default function PlanCard({
   plan,
@@ -25,6 +28,10 @@ export default function PlanCard({
   starting,
   startBlocked,
   issues,
+  messages,
+  replying,
+  chatError,
+  onSendMessage,
   onPhaseModelChange,
   onPhaseReasoningEffortChange,
   onResetPhaseOverrides,
@@ -42,6 +49,13 @@ export default function PlanCard({
   startBlocked: string | null;
   /** Start-time validation failures, shown on the card rather than lost. */
   issues: ValidationIssue[];
+  /** The back-and-forth about this proposal, in order. */
+  messages: PlanChatMessage[];
+  /** True while the Orchestrator is considering a follow-up message. */
+  replying: boolean;
+  /** Why the last message was refused, or empty. */
+  chatError: string;
+  onSendMessage: (text: string) => void;
   onPhaseModelChange: (phaseName: string, model: string) => void;
   onPhaseReasoningEffortChange: (phaseName: string, effort: ReasoningEffort) => void;
   onResetPhaseOverrides: () => void;
@@ -56,6 +70,7 @@ export default function PlanCard({
   const { agentColor, project, refreshAll } = useApp();
   const [configuringCommands, setConfiguringCommands] = useState(false);
   const [inspecting, setInspecting] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const planProject = project?.id === plan.projectId ? project : null;
   const missingCommandRefs = useMemo(
@@ -141,10 +156,22 @@ export default function PlanCard({
           selectedPhase={inspecting}
           onInspect={setInspecting}
           agentColor={synthColor}
+          onToggleExpand={() => setFullscreen(true)}
         />
         <p className={`faint ${styles.acceptanceUnderCanvas}`} data-testid="plan-acceptance">
           {view.acceptance}
         </p>
+      </div>
+
+      <div className={styles.section}>
+        <p className={styles.label}>Discuss with the Orchestrator</p>
+        <PlanChat
+          messages={messages}
+          replying={replying}
+          error={chatError}
+          disabled={starting}
+          onSend={onSendMessage}
+        />
       </div>
 
       {view.agents.length > 0 && (
@@ -240,14 +267,51 @@ export default function PlanCard({
         {startBlocked && <span className={`faint ${styles.blocked}`}>{startBlocked}</span>}
       </div>
 
-      <PlanPhaseSheet
-        phase={inspectedPhase}
-        overridden={inspectedPhase ? overridden.has(inspectedPhase.name) : false}
-        starting={starting}
-        onPhaseModelChange={onPhaseModelChange}
-        onPhaseReasoningEffortChange={onPhaseReasoningEffortChange}
-        onClose={closeInspector}
-      />
+      {!fullscreen && (
+        <PlanPhaseSheet
+          phase={inspectedPhase}
+          overridden={inspectedPhase ? overridden.has(inspectedPhase.name) : false}
+          starting={starting}
+          onPhaseModelChange={onPhaseModelChange}
+          onPhaseReasoningEffortChange={onPhaseReasoningEffortChange}
+          onClose={closeInspector}
+        />
+      )}
+
+      {fullscreen && (
+        // The phase sheet renders inside the modal because the backdrop's
+        // stacking context would otherwise sit above it.
+        <ModalShell
+          onClose={() => {
+            if (!inspecting) setFullscreen(false);
+          }}
+          className={styles.fullscreenModal}
+          data-testid="plan-canvas-fullscreen"
+        >
+          <header className={styles.fullscreenHead}>
+            <p className={styles.label}>The pipeline · {view.title}</p>
+          </header>
+          <div className={styles.fullscreenBody}>
+            <PlanCanvas
+              phases={view.phases}
+              overridden={overridden}
+              selectedPhase={inspecting}
+              onInspect={setInspecting}
+              agentColor={synthColor}
+              expanded
+              onToggleExpand={() => setFullscreen(false)}
+            />
+            <PlanPhaseSheet
+              phase={inspectedPhase}
+              overridden={inspectedPhase ? overridden.has(inspectedPhase.name) : false}
+              starting={starting}
+              onPhaseModelChange={onPhaseModelChange}
+              onPhaseReasoningEffortChange={onPhaseReasoningEffortChange}
+              onClose={closeInspector}
+            />
+          </div>
+        </ModalShell>
+      )}
 
       {planProject && configuringCommands && (
         <ProjectCommandsModal
