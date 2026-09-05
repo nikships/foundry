@@ -23,6 +23,14 @@ GitHub workflows own CI, security checks, and signed release automation.
 - Keep signing identities and credentials in GitHub secrets. The Android signing key must remain stable for upgrades.
 - `update-cliproxyapi.yml` periodically runs the Bridge bump flow and opens a pin-only PR. Its token must be able to trigger CI and packaging after merge.
 
+## Droid
+
+- `droid-review.yml` auto-reviews non-draft PRs via `Factory-AI/droid-action`.
+- `droid.yml` splits `@droid` mentions:
+  - `@droid fill` / `@droid review` / `@droid security` go to Factory's action.
+  - Any other `@droid …` instruction (including `@droid fix`) runs `.github/scripts/droid-task.sh`, which implements the request on the PR branch and pushes. Factory's action has no general coding mode.
+- Tag workflows only take effect after they land on the default branch.
+
 ## Editing workflows
 
 - Keep non-obvious filters, runner versions, and signing choices commented in YAML.
