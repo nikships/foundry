@@ -215,6 +215,18 @@
   animation: pulse 1.4s var(--ease) infinite;
 }
 
+/* CSS Modules scopes animation names locally; the global tokens-base
+   @keyframes pulse is not visible here unless we declare it in-module. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .keyBadge {
   display: inline-flex;
   align-items: center;

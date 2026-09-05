@@ -142,6 +142,18 @@
   vertical-align: text-bottom;
   animation: pulse 1s steps(2) infinite;
 }
+
+/* CSS Modules scopes animation names locally; the global tokens-base
+   @keyframes pulse is not visible here unless we declare it in-module. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
 .events {
   list-style: none;
 }

@@ -53,9 +53,21 @@
   overflow-wrap: anywhere;
 }
 .pulse {
-  /* The global pulse keyframes from tokens-base.css: a live trailing
-     indicator breathes instead of sitting at fixed reduced opacity. */
+  /* A live trailing indicator breathes instead of sitting at fixed
+     reduced opacity. */
   animation: pulse 1.4s var(--ease) infinite;
+}
+
+/* CSS Modules scopes animation names locally; the global tokens-base
+   @keyframes pulse is not visible here unless we declare it in-module. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 .actions {
   margin-top: var(--s2);
@@ -96,6 +108,14 @@
   display: inline-block;
   color: var(--amber);
   animation: spin 1.2s linear infinite;
+}
+
+/* CSS Modules scopes animation names locally; the global tokens-base
+   @keyframes spin is not visible here unless we declare it in-module. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .rejected {
   margin-top: var(--s2);
