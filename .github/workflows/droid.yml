@@ -12,14 +12,20 @@ on:
   pull_request:
     types: [opened, edited]
 
+# Factory-AI/droid-action only implements @droid fill / review / security.
+# Bare @droid plus any other instruction (e.g. "@droid fix") is a coding task.
+
 jobs:
   droid:
+    # Reserved Factory commands. Keep this job from swallowing "@droid fix".
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@droid')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@droid')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@droid')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid'))) ||
-      (github.event_name == 'pull_request' && (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')))
+      github.actor != 'factory-droid[bot]' && (
+        (github.event_name == 'issue_comment' && (contains(github.event.comment.body, '@droid fill') || contains(github.event.comment.body, '@droid review') || contains(github.event.comment.body, '@droid security'))) ||
+        (github.event_name == 'pull_request_review_comment' && (contains(github.event.comment.body, '@droid fill') || contains(github.event.comment.body, '@droid review') || contains(github.event.comment.body, '@droid security'))) ||
+        (github.event_name == 'pull_request_review' && (contains(github.event.review.body, '@droid fill') || contains(github.event.review.body, '@droid review') || contains(github.event.review.body, '@droid security'))) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@droid fill') || contains(github.event.issue.body, '@droid review') || contains(github.event.issue.body, '@droid security') || contains(github.event.issue.title, '@droid fill') || contains(github.event.issue.title, '@droid review') || contains(github.event.issue.title, '@droid security'))) ||
+        (github.event_name == 'pull_request' && (contains(github.event.pull_request.body, '@droid fill') || contains(github.event.pull_request.body, '@droid review') || contains(github.event.pull_request.body, '@droid security') || contains(github.event.pull_request.title, '@droid fill') || contains(github.event.pull_request.title, '@droid review') || contains(github.event.pull_request.title, '@droid security')))
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -37,3 +43,89 @@ jobs:
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           droid_args: '--skip-permissions-unsafe -m glm-5.3-flash'
+
+  droid-task:
+    # Any other @droid mention is a coding agent: implement, commit, push.
+    if: |
+      github.actor != 'factory-droid[bot]' && (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@droid') && !contains(github.event.comment.body, '@droid fill') && !contains(github.event.comment.body, '@droid review') && !contains(github.event.comment.body, '@droid security')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@droid') && !contains(github.event.comment.body, '@droid fill') && !contains(github.event.comment.body, '@droid review') && !contains(github.event.comment.body, '@droid security')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@droid') && !contains(github.event.review.body, '@droid fill') && !contains(github.event.review.body, '@droid review') && !contains(github.event.review.body, '@droid security')) ||
+        (github.event_name == 'issues' && ((contains(github.event.issue.body, '@droid') && !contains(github.event.issue.body, '@droid fill') && !contains(github.event.issue.body, '@droid review') && !contains(github.event.issue.body, '@droid security')) || (contains(github.event.issue.title, '@droid') && !contains(github.event.issue.title, '@droid fill') && !contains(github.event.issue.title, '@droid review') && !contains(github.event.issue.title, '@droid security')))) ||
+        (github.event_name == 'pull_request' && ((contains(github.event.pull_request.body, '@droid') && !contains(github.event.pull_request.body, '@droid fill') && !contains(github.event.pull_request.body, '@droid review') && !contains(github.event.pull_request.body, '@droid security')) || (contains(github.event.pull_request.title, '@droid') && !contains(github.event.pull_request.title, '@droid fill') && !contains(github.event.pull_request.title, '@droid review') && !contains(github.event.pull_request.title, '@droid security'))))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: droid-task-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Get Factory GitHub App token
+        id: app
+        env:
+          FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Same OIDC audience Factory-AI/droid-action uses, so commits are
+          # factory-droid[bot] and can retrigger CI. GITHUB_TOKEN cannot.
+          oidc="$(curl -fsSL -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=droid-github-action" | jq -r '.value')"
+          resp="$(curl -sS -X POST 'https://app.factory.ai/api/github/token-exchange' \
+            -H "Authorization: Bearer ${oidc}")"
+          token="$(printf '%s' "$resp" | jq -r '.token // empty')"
+          if [[ -z "$token" || "$token" == "null" ]]; then
+            echo "OIDC exchange failed; falling back to GITHUB_TOKEN"
+            echo "token=${FALLBACK_TOKEN}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::add-mask::${token}"
+            echo "token=${token}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'factory-droid[bot]'
+          git config user.email '138933559+factory-droid[bot]@users.noreply.github.com'
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install Droid CLI
+        run: |
+          set -euo pipefail
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/droid" --version
+
+      - name: Write trigger comment
+        env:
+          BODY_JSON: ${{ toJSON(github.event.comment.body || github.event.review.body || github.event.issue.body || github.event.pull_request.body) }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$BODY_JSON" | jq -r '.' > /tmp/droid-trigger.txt
+
+      - name: Run Droid task
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DROID_MODEL: glm-5.3-flash
+        run: bash .github/scripts/droid-task.sh
