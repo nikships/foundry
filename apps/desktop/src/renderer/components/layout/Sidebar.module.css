@@ -271,6 +271,14 @@
   animation: spin 900ms linear infinite;
 }
 
+/* CSS Modules scopes animation names locally; the global tokens-base
+   @keyframes spin is not visible here unless we declare it in-module. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .run-dot-live {
     animation: none;

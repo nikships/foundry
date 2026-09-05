@@ -130,6 +130,14 @@
   flex: none;
 }
 
+/* CSS Modules scopes animation names locally; the global tokens-base
+   @keyframes spin is not visible here unless we declare it in-module. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .toneGreen {
   border-color: color-mix(in srgb, var(--green) 22%, transparent);
 }

@@ -153,7 +153,19 @@
 }
 
 .pulse {
-  /* The global pulse keyframes from tokens-base.css; overrides .line's entrance
-     animation on the running indicator. */
+  /* Breathes; overrides .line's entrance animation on the running
+     indicator. */
   animation: pulse 1.4s var(--ease) infinite;
+}
+
+/* CSS Modules scopes animation names locally; the global tokens-base
+   @keyframes pulse is not visible here unless we declare it in-module. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
