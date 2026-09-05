@@ -51,6 +51,13 @@ function reducedMotionBlock(css: string): string {
   return match[1];
 }
 
+function spinKeyframes(css: string): string {
+  const stripped = stripCssComments(css);
+  const match = stripped.match(/@keyframes\s+spin\s*\{([\s\S]*?)\}/);
+  if (!match) throw new Error('missing local @keyframes spin');
+  return match[1];
+}
+
 describe('Activity live mark gating', () => {
   it('applies the live treatment only while status is running', () => {
     expect(sidebarSrc).toContain("const running = run.status === 'running';");
@@ -89,6 +96,12 @@ describe('Activity live animation is a spinning ring, not a pulse or ping', () =
     expect(tokensBase).toMatch(/@keyframes\s+pulse[\s\S]*opacity:\s*0\.35/);
     expect(tokensBase).toMatch(/@keyframes\s+spin/);
   });
+
+  it('declares local @keyframes spin so CSS Modules can resolve the ring animation', () => {
+    const frames = spinKeyframes(sidebarCss);
+    expect(frames).toMatch(/transform:\s*rotate\(360deg\)/);
+    expect(sidebarCss).toContain('animation: spin 900ms linear infinite');
+  });
 });
 
 describe('reduced motion keeps a static live vs finished distinction', () => {
@@ -119,5 +132,11 @@ describe('StatusBadge running mark matches Activity', () => {
     const reduced = reducedMotionBlock(badgeCss);
     expect(reduced).toMatch(/\.dot\.spinning/);
     expect(reduced).toMatch(/animation:\s*none/);
+  });
+
+  it('declares local @keyframes spin so CSS Modules can resolve the ring animation', () => {
+    const frames = spinKeyframes(badgeCss);
+    expect(frames).toMatch(/transform:\s*rotate\(360deg\)/);
+    expect(badgeCss).toContain('animation: spin 900ms linear infinite');
   });
 });
