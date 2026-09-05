@@ -51,6 +51,16 @@ function reducedMotionBlock(css: string): string {
   return match[1];
 }
 
+/** CSS modules hashes `animation: spin` unless @keyframes spin is in the same file. */
+function localSpinKeyframes(css: string): string {
+  const stripped = stripCssComments(css);
+  const match = stripped.match(
+    /@keyframes\s+spin\s*\{\s*to\s*\{\s*transform:\s*rotate\(360deg\);\s*\}\s*\}/,
+  );
+  if (!match) throw new Error('missing local @keyframes spin');
+  return match[0];
+}
+
 describe('Activity live mark gating', () => {
   it('applies the live treatment only while status is running', () => {
     expect(sidebarSrc).toContain("const running = run.status === 'running';");
@@ -85,6 +95,10 @@ describe('Activity live animation is a spinning ring, not a pulse or ping', () =
     expect(core).not.toMatch(/box-shadow\s*:/);
   });
 
+  it('defines @keyframes spin in this module so CSS modules can hash it', () => {
+    expect(localSpinKeyframes(sidebarCss)).toContain('rotate(360deg)');
+  });
+
   it('leaves the global pulse keyframes untouched', () => {
     expect(tokensBase).toMatch(/@keyframes\s+pulse[\s\S]*opacity:\s*0\.35/);
     expect(tokensBase).toMatch(/@keyframes\s+spin/);
@@ -113,6 +127,7 @@ describe('StatusBadge running mark matches Activity', () => {
     expect(spinning).toContain('border-right-color: transparent');
     expect(spinning).toContain('animation: spin 900ms linear infinite');
     expect(spinning).not.toMatch(/background\s*:/);
+    expect(localSpinKeyframes(badgeCss)).toContain('rotate(360deg)');
   });
 
   it('stops the badge spin under reduced motion', () => {

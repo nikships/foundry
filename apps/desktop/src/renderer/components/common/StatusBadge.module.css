@@ -16,6 +16,13 @@
   animation: spin 900ms linear infinite;
 }
 
+/* Scoped here so CSS modules hashes `spin` with the animation-name. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dot.spinning {
     animation: none;
