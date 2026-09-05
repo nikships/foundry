@@ -28,10 +28,12 @@ export default function RunDetailScreen({
   runId,
   onBack,
   onOpenInspector,
+  onOpenWorkshop,
 }: {
   runId: string;
   onBack: () => void;
   onOpenInspector: (runId: string) => void;
+  onOpenWorkshop: (runId: string) => void;
 }): React.JSX.Element {
   const { projectId } = useApp();
   const { view, eventsByPhase, envelopesByPhase, gatesByPhase } = useRun(projectId, runId);
@@ -322,6 +324,17 @@ export default function RunDetailScreen({
             ↗
           </span>
         </Button>
+        {view.run && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenWorkshop(runId)}
+            title="Visit Little Foundry, an animated view of this run"
+            data-testid="run-open-workshop"
+          >
+            Workshop ↗
+          </Button>
+        )}
         {plan && (
           <Button
             variant="ghost"

@@ -15,7 +15,7 @@ export type NavView = 'runs' | 'inspector' | 'design' | 'prs';
  * Smith is a full view (the chat screen) but not a numbered nav item: it keeps
  * its own sidebar entry below the views, like Settings keeps its pinned one.
  */
-export type View = NavView | 'settings' | 'smith';
+export type View = NavView | 'settings' | 'smith' | 'workshop';
 
 /**
  * Design's tabs, in dependency order: an envelope is a type, an agent declares

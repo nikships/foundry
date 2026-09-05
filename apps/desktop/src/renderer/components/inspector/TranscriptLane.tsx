@@ -79,15 +79,17 @@ export default function TranscriptLane({
   sessions: AgentSessionRow[];
   now: number;
   focused: boolean;
-  onToggleFocus: () => void;
+  onToggleFocus?: () => void;
 }): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const [showJump, setShowJump] = useState(false);
   const visibleEvents = events.filter((event) => !isAutoAllowPolicy(event));
-  const lastEventKey = visibleEvents.length
-    ? `${visibleEvents[visibleEvents.length - 1]!.eventId}:${visibleEvents.length}`
-    : '';
+  // Streaming text and tool results patch rows in place, without changing length.
+  const lastEventKey = visibleEvents.reduce(
+    (revision, event) => Math.max(revision, event.changeId),
+    0,
+  );
 
   const session = sessions.find((s) => s.agent === phase.owner);
   const transport = session?.mode ?? 'pi';
@@ -142,13 +144,15 @@ export default function TranscriptLane({
           {elapsed != null && <span className={styles.laneElapsed}>{duration(elapsed)}</span>}
           <span className={styles.laneStatus}>
             <StatusBadge status={phase.status} />
-            <button
-              className={styles.laneFocus}
-              onClick={onToggleFocus}
-              title={focused ? 'Back to all lanes' : 'Focus this lane'}
-            >
-              {focused ? '✕' : '⤢'}
-            </button>
+            {onToggleFocus && (
+              <button
+                className={styles.laneFocus}
+                onClick={onToggleFocus}
+                title={focused ? 'Back to all lanes' : 'Focus this lane'}
+              >
+                {focused ? '✕' : '⤢'}
+              </button>
+            )}
           </span>
         </div>
       </header>
