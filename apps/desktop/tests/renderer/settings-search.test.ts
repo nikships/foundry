@@ -64,6 +64,9 @@ describe('searchSettings', () => {
     expect(ref?.pane).toBe('general');
     const hits = searchSettings('light theme');
     expect(hits.some((h) => h.pane === 'app' && h.sectionId === 'appearance')).toBe(true);
+    expect(
+      searchSettings('midnight').some((h) => h.pane === 'app' && h.sectionId === 'appearance'),
+    ).toBe(true);
   });
 
   it('reaches maintenance sections by keyword', () => {

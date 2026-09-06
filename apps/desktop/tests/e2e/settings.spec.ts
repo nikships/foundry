@@ -16,14 +16,19 @@ test.describe('settings theme', () => {
       await window.getByTestId('settings-tab-app').click();
 
       const picker = window.getByTestId('settings-theme');
-      await expect(picker).toHaveText('Dark');
+      await expect(window.getByTestId('settings-theme-dark')).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
       const darkBackground = await window.evaluate(() =>
         getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim(),
       );
 
-      await picker.click();
-      await window.getByRole('option', { name: 'Light', exact: true }).click();
-      await expect(picker).toHaveText('Light');
+      await window.getByTestId('settings-theme-light').click();
+      await expect(window.getByTestId('settings-theme-light')).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
       await expect
         .poll(() =>
           window.evaluate(() => ({
@@ -37,17 +42,29 @@ test.describe('settings theme', () => {
       );
       expect(lightBackground).not.toBe(darkBackground);
 
-      await picker.click();
-      await window.getByRole('option', { name: 'Dark', exact: true }).click();
+      await window.getByTestId('settings-theme-midnight').click();
+      await expect
+        .poll(() =>
+          window.evaluate(() => ({
+            theme: document.documentElement.dataset.theme,
+            colorScheme: document.documentElement.style.colorScheme,
+            background: getComputedStyle(document.documentElement)
+              .getPropertyValue('--bg-base')
+              .trim(),
+          })),
+        )
+        .toEqual({ theme: 'midnight', colorScheme: 'dark', background: '#070b14' });
+
+      await window.getByTestId('settings-theme-dark').click();
       await expect
         .poll(() => window.evaluate(() => document.documentElement.dataset.theme))
         .toBe('dark');
 
-      await picker.click();
-      await window.getByRole('option', { name: 'Light', exact: true }).click();
+      await window.getByTestId('settings-theme-light').click();
       await expect
         .poll(() => window.evaluate(() => document.documentElement.dataset.theme))
         .toBe('light');
+      await expect(picker).toHaveAttribute('data-theme', 'light');
       await app.close();
       app = undefined;
 
@@ -59,7 +76,10 @@ test.describe('settings theme', () => {
         .toBe('light');
       await window.getByTestId('nav-settings').click();
       await window.getByTestId('settings-tab-app').click();
-      await expect(window.getByTestId('settings-theme')).toHaveText('Light');
+      await expect(window.getByTestId('settings-theme-light')).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
     } finally {
       await app?.close();
     }

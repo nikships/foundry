@@ -61,7 +61,7 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
     label: 'App',
     hint: 'Appearance, notifications, updates, phone, and maintenance',
     keywords:
-      'theme appearance dark light palette color notify updates phone companion application quit relaunch retention history orphan version build replay intro',
+      'theme appearance dark light midnight forest ember contrast sand mist palette color notify updates phone companion application quit relaunch retention history orphan version build replay intro',
   },
 ];
 
@@ -86,7 +86,8 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     pane: 'general',
     label: 'Appearance',
     note: 'Choose the palette Foundry uses across the desktop.',
-    keywords: 'theme appearance dark light light theme dark mode palette color mode',
+    keywords:
+      'theme appearance dark light midnight forest ember contrast high contrast sand mist light theme dark mode palette color mode',
   },
   {
     pane: 'general',

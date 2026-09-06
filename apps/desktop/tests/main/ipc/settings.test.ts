@@ -40,6 +40,19 @@ describe('settings IPC theme updates', () => {
     expect(broadcast).toHaveBeenCalledWith(IPC.eventSettingsChanged);
   });
 
+  it('applies a named palette the same way as light and dark', () => {
+    const midnight = settingsWith('midnight');
+    const { applyTheme, patch, patchSettings } = setup({ ok: true, settings: midnight });
+
+    expect(patchSettings({ theme: 'midnight' })).toEqual({
+      ok: true,
+      issues: [],
+      value: midnight,
+    });
+    expect(patch).toHaveBeenCalledWith({ theme: 'midnight' });
+    expect(applyTheme).toHaveBeenCalledWith('midnight');
+  });
+
   it('does not change the native palette or claim a save when validation rejects the patch', () => {
     const { applyTheme, broadcast, patchSettings } = setup({
       ok: false,
