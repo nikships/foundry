@@ -813,11 +813,18 @@ export default function SettingsScreen({
   /* Palette helpers live past the early return so `settings` is non-null. A
      toggle activates without closing the palette — flipping several booleans
      in one visit is the palette's whole point. */
-  const toggleChecked = (id: SettingsToggleDef['id']): boolean =>
-    id === 'dockBadge' ? settings.dockBadge : settings.notifications[id];
+  const toggleChecked = (id: SettingsToggleDef['id']): boolean => {
+    if (id === 'dockBadge') return settings.dockBadge;
+    if (id === 'soundEffects') return settings.soundEffects;
+    return settings.notifications[id];
+  };
   const applyToggle = (def: SettingsToggleDef): void => {
     if (def.id === 'dockBadge') {
       void set({ dockBadge: !settings.dockBadge });
+      return;
+    }
+    if (def.id === 'soundEffects') {
+      void set({ soundEffects: !settings.soundEffects });
       return;
     }
     const key = def.id;
@@ -1021,6 +1028,11 @@ export default function SettingsScreen({
                             label="Show the number of live runs on the dock icon"
                             checked={settings.dockBadge}
                             onChange={(value) => void set({ dockBadge: value })}
+                          />
+                          <Toggle
+                            label="Play sounds for planning, finished steps, and when you are needed"
+                            checked={settings.soundEffects}
+                            onChange={(value) => void set({ soundEffects: value })}
                           />
                         </div>
                       </Section>

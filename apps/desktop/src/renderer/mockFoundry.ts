@@ -245,6 +245,7 @@ function defaultMockSettings(): AppSettings {
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true },
     dockBadge: true,
+    soundEffects: true,
     retentionDays: null,
     onboarded: true,
     hiddenModelIds: [],

@@ -8,6 +8,7 @@ import UpdateBanner from './components/layout/UpdateBanner.js';
 import { FoundryGlyph } from './components/media/FoundryGlyph.js';
 import type { SmithNavTarget } from './components/smith/SmithProposalCard.js';
 import { cx } from './components/ui/cx.js';
+import { useAgentSounds } from './hooks/useAgentSounds.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
 import { useOrchestratorPlan } from './hooks/useOrchestratorPlan.js';
 import { AppProvider, useApp } from './stores/app.js';
@@ -54,6 +55,7 @@ function ScreenFallback(): React.JSX.Element {
 
 function AppInner(): React.JSX.Element {
   const { ready, settings, refreshAll, selectProject, projects, projectId } = useApp();
+  useAgentSounds(Boolean(settings?.soundEffects), projects);
   const [view, setView] = useState<View>('runs');
   const [runRequest, setRunRequest] = useState('');
   const [orchestratorChoice, setOrchestratorChoice] = useState(loadOrchestratorChoice);

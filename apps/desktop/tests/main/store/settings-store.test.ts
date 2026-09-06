@@ -92,6 +92,24 @@ describe('Linear workflow mapping', () => {
   });
 });
 
+describe('sound effects', () => {
+  it('defaults on for a fresh install and a file that predates the setting', () => {
+    expect(defaultSettings().soundEffects).toBe(true);
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.soundEffects;
+    expect(migrate(stored).soundEffects).toBe(true);
+    expect(seed(stored).get().soundEffects).toBe(true);
+  });
+
+  it('keeps an explicit off and repairs a garbage value', () => {
+    const store = seed({ ...defaultSettings(), soundEffects: false } as Record<string, unknown>);
+    expect(store.get().soundEffects).toBe(false);
+    expect(migrate({ ...defaultSettings(), soundEffects: 'loud' as never }).soundEffects).toBe(
+      true,
+    );
+  });
+});
+
 describe('theme', () => {
   it('defaults fresh and legacy installs to dark', () => {
     expect(defaultSettings().theme).toBe('dark');
