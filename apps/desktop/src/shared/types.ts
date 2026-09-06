@@ -3,6 +3,8 @@
  * renderer only ever sees these shapes across `ipc.ts`.
  */
 
+import type { AppTheme } from './themes.js';
+
 // ── Pipelines (data, not scripts) ────────────────────────────────────────────
 
 export type PhaseKind = 'agent' | 'code';
@@ -292,7 +294,7 @@ export function resolveAgentExecution(
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-export type AppTheme = 'dark' | 'light';
+export type { AppTheme };
 
 export interface AppSettings {
   /** Application-wide desktop palette. Existing installs default to dark. */

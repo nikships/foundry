@@ -12,6 +12,7 @@ import React, {
   useState,
 } from 'react';
 import type { AgentDef, AppSettings, EnvelopeDef, PipelineDef, ProjectDef } from '@shared/types.js';
+import { themeAppearance } from '@shared/themes.js';
 import { api } from '../api.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
 import { resolveSmithProjectId } from '../view-models/smith-scope.js';
@@ -84,7 +85,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     if (!settings) return;
     const root = document.documentElement;
     root.dataset.theme = settings.theme;
-    root.style.colorScheme = settings.theme;
+    root.style.colorScheme = themeAppearance(settings.theme);
     root.dataset.themeReady = 'true';
   }, [settings]);
 

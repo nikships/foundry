@@ -18,6 +18,7 @@ import type {
   ReadinessState,
   RunRow,
 } from '@shared/types.js';
+import { themeBackgroundColor } from '@shared/themes.js';
 import {
   IPC,
   type DetectionState,
@@ -70,10 +71,7 @@ export interface Scope {
   ownPipelines?: boolean;
 }
 
-/** Native paint shown before (and behind) the renderer. Keep in sync with --bg-base. */
-export function themeBackgroundColor(theme: AppTheme): string {
-  return theme === 'light' ? '#f7f7f5' : '#020202';
-}
+export { themeBackgroundColor };
 
 export class AppContext {
   readonly settings: SettingsStore;

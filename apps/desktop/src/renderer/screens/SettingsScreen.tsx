@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  AppTheme,
   DoctorCheck,
   ModelInfo,
   OrphanWorktree,
@@ -39,6 +38,7 @@ import QrCode from '../components/media/QrCode.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
+import { ThemePicker } from '../components/ui/ThemePicker.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
@@ -993,20 +993,10 @@ export default function SettingsScreen({
                         label="Appearance"
                         note="Choose the palette Foundry uses across the desktop."
                       >
-                        <Field
-                          label="Theme"
-                          className={styles.settingsNarrow}
-                          hint="Saved automatically and applied immediately."
-                        >
-                          <Dropdown
+                        <Field label="Theme" hint="Saved automatically and applied immediately.">
+                          <ThemePicker
                             value={settings.theme}
-                            options={[
-                              { value: 'dark', label: 'Dark' },
-                              { value: 'light', label: 'Light' },
-                            ]}
-                            aria-label="Theme"
-                            data-testid="settings-theme"
-                            onChange={(next) => void set({ theme: next as AppTheme })}
+                            onChange={(next) => void set({ theme: next })}
                           />
                         </Field>
                       </Section>

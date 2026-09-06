@@ -59,6 +59,234 @@
   --shadow-lg: 0 0 0 transparent;
 }
 
+:root[data-brand='factory'][data-theme='midnight'] {
+  --bg-void: #050914;
+  --bg-base: #070b14;
+  --bg-panel: #10182a;
+  --bg-raised: #162036;
+  --bg-hover: #1c2944;
+  --bg-active: #243354;
+  --bg-input: #0b1220;
+  --bg-sidebar: #0b1220;
+  --bg-titlebar: #070b14;
+
+  --line-faint: rgb(180 200 255 / 6%);
+  --line: rgb(180 200 255 / 11%);
+  --line-strong: rgb(180 200 255 / 20%);
+
+  --text: #e8eefc;
+  --text-strong: #ffffff;
+  --text-dim: #8b97b8;
+  --text-faint: rgb(232 238 252 / 36%);
+  --text-ghost: rgb(232 238 252 / 22%);
+  --on-text: #070b14;
+
+  --accent: #7aa2ff;
+  --accent-bright: #93b4ff;
+  --accent-deep: #5b86e8;
+  --accent-dim: #7aa2ff22;
+
+  --purple: #b4a1ff;
+  --purple-dim: #b4a1ff22;
+  --amber: #e8b86d;
+  --amber-dim: #e8b86d22;
+  --green: #4fd2a0;
+  --green-dim: #4fd2a022;
+  --red: #f07178;
+  --red-dim: #f0717822;
+  --blue: #8bb4ff;
+  --blue-dim: #8bb4ff22;
+  --teal: #5ee1d0;
+  --teal-dim: #5ee1d022;
+
+  --status-queued: var(--text-faint);
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  --overlay: rgb(7 11 20 / 72%);
+  --overlay-strong: rgb(7 11 20 / 82%);
+  --shadow-sm: 0 0 0 transparent;
+  --shadow: 0 0 0 transparent;
+  --shadow-lg: 0 0 0 transparent;
+}
+
+:root[data-brand='factory'][data-theme='forest'] {
+  --bg-void: #080c09;
+  --bg-base: #0b100c;
+  --bg-panel: #141c16;
+  --bg-raised: #1a241c;
+  --bg-hover: #212c23;
+  --bg-active: #28362b;
+  --bg-input: #0e1510;
+  --bg-sidebar: #0e1510;
+  --bg-titlebar: #0b100c;
+
+  --line-faint: rgb(180 220 190 / 6%);
+  --line: rgb(180 220 190 / 11%);
+  --line-strong: rgb(180 220 190 / 20%);
+
+  --text: #e4eee6;
+  --text-strong: #f4faf5;
+  --text-dim: #8aa090;
+  --text-faint: rgb(228 238 230 / 36%);
+  --text-ghost: rgb(228 238 230 / 22%);
+  --on-text: #0b100c;
+
+  --accent: #6fbf73;
+  --accent-bright: #84cc88;
+  --accent-deep: #57a35c;
+  --accent-dim: #6fbf7322;
+
+  --purple: #b39ddb;
+  --purple-dim: #b39ddb22;
+  --amber: #d4b05a;
+  --amber-dim: #d4b05a22;
+  --green: #3dcc8a;
+  --green-dim: #3dcc8a22;
+  --red: #e06b6b;
+  --red-dim: #e06b6b22;
+  --blue: #7eb3c9;
+  --blue-dim: #7eb3c922;
+  --teal: #5cbc9a;
+  --teal-dim: #5cbc9a22;
+
+  --status-queued: var(--text-faint);
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  --overlay: rgb(11 16 12 / 72%);
+  --overlay-strong: rgb(11 16 12 / 82%);
+  --shadow-sm: 0 0 0 transparent;
+  --shadow: 0 0 0 transparent;
+  --shadow-lg: 0 0 0 transparent;
+}
+
+:root[data-brand='factory'][data-theme='ember'] {
+  --bg-void: #100a07;
+  --bg-base: #140c08;
+  --bg-panel: #1e1410;
+  --bg-raised: #261a14;
+  --bg-hover: #2e2119;
+  --bg-active: #382820;
+  --bg-input: #18100c;
+  --bg-sidebar: #18100c;
+  --bg-titlebar: #140c08;
+
+  --line-faint: rgb(255 210 170 / 6%);
+  --line: rgb(255 210 170 / 11%);
+  --line-strong: rgb(255 210 170 / 20%);
+
+  --text: #f3e6d8;
+  --text-strong: #fff6ec;
+  --text-dim: #b08a72;
+  --text-faint: rgb(243 230 216 / 38%);
+  --text-ghost: rgb(243 230 216 / 22%);
+  --on-text: #140c08;
+
+  --accent: #e07a3d;
+  --accent-bright: #ef8b4e;
+  --accent-deep: #c4652c;
+  --accent-dim: #e07a3d22;
+
+  --purple: #c4a1e0;
+  --purple-dim: #c4a1e022;
+  --amber: #e0b15a;
+  --amber-dim: #e0b15a22;
+  --green: #6dbe7a;
+  --green-dim: #6dbe7a22;
+  --red: #e15b4a;
+  --red-dim: #e15b4a22;
+  --blue: #7ea8d4;
+  --blue-dim: #7ea8d422;
+  --teal: #5cbcb0;
+  --teal-dim: #5cbcb022;
+
+  --status-queued: var(--text-faint);
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  --overlay: rgb(20 12 8 / 72%);
+  --overlay-strong: rgb(20 12 8 / 82%);
+  --shadow-sm: 0 0 0 transparent;
+  --shadow: 0 0 0 transparent;
+  --shadow-lg: 0 0 0 transparent;
+}
+
+:root[data-brand='factory'][data-theme='contrast'] {
+  --bg-void: #000000;
+  --bg-base: #000000;
+  --bg-panel: #0a0a0a;
+  --bg-raised: #141414;
+  --bg-hover: #1e1e1e;
+  --bg-active: #282828;
+  --bg-input: #000000;
+  --bg-sidebar: #000000;
+  --bg-titlebar: #000000;
+
+  --line-faint: rgb(255 255 255 / 18%);
+  --line: rgb(255 255 255 / 32%);
+  --line-strong: rgb(255 255 255 / 48%);
+
+  --text: #ffffff;
+  --text-strong: #ffffff;
+  --text-dim: #c8c8c8;
+  --text-faint: rgb(255 255 255 / 70%);
+  --text-ghost: rgb(255 255 255 / 50%);
+  --on-text: #000000;
+
+  --accent: #ffb020;
+  --accent-bright: #ffc44d;
+  --accent-deep: #e09400;
+  --accent-dim: #ffb02033;
+
+  --purple: #c4a8ff;
+  --purple-dim: #c4a8ff33;
+  --amber: #ffb020;
+  --amber-dim: #ffb02033;
+  --green: #3dff9a;
+  --green-dim: #3dff9a33;
+  --red: #ff4d4d;
+  --red-dim: #ff4d4d33;
+  --blue: #66b3ff;
+  --blue-dim: #66b3ff33;
+  --teal: #3dffe0;
+  --teal-dim: #3dffe033;
+
+  --status-queued: var(--text-faint);
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  --overlay: rgb(0 0 0 / 78%);
+  --overlay-strong: rgb(0 0 0 / 88%);
+  --shadow-sm: 0 0 0 transparent;
+  --shadow: 0 0 0 transparent;
+  --shadow-lg: 0 0 0 transparent;
+}
+
 :root[data-brand='factory'][data-theme='light'] {
   --bg-void: #efefec;
   --bg-base: #f7f7f5;
@@ -114,4 +342,118 @@
   --shadow-sm: 0 1px 2px rgb(20 20 18 / 10%);
   --shadow: 0 8px 24px rgb(20 20 18 / 14%);
   --shadow-lg: 0 18px 48px rgb(20 20 18 / 18%);
+}
+
+:root[data-brand='factory'][data-theme='sand'] {
+  --bg-void: #ebe4d6;
+  --bg-base: #f4efe4;
+  --bg-panel: #fffaf0;
+  --bg-raised: #ece4d4;
+  --bg-hover: #e4d9c6;
+  --bg-active: #d9ccb4;
+  --bg-input: #fffaf0;
+  --bg-sidebar: #ece4d4;
+  --bg-titlebar: #f4efe4;
+
+  --line-faint: rgb(42 33 24 / 8%);
+  --line: rgb(42 33 24 / 14%);
+  --line-strong: rgb(42 33 24 / 26%);
+
+  --text: #2a2118;
+  --text-strong: #140e09;
+  --text-dim: #6e5d4c;
+  --text-faint: rgb(42 33 24 / 54%);
+  --text-ghost: rgb(42 33 24 / 34%);
+  --on-text: #fffaf0;
+
+  --accent: #9a4b16;
+  --accent-bright: #7c3a10;
+  --accent-deep: #632e0c;
+  --accent-dim: rgb(154 75 22 / 13%);
+
+  --purple: #6b3fa0;
+  --purple-dim: rgb(107 63 160 / 12%);
+  --amber: #8a5700;
+  --amber-dim: rgb(138 87 0 / 13%);
+  --green: #1f6b3a;
+  --green-dim: rgb(31 107 58 / 12%);
+  --red: #b42318;
+  --red-dim: rgb(180 35 24 / 11%);
+  --blue: #1d5a8f;
+  --blue-dim: rgb(29 90 143 / 11%);
+  --teal: #0f6e62;
+  --teal-dim: rgb(15 110 98 / 12%);
+
+  --status-queued: var(--text-faint);
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  --overlay: rgb(42 33 24 / 32%);
+  --overlay-strong: rgb(42 33 24 / 45%);
+  --shadow-sm: 0 1px 2px rgb(42 33 24 / 10%);
+  --shadow: 0 8px 24px rgb(42 33 24 / 14%);
+  --shadow-lg: 0 18px 48px rgb(42 33 24 / 18%);
+}
+
+:root[data-brand='factory'][data-theme='mist'] {
+  --bg-void: #e4e8f0;
+  --bg-base: #eef1f6;
+  --bg-panel: #ffffff;
+  --bg-raised: #e6ebf3;
+  --bg-hover: #dce3ee;
+  --bg-active: #d0d8e6;
+  --bg-input: #ffffff;
+  --bg-sidebar: #e6ebf3;
+  --bg-titlebar: #eef1f6;
+
+  --line-faint: rgb(26 34 48 / 8%);
+  --line: rgb(26 34 48 / 14%);
+  --line-strong: rgb(26 34 48 / 26%);
+
+  --text: #1a2230;
+  --text-strong: #0c121c;
+  --text-dim: #5a6578;
+  --text-faint: rgb(26 34 48 / 54%);
+  --text-ghost: rgb(26 34 48 / 34%);
+  --on-text: #ffffff;
+
+  --accent: #2b5f9e;
+  --accent-bright: #1e4a80;
+  --accent-deep: #173a66;
+  --accent-dim: rgb(43 95 158 / 13%);
+
+  --purple: #5b3fa8;
+  --purple-dim: rgb(91 63 168 / 12%);
+  --amber: #8a5700;
+  --amber-dim: rgb(138 87 0 / 13%);
+  --green: #0b6b45;
+  --green-dim: rgb(11 107 69 / 12%);
+  --red: #c52727;
+  --red-dim: rgb(197 39 39 / 11%);
+  --blue: #2b5f9e;
+  --blue-dim: rgb(43 95 158 / 11%);
+  --teal: #0e7a72;
+  --teal-dim: rgb(14 122 114 / 12%);
+
+  --status-queued: var(--text-faint);
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  --overlay: rgb(26 34 48 / 32%);
+  --overlay-strong: rgb(26 34 48 / 45%);
+  --shadow-sm: 0 1px 2px rgb(26 34 48 / 10%);
+  --shadow: 0 8px 24px rgb(26 34 48 / 14%);
+  --shadow-lg: 0 18px 48px rgb(26 34 48 / 18%);
 }

@@ -5,6 +5,7 @@ Shared code is imported by main and renderer. It must remain side-effect free: n
 ## Ownership
 
 - `types.ts` — pipelines, phases, agents, envelopes, gates, boundaries, runs, projects, and settings.
+- `themes.ts` — desktop palette catalog (`AppTheme` ids, labels, native chrome colors).
 - `ipc-contract.ts` — `FoundryApi` and `IPC.*` channel constants.
 - `builtin-agents.ts` / `builtin-pipelines.ts` — pure shipped seed definitions, not store behavior.
 - `model-intelligence.ts` and its vendored data — offline model capability scores.

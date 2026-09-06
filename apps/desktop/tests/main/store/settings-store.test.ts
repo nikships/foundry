@@ -117,6 +117,14 @@ describe('theme', () => {
     expect(store.patch({ theme: 'sepia' as never }).ok).toBe(false);
     expect(store.get().theme).toBe('light');
   });
+
+  it('persists named palettes beyond light and dark', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ theme: 'midnight' })).toMatchObject({ ok: true });
+    expect(store.get().theme).toBe('midnight');
+    expect(migrate({ ...defaultSettings(), theme: 'ember' }).theme).toBe('ember');
+    expect(migrate({ ...defaultSettings(), theme: 'mist' }).theme).toBe('mist');
+  });
 });
 
 describe('helper defaults', () => {
