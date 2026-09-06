@@ -1,7 +1,8 @@
 /**
  * Plays generated milestone sounds from live orchestrator, run, and Smith
  * snapshots. Historical rows are a baseline, not a concert: the first read
- * of each run or pending proposal is silent.
+ * of each run or pending proposal is silent. Priming waits until the first
+ * successful run-list fetch so a failed startup poll cannot replay history.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
@@ -65,22 +66,31 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       for (const cue of cues) playAgentSound(cue);
     };
 
-    const refreshRuns = async (): Promise<boolean> => {
-      if (disposed) return false;
+    const refreshRuns = async (): Promise<{ live: boolean; loaded: boolean }> => {
+      if (disposed) return { live: false, loaded: false };
       if (inFlightRef.current) {
         queuedRef.current = true;
-        return [...runsRef.current.values()].some((run) => run.status === 'running');
+        return {
+          live: [...runsRef.current.values()].some((run) => run.status === 'running'),
+          loaded: primedRef.current,
+        };
       }
       inFlightRef.current = true;
       try {
         const lists = await Promise.all(
           projectsRef.current.map((project) => api.runs.list(project.id, false)),
         );
-        if (disposed) return false;
+        if (disposed) return { live: false, loaded: false };
         applyRunSnapshots(lists.flat(), runsRef.current, primedRef.current, play);
-        return [...runsRef.current.values()].some((run) => run.status === 'running');
+        return {
+          live: [...runsRef.current.values()].some((run) => run.status === 'running'),
+          loaded: true,
+        };
       } catch {
-        return [...runsRef.current.values()].some((run) => run.status === 'running');
+        return {
+          live: [...runsRef.current.values()].some((run) => run.status === 'running'),
+          loaded: false,
+        };
       } finally {
         inFlightRef.current = false;
         if (!disposed && queuedRef.current) {
@@ -126,16 +136,19 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       timer = window.setTimeout(
         () => {
           if (disposed) return;
-          void refreshRuns().then((stillLive) => schedule(stillLive));
+          void refreshRuns().then((result) => {
+            if (!primedRef.current && result.loaded) primedRef.current = true;
+            schedule(result.live);
+          });
         },
         live ? 800 : 4_000,
       );
     };
 
-    void Promise.all([refreshRuns(), refreshSmith()]).then(([live]) => {
+    void Promise.all([refreshRuns(), refreshSmith()]).then(([result]) => {
       if (disposed) return;
-      primedRef.current = true;
-      schedule(live);
+      if (result.loaded) primedRef.current = true;
+      schedule(result.live);
     });
 
     return () => {

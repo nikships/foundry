@@ -101,6 +101,10 @@ function scheduleTone(ctx: AudioContext, start: number, tone: Tone): void {
   amp.gain.exponentialRampToValueAtTime(0.0001, when + tone.duration + release);
   osc.connect(amp);
   amp.connect(ctx.destination);
+  osc.onended = () => {
+    osc.disconnect();
+    amp.disconnect();
+  };
   osc.start(when);
   osc.stop(when + tone.duration + release + 0.01);
 }
