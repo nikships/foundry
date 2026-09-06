@@ -42,6 +42,7 @@ export const appSettingsSchema = z.object({
     failed: z.boolean(),
   }),
   dockBadge: z.boolean(),
+  soundEffects: z.boolean(),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
   hiddenModelIds: z.array(z.string().min(1)),
@@ -68,6 +69,7 @@ export function defaultSettings(): AppSettings {
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true },
     dockBadge: true,
+    soundEffects: true,
     retentionDays: null,
     onboarded: false,
     hiddenModelIds: [],
@@ -93,6 +95,7 @@ export function migrate(raw: unknown): AppSettings {
   }
 
   if (!isAppTheme(merged.theme)) merged.theme = base.theme;
+  if (typeof merged.soundEffects !== 'boolean') merged.soundEffects = base.soundEffects;
   if (!isNonEmptyString(stored.helperModel)) {
     merged.helperModel = legacyHelperModel(legacy) || base.helperModel;
   }

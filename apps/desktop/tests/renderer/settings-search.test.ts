@@ -106,12 +106,13 @@ describe('paneMatchesQuery', () => {
 });
 
 describe('SETTINGS_TOGGLES', () => {
-  it('offers the four notification switches plus the dock badge', () => {
+  it('offers the four notification switches plus the dock badge and sounds', () => {
     expect(SETTINGS_TOGGLES.map((t) => t.id)).toEqual([
       'accepted',
       'rejected',
       'failed',
       'dockBadge',
+      'soundEffects',
     ]);
   });
 });

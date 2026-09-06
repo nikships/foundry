@@ -340,6 +340,11 @@ export interface AppSettings {
   compactionThreshold: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean };
   dockBadge: boolean;
+  /**
+   * Generated milestone tones for orchestrator pings, proposed pipelines,
+   * finished phases, settled runs, and moments that wait on the operator.
+   */
+  soundEffects: boolean;
   retentionDays: number | null;
   onboarded: boolean;
   /**

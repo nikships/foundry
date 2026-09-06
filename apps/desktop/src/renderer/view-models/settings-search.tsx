@@ -61,7 +61,7 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
     label: 'App',
     hint: 'Appearance, notifications, updates, phone, and maintenance',
     keywords:
-      'theme appearance dark light midnight forest ember contrast sand mist palette color notify updates phone companion application quit relaunch retention history orphan version build replay intro',
+      'theme appearance dark light midnight forest ember contrast sand mist palette color notify sound effects audio updates phone companion application quit relaunch retention history orphan version build replay intro',
   },
 ];
 
@@ -93,7 +93,7 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     pane: 'general',
     label: 'Notifications',
     note: 'Only the moments that need you.',
-    keywords: 'notify accepted rejected failed waiting dock badge alerts',
+    keywords: 'notify accepted rejected failed waiting dock badge alerts sound effects audio tone',
   },
   {
     pane: 'general',
@@ -280,8 +280,8 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
 
 /** The boolean settings the palette can flip in place without opening a pane. */
 export interface SettingsToggleDef {
-  /** 'dockBadge' lives on the settings root; the rest under `notifications`. */
-  id: 'accepted' | 'rejected' | 'failed' | 'dockBadge';
+  /** Root booleans plus the three `notifications` switches. */
+  id: 'accepted' | 'rejected' | 'failed' | 'dockBadge' | 'soundEffects';
   /** Mirrors the row labels in the General → Notifications section. */
   title: string;
   keywords: string;
@@ -295,6 +295,11 @@ export const SETTINGS_TOGGLES: SettingsToggleDef[] = [
     id: 'dockBadge',
     title: 'Show the number of live runs on the dock icon',
     keywords: 'dock badge count icon',
+  },
+  {
+    id: 'soundEffects',
+    title: 'Play sounds for planning, finished steps, and when you are needed',
+    keywords: 'sound effects audio tone ping beep orchestrator pipeline',
   },
 ];
 
