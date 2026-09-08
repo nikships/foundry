@@ -115,11 +115,9 @@ function InspectorFooter({
 export default function InspectorScreen({
   pinnedRunId,
   onOpenRun,
-  onOpenWorkshop,
 }: {
   pinnedRunId: string;
   onOpenRun: (runId: string) => void;
-  onOpenWorkshop: (runId: string) => void;
 }): React.JSX.Element {
   const { projectId, project } = useApp();
   const {
@@ -259,17 +257,6 @@ export default function InspectorScreen({
             </>
           )}
           <div className={styles.inspectorControls}>
-            {view.run && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpenWorkshop(runId)}
-                title="Visit Little Foundry, an animated view of this run"
-                data-testid="inspector-open-workshop"
-              >
-                Workshop ↗
-              </Button>
-            )}
             {view.run && (
               <Button
                 variant="ghost"
