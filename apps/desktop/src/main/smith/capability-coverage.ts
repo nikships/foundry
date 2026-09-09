@@ -114,6 +114,12 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.linearIssue]: read('smith_runs', 'linear_issue'),
   [IPC.linearWorkflowStates]: read('smith_runs', 'linear_workflow_states'),
   [IPC.linearStartRun]: approve('smith_runs', 'linear_start'),
+  [IPC.tavilyState]: read('smith_providers', 'tavily_state'),
+  // Enabling downloads code that agents will run, so it is never immediate.
+  [IPC.tavilyInstall]: approve('smith_providers', 'tavily_install'),
+  [IPC.tavilyRemove]: approve('smith_providers', 'tavily_remove'),
+  [IPC.tavilySetApiKey]: secure('smith_providers', 'tavily_set_api_key'),
+  [IPC.tavilyClearApiKey]: approve('smith_providers', 'tavily_clear_api_key'),
   [IPC.runsStart]: approve('smith_runs', 'start'),
   [IPC.runsResume]: approve('smith_runs', 'resume'),
   [IPC.runsList]: read('smith_runs', 'list'),

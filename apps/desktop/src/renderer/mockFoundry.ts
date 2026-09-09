@@ -670,6 +670,18 @@ export function createMockFoundryApi(): FoundryApi {
       ],
       startRun: async () => unavailableStart(UNAVAILABLE),
     },
+    tavily: {
+      state: async () => ({
+        installed: true,
+        keySet: true,
+        npmSpec: '@tavily/pi-extension@0.1.2',
+        detail: 'Web preview uses fixture Tavily state.',
+      }),
+      install: async () => unavailable(WEB_PREVIEW),
+      remove: async () => unavailable(WEB_PREVIEW),
+      setApiKey: async () => unavailable(WEB_PREVIEW),
+      clearApiKey: async () => unavailable(WEB_PREVIEW),
+    },
     runs: {
       start: async () =>
         unavailableStart(
