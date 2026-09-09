@@ -52,6 +52,20 @@ describe('spawnEnv', () => {
     expect(spawnEnv().FACTORY_API_KEY).toBe(process.env.FACTORY_API_KEY);
   });
 
+  it('strips the in-process Tavily key so no child inherits it', () => {
+    // The key is exported into process.env for the in-process pi extension;
+    // it is not the business of any spawned child.
+    setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
+    process.env.TAVILY_API_KEY = 'tvly-in-process-only';
+    try {
+      expect(spawnEnv().TAVILY_API_KEY).toBeUndefined();
+      // An explicit override still wins, as it does for PATH.
+      expect(spawnEnv({ TAVILY_API_KEY: 'explicit' }).TAVILY_API_KEY).toBe('explicit');
+    } finally {
+      delete process.env.TAVILY_API_KEY;
+    }
+  });
+
   it('falls back to the inherited PATH before resolution finishes, rather than throwing', () => {
     setResolvedEnvForTest(null);
     expect(resolvedEnv().path).toBe(process.env.PATH ?? '');

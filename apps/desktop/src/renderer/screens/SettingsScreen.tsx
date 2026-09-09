@@ -13,6 +13,7 @@ import {
   type BridgeState,
   type LinearConnectionState,
   type StoredProviderKey,
+  type TavilyConnectionState,
 } from '@shared/ipc-contract.js';
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
 import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
@@ -293,6 +294,10 @@ export default function SettingsScreen({
   const [linearKeyDraft, setLinearKeyDraft] = useState('');
   const [linearBusy, setLinearBusy] = useState(false);
   const [linearNote, setLinearNote] = useState('');
+  const [tavilyConnection, setTavilyConnection] = useState<TavilyConnectionState | null>(null);
+  const [tavilyKeyDraft, setTavilyKeyDraft] = useState('');
+  const [tavilyBusy, setTavilyBusy] = useState(false);
+  const [tavilyNote, setTavilyNote] = useState('');
   const [searchQ, setSearchQ] = useState('');
   const [palOpen, setPalOpen] = useState(false);
   const [palQ, setPalQ] = useState('');
@@ -334,6 +339,7 @@ export default function SettingsScreen({
 
   useEffect(() => {
     void api.linear.state().then(setLinearConnection);
+    void api.tavily.state().then(setTavilyConnection);
   }, []);
 
   const loadPairingPayload = useCallback(async (refresh = false): Promise<void> => {
@@ -697,6 +703,50 @@ export default function SettingsScreen({
     'Remove the stored Linear API key? New Linear-backed runs will be unavailable.',
     async (): Promise<void> => {
       await runLinearAction(() => api.linear.clearApiKey());
+    },
+  );
+
+  const runTavilyAction = async (
+    action: () => Promise<{ ok: boolean; detail: string }>,
+  ): Promise<void> => {
+    if (tavilyBusy) return;
+    setTavilyBusy(true);
+    try {
+      const result = await action();
+      setTavilyNote(result.detail);
+      setErrors(result.ok ? [] : [result.detail]);
+      if (result.ok) setTavilyKeyDraft('');
+    } catch (error) {
+      const message = (error as Error).message;
+      setTavilyNote(message);
+      setErrors([message]);
+    } finally {
+      setTavilyConnection(await api.tavily.state());
+      setTavilyBusy(false);
+    }
+  };
+
+  const installTavily = useConfirmAction(
+    `Enable Tavily web search? Foundry will download ${
+      tavilyConnection?.npmSpec ?? 'the pinned Tavily extension package'
+    } from npm (install scripts disabled) and offer its web_search and web_fetch tools to new agent sessions.`,
+    async (): Promise<void> => {
+      await runTavilyAction(() => api.tavily.install());
+    },
+    { title: 'Download Tavily extension', confirmLabel: 'Download', variant: 'primary' },
+  );
+
+  const removeTavily = useConfirmAction(
+    'Remove the downloaded Tavily extension? New agent sessions lose web search; the stored API key is kept.',
+    async (): Promise<void> => {
+      await runTavilyAction(() => api.tavily.remove());
+    },
+  );
+
+  const clearTavilyKey = useConfirmAction(
+    'Remove the stored Tavily API key? The Tavily tools will report a missing key until a new one is saved.',
+    async (): Promise<void> => {
+      await runTavilyAction(() => api.tavily.clearApiKey());
     },
   );
 
@@ -1863,90 +1913,206 @@ export default function SettingsScreen({
               {pane === 'integrations' && (
                 <PaneBody>
                   {() => (
-                    <Section
-                      label="Linear"
-                      note="Use an issue as the immutable source for a manual pipeline run."
-                    >
-                      <div className={styles.providerCard} data-testid="linear-integration">
-                        <div className={styles.providerHead}>
-                          <h3>Linear issue orchestration</h3>
-                          <span
-                            className={`${styles.settingsPill} ${
-                              linearConnection?.keySet ? styles.ok : styles.plain
-                            }`}
-                          >
-                            {linearConnection?.keySet ? 'key set' : 'not connected'}
-                          </span>
-                        </div>
-                        <p className={styles.settingsLead}>
-                          Foundry validates the key before saving it. The encrypted value uses this
-                          Mac&rsquo;s credential storage and never enters settings.json or a run
-                          trace.
-                        </p>
-                        <Field
-                          label="Personal API key"
-                          htmlFor="linear-api-key"
-                          hint={
-                            linearConnection?.keySet
-                              ? 'A key is stored. Saving a new valid key replaces it; the old key remains if validation fails.'
-                              : 'Create a personal API key in Linear → Security & access.'
-                          }
-                        >
-                          <TextInput
-                            id="linear-api-key"
-                            type="password"
-                            autoComplete="off"
-                            spellCheck={false}
-                            mono
-                            value={linearKeyDraft}
-                            placeholder={linearConnection?.keySet ? '••••••••' : 'lin_api_…'}
-                            onChange={(event) => setLinearKeyDraft(event.target.value)}
-                          />
-                        </Field>
-                        <div className={styles.settingsBtnrow}>
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            disabled={linearBusy || !linearKeyDraft.trim()}
-                            onClick={() =>
-                              void runLinearAction(() => api.linear.setApiKey(linearKeyDraft))
+                    <>
+                      <Section
+                        label="Linear"
+                        note="Use an issue as the immutable source for a manual pipeline run."
+                      >
+                        <div className={styles.providerCard} data-testid="linear-integration">
+                          <div className={styles.providerHead}>
+                            <h3>Linear issue orchestration</h3>
+                            <span
+                              className={`${styles.settingsPill} ${
+                                linearConnection?.keySet ? styles.ok : styles.plain
+                              }`}
+                            >
+                              {linearConnection?.keySet ? 'key set' : 'not connected'}
+                            </span>
+                          </div>
+                          <p className={styles.settingsLead}>
+                            Foundry validates the key before saving it. The encrypted value uses
+                            this Mac&rsquo;s credential storage and never enters settings.json or a
+                            run trace.
+                          </p>
+                          <Field
+                            label="Personal API key"
+                            htmlFor="linear-api-key"
+                            hint={
+                              linearConnection?.keySet
+                                ? 'A key is stored. Saving a new valid key replaces it; the old key remains if validation fails.'
+                                : 'Create a personal API key in Linear → Security & access.'
                             }
                           >
-                            {linearBusy
-                              ? 'Checking…'
-                              : linearConnection?.keySet
-                                ? 'Validate & replace'
-                                : 'Validate & save'}
-                          </Button>
-                          {linearConnection?.keySet && (
+                            <TextInput
+                              id="linear-api-key"
+                              type="password"
+                              autoComplete="off"
+                              spellCheck={false}
+                              mono
+                              value={linearKeyDraft}
+                              placeholder={linearConnection?.keySet ? '••••••••' : 'lin_api_…'}
+                              onChange={(event) => setLinearKeyDraft(event.target.value)}
+                            />
+                          </Field>
+                          <div className={styles.settingsBtnrow}>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              disabled={linearBusy || !linearKeyDraft.trim()}
+                              onClick={() =>
+                                void runLinearAction(() => api.linear.setApiKey(linearKeyDraft))
+                              }
+                            >
+                              {linearBusy
+                                ? 'Checking…'
+                                : linearConnection?.keySet
+                                  ? 'Validate & replace'
+                                  : 'Validate & save'}
+                            </Button>
+                            {linearConnection?.keySet && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  disabled={linearBusy}
+                                  onClick={() => void runLinearAction(() => api.linear.test())}
+                                >
+                                  Test connection
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  disabled={linearBusy}
+                                  onClick={() => void clearLinearKey()}
+                                >
+                                  Remove key
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                          {(linearNote || linearConnection?.detail) && (
+                            <p className={styles.hint}>{linearNote || linearConnection?.detail}</p>
+                          )}
+                          <p className={styles.hint}>
+                            Choose an issue and map its team workflow from Runs → Linear issue.
+                            Foundry revalidates those state IDs before every start.
+                          </p>
+                        </div>
+                      </Section>
+                      <Section
+                        label="Tavily"
+                        note="Opt-in web search and page fetching for run agents."
+                      >
+                        <div className={styles.providerCard} data-testid="tavily-integration">
+                          <div className={styles.providerHead}>
+                            <h3>Tavily web search</h3>
+                            <span
+                              className={`${styles.settingsPill} ${
+                                tavilyConnection?.installed && tavilyConnection?.keySet
+                                  ? styles.ok
+                                  : styles.plain
+                              }`}
+                            >
+                              {tavilyConnection?.installed
+                                ? tavilyConnection.keySet
+                                  ? 'ready'
+                                  : 'key missing'
+                                : 'off'}
+                            </span>
+                          </div>
+                          <p className={styles.settingsLead}>
+                            Nothing ships with the app: enabling downloads the pinned official
+                            extension ({tavilyConnection?.npmSpec ?? '@tavily/pi-extension'}) after
+                            you confirm. The encrypted key uses this Mac&rsquo;s credential storage
+                            and never enters settings.json or a run trace.
+                          </p>
+                          {!tavilyConnection?.installed ? (
+                            <div className={styles.settingsBtnrow}>
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                disabled={tavilyBusy}
+                                onClick={() => void installTavily()}
+                              >
+                                {tavilyBusy ? 'Downloading…' : 'Enable web search…'}
+                              </Button>
+                            </div>
+                          ) : (
                             <>
-                              <Button
-                                size="sm"
-                                disabled={linearBusy}
-                                onClick={() => void runLinearAction(() => api.linear.test())}
+                              <Field
+                                label="API key"
+                                htmlFor="tavily-api-key"
+                                hint={
+                                  tavilyConnection.keySet
+                                    ? 'A key is stored. Saving a new key replaces it.'
+                                    : 'Create an API key in your Tavily dashboard.'
+                                }
                               >
-                                Test connection
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                disabled={linearBusy}
-                                onClick={() => void clearLinearKey()}
-                              >
-                                Remove key
-                              </Button>
+                                <TextInput
+                                  id="tavily-api-key"
+                                  type="password"
+                                  autoComplete="off"
+                                  spellCheck={false}
+                                  mono
+                                  value={tavilyKeyDraft}
+                                  placeholder={tavilyConnection.keySet ? '••••••••' : 'tvly-…'}
+                                  onChange={(event) => setTavilyKeyDraft(event.target.value)}
+                                />
+                              </Field>
+                              <div className={styles.settingsBtnrow}>
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  disabled={tavilyBusy || !tavilyKeyDraft.trim()}
+                                  onClick={() =>
+                                    void runTavilyAction(() => api.tavily.setApiKey(tavilyKeyDraft))
+                                  }
+                                >
+                                  {tavilyBusy
+                                    ? 'Saving…'
+                                    : tavilyConnection.keySet
+                                      ? 'Replace key'
+                                      : 'Save key'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    void api.app.openExternal('https://app.tavily.com/home')
+                                  }
+                                >
+                                  Get a key ↗
+                                </Button>
+                                {tavilyConnection.keySet && (
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    disabled={tavilyBusy}
+                                    onClick={() => void clearTavilyKey()}
+                                  >
+                                    Remove key
+                                  </Button>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  disabled={tavilyBusy}
+                                  onClick={() => void removeTavily()}
+                                >
+                                  Disable &amp; delete download
+                                </Button>
+                              </div>
                             </>
                           )}
+                          {(tavilyNote || tavilyConnection?.detail) && (
+                            <p className={styles.hint}>{tavilyNote || tavilyConnection?.detail}</p>
+                          )}
+                          <p className={styles.hint}>
+                            Agents get web_search and web_fetch in new sessions, including read-only
+                            reviewers: both tools only read the network.
+                          </p>
                         </div>
-                        {(linearNote || linearConnection?.detail) && (
-                          <p className={styles.hint}>{linearNote || linearConnection?.detail}</p>
-                        )}
-                        <p className={styles.hint}>
-                          Choose an issue and map its team workflow from Runs → Linear issue.
-                          Foundry revalidates those state IDs before every start.
-                        </p>
-                      </div>
-                    </Section>
+                      </Section>
+                    </>
                   )}
                 </PaneBody>
               )}

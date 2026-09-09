@@ -18,6 +18,9 @@ import { tempDir } from '../../helpers/tmp.js';
 import {
   BUNDLED_PACKAGES,
   NO_PACKAGE_RESOURCES,
+  OPTIONAL_PACKAGES,
+  installedOptionalPackages,
+  optionalPackageDir,
   packagesRoot,
   resolveBundledPackages,
 } from '../../../src/main/pi/packages.js';
@@ -65,17 +68,25 @@ afterEach(() => {
 
 describe('what this build ships', () => {
   it('declares packages in source, with names that map to directories', () => {
-    for (const pkg of BUNDLED_PACKAGES) {
+    const declared = [...BUNDLED_PACKAGES, ...OPTIONAL_PACKAGES];
+    for (const pkg of declared) {
       expect(pkg.name).toMatch(/^[a-z0-9][a-z0-9._-]*$/);
       // A name with a separator would escape the packages root.
       expect(pkg.name).not.toContain('/');
       expect(pkg.name).not.toContain('..');
     }
-    expect(new Set(BUNDLED_PACKAGES.map((pkg) => pkg.name)).size).toBe(BUNDLED_PACKAGES.length);
+    expect(new Set(declared.map((pkg) => pkg.name)).size).toBe(declared.length);
+  });
+
+  it('pins every optional package to an exact version, never a range', () => {
+    for (const pkg of OPTIONAL_PACKAGES) {
+      expect(pkg.npmSpec).toBe(`${pkg.npmName}@${pkg.npmSpec.split('@').at(-1)}`);
+      expect(pkg.npmSpec.split('@').at(-1)).toMatch(/^\d+\.\d+\.\d+$/);
+    }
   });
 
   it('resolves nothing when the list is empty, without touching the runtime', async () => {
-    expect(await resolveBundledPackages({ supportDir: support, packages: [] })).toBe(
+    expect(await resolveBundledPackages({ supportDir: support, packages: [], optional: [] })).toBe(
       NO_PACKAGE_RESOURCES,
     );
   });
@@ -143,6 +154,71 @@ describe('resolving a shipped package', () => {
     });
     expect(resolved).toBe(NO_PACKAGE_RESOURCES);
     expect(warnings).toHaveLength(1);
+  });
+});
+
+describe('an operator-enabled optional package', () => {
+  it('is discovered by install presence under the support directory', () => {
+    // Nothing installed: the default state, and the whole disable story.
+    expect(installedOptionalPackages(support)).toEqual([]);
+
+    const tavily = OPTIONAL_PACKAGES.find((pkg) => pkg.name === 'tavily')!;
+    const dir = optionalPackageDir(support, tavily);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: tavily.npmName }));
+
+    expect(installedOptionalPackages(support)).toEqual([{ pkg: tavily, dir }]);
+  });
+
+  it('resolves alongside shipped packages once installed', async () => {
+    const alpha = writePackage('alpha');
+    // An install laid out the way npm leaves the real package: a manifest
+    // whose `pi.extensions` names the entry file.
+    const dir = join(root, 'optional-install');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        name: '@fixture/optional',
+        version: '1.0.0',
+        pi: { extensions: ['./index.js'] },
+      }),
+    );
+    writeFileSync(join(dir, 'index.js'), 'export default function extension() {}\n');
+
+    const resolved = await resolveBundledPackages({
+      supportDir: support,
+      root,
+      packages: [{ name: 'alpha' }],
+      optional: [{ pkg: { name: 'optional', extensionsForReadOnly: true }, dir }],
+    });
+
+    expect(resolved.extensionPaths).toContain(join(alpha, 'extensions', 'tools.js'));
+    expect(resolved.extensionPaths).toContain(join(dir, 'index.js'));
+  });
+
+  it('keeps a read-only-cleared optional package usable by a reviewer', async () => {
+    const dir = join(root, 'optional-install');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        name: '@fixture/optional',
+        version: '1.0.0',
+        pi: { extensions: ['./index.js'] },
+      }),
+    );
+    writeFileSync(join(dir, 'index.js'), 'export default function extension() {}\n');
+
+    const resolved = await resolveBundledPackages({
+      supportDir: support,
+      root,
+      packages: [],
+      skillsOnly: true,
+      optional: [{ pkg: { name: 'optional', extensionsForReadOnly: true }, dir }],
+    });
+
+    expect(resolved.extensionPaths).toEqual([join(dir, 'index.js')]);
   });
 });
 

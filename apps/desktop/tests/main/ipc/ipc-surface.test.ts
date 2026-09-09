@@ -60,8 +60,16 @@ describe('the IPC surface', () => {
     expect(registered.filter((channel) => channel === IPC.settingsGet)).toHaveLength(1);
   });
 
-  it('registers 137 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(137);
+  it('registers 142 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(142);
+  });
+
+  it('registers the Tavily opt-in extension and credential boundary', () => {
+    expect(registered).toContain(IPC.tavilyState);
+    expect(registered).toContain(IPC.tavilyInstall);
+    expect(registered).toContain(IPC.tavilyRemove);
+    expect(registered).toContain(IPC.tavilySetApiKey);
+    expect(registered).toContain(IPC.tavilyClearApiKey);
   });
 
   it('registers the artifact channel the phase Document tab reads', () => {

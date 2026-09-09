@@ -1,16 +1,21 @@
 /**
- * The pi packages Foundry ships.
+ * The pi packages Foundry can load: shipped ones and operator-enabled ones.
  *
- * These are part of the application, not something an operator installs: the
- * list below is source, the directories are vendored under `resources/`, and a
- * package arrives on a machine the same way any other code does — someone adds
- * it here, it is reviewed, and a release goes out. There is no install path,
- * no settings entry, and no way for a repository or an agent to add one.
+ * Shipped packages are part of the application: the list below is source, the
+ * directories are vendored under `resources/`, and a package arrives on a
+ * machine the same way any other code does — someone adds it here, it is
+ * reviewed, and a release goes out.
+ *
+ * Optional packages are still named in source — the exact npm spec below is
+ * the only thing an enable can download — but the bytes arrive only after the
+ * operator explicitly confirms the download in Settings. A repository or an
+ * agent still cannot add one: the list is code, the install path is one fixed
+ * Settings action, and the spec is exact-pinned.
  *
  * A package supplies extensions (tools an agent can call) and skills
  * (instructions only). Both reach a session through pi's additional-path
  * options, which are honoured while every discovery flag stays off — so what
- * loads is exactly this list, and never a `.pi/` directory belonging to
+ * loads is exactly these lists, and never a `.pi/` directory belonging to
  * whatever repository happens to be open.
  */
 
@@ -44,6 +49,67 @@ export interface BundledPackage {
  * manifest in its `package.json`), then add an entry here.
  */
 export const BUNDLED_PACKAGES: readonly BundledPackage[] = [];
+
+/**
+ * One optional package: named and pinned in source, downloaded only after the
+ * operator confirms in Settings, installed under Foundry's own support
+ * directory rather than `~/.pi`.
+ */
+export interface OptionalPackage extends BundledPackage {
+  /** The exact npm spec an enable downloads; never a range, never an input. */
+  readonly npmSpec: string;
+  /** The npm package name, which is its path under `node_modules/`. */
+  readonly npmName: string;
+}
+
+/**
+ * Every package an operator may opt into. Enabling one is a confirmed
+ * download in Settings, not a source change — but the spec itself is source,
+ * so what can arrive is exactly this list.
+ */
+export const OPTIONAL_PACKAGES: readonly OptionalPackage[] = [
+  {
+    name: 'tavily',
+    npmSpec: '@tavily/pi-extension@0.1.2',
+    npmName: '@tavily/pi-extension',
+    // web_search and web_fetch only read the network; a reviewer that can
+    // search cannot dirty the worktree, so the post-call git diff stays valid.
+    extensionsForReadOnly: true,
+  },
+];
+
+/** Where operator-enabled packages install: under support, never `~/.pi`. */
+export function optionalPackagesRoot(supportDir: string): string {
+  return join(supportDir, 'pi-packages');
+}
+
+/** The npm-install prefix an enable writes into (holds `node_modules/`). */
+export function optionalPackageInstallDir(supportDir: string, pkg: OptionalPackage): string {
+  return join(optionalPackagesRoot(supportDir), pkg.name);
+}
+
+/** The package directory pi resolves, once the install exists. */
+export function optionalPackageDir(supportDir: string, pkg: OptionalPackage): string {
+  return join(
+    optionalPackageInstallDir(supportDir, pkg),
+    'node_modules',
+    ...pkg.npmName.split('/'),
+  );
+}
+
+/**
+ * The optional packages whose installs exist right now. Presence on disk is
+ * the enable switch: a removed directory is a disabled package, and a session
+ * opened after either action sees the change without any second flag.
+ */
+export function installedOptionalPackages(
+  supportDir: string,
+): { pkg: BundledPackage; dir: string }[] {
+  return OPTIONAL_PACKAGES.flatMap((pkg) => {
+    const dir = optionalPackageDir(supportDir, pkg);
+    return existsSync(dir) ? [{ pkg, dir }] : [];
+  });
+}
 
 /** Resolved paths for the sessions that are allowed to load them. */
 export interface PackageResources {
@@ -86,11 +152,14 @@ export async function resolveBundledPackages(opts: {
   /** Withhold extensions and take skills only. */
   skillsOnly?: boolean;
   packages?: readonly BundledPackage[];
+  /** Operator-enabled installs; defaults to what exists under support. */
+  optional?: readonly { pkg: BundledPackage; dir: string }[];
   root?: string;
   onWarning?: (message: string) => void;
 }): Promise<PackageResources> {
   const declared = opts.packages ?? BUNDLED_PACKAGES;
-  if (declared.length === 0) return NO_PACKAGE_RESOURCES;
+  const optional = opts.optional ?? installedOptionalPackages(opts.supportDir);
+  if (declared.length === 0 && optional.length === 0) return NO_PACKAGE_RESOURCES;
 
   const root = opts.root ?? packagesRoot();
   const present: { pkg: BundledPackage; dir: string }[] = [];
@@ -105,6 +174,9 @@ export async function resolveBundledPackages(opts: {
     }
     present.push({ pkg, dir });
   }
+  // Optional packages are already presence-checked: an absent install is a
+  // disabled package, not a fault worth warning about.
+  present.push(...optional);
   if (present.length === 0) return NO_PACKAGE_RESOURCES;
 
   const eligible = present.filter(

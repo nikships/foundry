@@ -61,6 +61,7 @@ import { getBridgeService, shutdownBridgeService, type BridgeService } from './b
 import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
 import { linearCredentials } from './linear/credentials.js';
 import { LinearService } from './linear/service.js';
+import { tavilyCredentials, TavilyService } from './tavily/service.js';
 import { startPlan } from './orchestrator/start.js';
 import { enabledModelIds, enabledModels } from './pi/enabled-models.js';
 import { ghStatus } from './system/gh.js';
@@ -89,6 +90,7 @@ export class AppContext {
   readonly companion: CompanionHost;
   readonly bridge: BridgeService;
   readonly linear: LinearService;
+  readonly tavily: TavilyService;
   readonly version: string;
   /**
    * How every non-run agent turn is opened — repository context, detection,
@@ -120,6 +122,10 @@ export class AppContext {
     this.pipelines = new PipelineStore(supportDir);
     this.envelopes = new EnvelopeStore(supportDir);
     this.linear = new LinearService(linearCredentials(supportDir));
+    this.tavily = new TavilyService({ supportDir, credentials: tavilyCredentials(supportDir) });
+    // The in-process extension reads its key from this process's environment,
+    // so export it before the first agent session can open.
+    this.tavily.applyEnv();
     this.version = app.getVersion();
     // Main starts this after reclaiming any crash-orphaned Bridge and before it
     // opens the first window. Construction stays side-effect free so startup

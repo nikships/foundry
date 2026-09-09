@@ -38,13 +38,16 @@ Discovery is explicitly off (`noExtensions`, `noSkills`, `noPromptTemplates`,
 `noThemes`). Paths pin to under Foundry's Application Support; `~/.pi` must
 not be touched.
 
-Packages are used, but only the ones Foundry ships: `BUNDLED_PACKAGES` in
-`src/main/pi/packages.ts` is the entire list, vendored under
-`resources/pi-packages/`. There is no `pi install`, no settings entry, and no
-runtime install path. `PackageManager` is used solely to resolve those local
-directories. Their paths reach a session through `additionalExtensionPaths` /
-`additionalSkillPaths`, which pi honours while every `no*` discovery flag
-stays on. Project scope (`.pi/`) is never enabled.
+Packages are used, but only the ones Foundry names in source:
+`BUNDLED_PACKAGES` in `src/main/pi/packages.ts` (vendored under
+`resources/pi-packages/`) plus `OPTIONAL_PACKAGES` — exact-pinned npm specs an
+operator can opt into through one confirmed Settings download (scripts
+disabled, installed under Foundry's support directory). There is no
+`pi install`, no settings entry, and no free-form spec. `PackageManager` is
+used solely to resolve those local directories. Their paths reach a session
+through `additionalExtensionPaths` / `additionalSkillPaths`, which pi honours
+while every `no*` discovery flag stays on. Project scope (`.pi/`) is never
+enabled.
 
 Transitive packages (`pi-agent-core`, `pi-ai`, `pi-client`, `pi-protocol`,
 `pi-tui`) are **not** Foundry dependencies. Do not import them. Derive types
