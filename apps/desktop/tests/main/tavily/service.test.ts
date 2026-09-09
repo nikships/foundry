@@ -147,19 +147,33 @@ describe('the API key', () => {
     }).applyEnv();
     expect(fresh[TAVILY_KEY_ENV_VAR]).toBe('tvly-startup');
 
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const credentials = tavilyCredentials(support);
+    const get = vi.spyOn(credentials, 'get').mockImplementation(() => {
+      throw new Error('cannot decrypt');
+    });
     const broken: NodeJS.ProcessEnv = { [TAVILY_KEY_ENV_VAR]: 'stale' };
-    new TavilyService({
+    const brokenService = new TavilyService({
       supportDir: support,
-      credentials: {
-        has: () => true,
-        get: () => {
-          throw new Error('cannot decrypt');
-        },
-        set: () => {},
-        clear: () => {},
-      },
+      credentials,
+      installed: () => true,
       env: broken,
-    }).applyEnv();
+    });
+    expect(credentials.has()).toBe(true);
+    brokenService.applyEnv();
     expect(broken[TAVILY_KEY_ENV_VAR]).toBeUndefined();
+    expect(brokenService.state()).toMatchObject({
+      installed: true,
+      keySet: false,
+      detail: 'The stored Tavily API key could not be read. Re-enter it in Settings.',
+    });
+    expect(warn).toHaveBeenCalledWith(
+      '[tavily] Stored API key could not be read. Re-enter it in Settings.',
+    );
+    get.mockRestore();
+    expect(brokenService.setApiKey('tvly-replacement').ok).toBe(true);
+    expect(broken[TAVILY_KEY_ENV_VAR]).toBe('tvly-replacement');
+    expect(brokenService.state()).toMatchObject({ installed: true, keySet: true });
+    warn.mockRestore();
   });
 });

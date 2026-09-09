@@ -95,12 +95,23 @@ export class TavilyService {
       else delete env[TAVILY_KEY_ENV_VAR];
     } catch {
       delete env[TAVILY_KEY_ENV_VAR];
+      console.warn('[tavily] Stored API key could not be read. Re-enter it in Settings.');
     }
   }
 
   state(): TavilyConnectionState {
     const installed = this.installed();
-    const keySet = this.deps.credentials.has();
+    let keySet: boolean;
+    try {
+      keySet = Boolean(this.deps.credentials.get());
+    } catch {
+      return {
+        installed,
+        keySet: false,
+        npmSpec: TAVILY_PACKAGE.npmSpec,
+        detail: 'The stored Tavily API key could not be read. Re-enter it in Settings.',
+      };
+    }
     return {
       installed,
       keySet,
