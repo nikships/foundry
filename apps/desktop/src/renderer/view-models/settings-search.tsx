@@ -46,8 +46,8 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
   {
     id: 'integrations',
     label: 'Integrations',
-    hint: 'Connect external issue trackers to orchestration',
-    keywords: 'linear issue ticket api key workflow status orchestration source',
+    hint: 'Connect external issue trackers and agent tools',
+    keywords: 'linear issue ticket api key workflow status orchestration source tavily web search',
   },
   {
     id: 'project',
@@ -188,6 +188,12 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     label: 'Linear',
     note: 'Use an issue as the immutable source for a manual pipeline run.',
     keywords: 'linear api key ticket workflow state status mapping connect remove test',
+  },
+  {
+    pane: 'integrations',
+    label: 'Tavily',
+    note: 'Opt-in web search and page fetching for run agents.',
+    keywords: 'tavily web search fetch extension api key download enable disable internet',
   },
   // Project
   {
