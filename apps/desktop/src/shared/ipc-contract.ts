@@ -454,6 +454,20 @@ export interface LinearActionResult {
   detail: string;
 }
 
+export interface TavilyConnectionState {
+  /** The opt-in extension package is downloaded and ready to load. */
+  installed: boolean;
+  keySet: boolean;
+  detail: string;
+  /** The exact pinned npm spec an enable would download, for the confirm dialog. */
+  npmSpec: string;
+}
+
+export interface TavilyActionResult {
+  ok: boolean;
+  detail: string;
+}
+
 export interface LinearStartRunInput {
   projectId: string;
   pipelineId: string;
@@ -654,6 +668,15 @@ export interface FoundryApi {
     startRun(
       input: LinearStartRunInput,
     ): Promise<{ ok: boolean; runId?: string; issues: ValidationIssue[] }>;
+  };
+  tavily: {
+    state(): Promise<TavilyConnectionState>;
+    /** Downloads the pinned extension package. Only runs after an explicit confirm. */
+    install(): Promise<TavilyActionResult>;
+    /** Deletes the downloaded package; the stored key survives a reinstall. */
+    remove(): Promise<TavilyActionResult>;
+    setApiKey(apiKey: string): Promise<TavilyActionResult>;
+    clearApiKey(): Promise<TavilyActionResult>;
   };
   runs: {
     start(
@@ -938,6 +961,11 @@ export const IPC = {
   linearIssue: 'linear:issue',
   linearWorkflowStates: 'linear:workflowStates',
   linearStartRun: 'linear:startRun',
+  tavilyState: 'tavily:state',
+  tavilyInstall: 'tavily:install',
+  tavilyRemove: 'tavily:remove',
+  tavilySetApiKey: 'tavily:setApiKey',
+  tavilyClearApiKey: 'tavily:clearApiKey',
   runsStart: 'runs:start',
   runsResume: 'runs:resume',
   runsList: 'runs:list',

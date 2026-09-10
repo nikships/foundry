@@ -143,13 +143,23 @@ export function resolvedEnv(): ResolvedEnv {
 }
 
 /**
+ * Credentials exported into this process for in-process agent extensions.
+ * They exist so pi extensions running here can read them; no child has any
+ * business inheriting one, so `spawnEnv` strips them.
+ */
+const IN_PROCESS_SECRET_VARS = ['TAVILY_API_KEY'] as const;
+
+/**
  * The env every child process should be spawned with. Callers merge their own
- * overrides on top; PATH is the only variable this replaces.
+ * overrides on top; PATH is the only variable this replaces, and in-process
+ * extension credentials are the only ones it removes.
  */
 export function spawnEnv(
   overrides?: Record<string, string | undefined>,
 ): NodeJS.ProcessEnv & Record<string, string | undefined> {
-  return { ...process.env, PATH: resolvedEnv().path, ...overrides };
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: resolvedEnv().path };
+  for (const name of IN_PROCESS_SECRET_VARS) delete env[name];
+  return { ...env, ...overrides };
 }
 
 /**

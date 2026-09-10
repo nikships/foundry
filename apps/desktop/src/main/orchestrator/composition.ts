@@ -493,8 +493,14 @@ export const COMPOSITION_RULES: CompositionRule[] = [
   {
     id: 'proof',
     bullet:
-      'Every implementation phase using a build envelope, and every write-capable review phase, is proven before any commit. When Project commands are listed, immediately follow the agent with a code phase using one {"ref": ...} and set "feedbackTo" to the phase that owns a failure. When no Project command exists, put a configured "command_passes" gate on the agent instead. A new scaffold with no command yet is the only exception.',
+      'Every implementation phase using a build envelope, and every write-capable review phase, is proven before any commit. When Project commands are listed, immediately follow the agent with a code phase using one {"ref": ...} and set "feedbackTo" to the phase that owns a failure. When no Project command exists, put a configured "command_passes" gate on the agent instead. A new scaffold with no command yet is the only exception. When the pipeline has two or more implementation phases, each one gets its own immediately-following proof phase subject to the same rule.',
     check: proofRuleIssues,
+  },
+  {
+    id: 'scaling',
+    bullet:
+      'Scale the pipeline to the request. For a small request propose the smallest pipeline that fulfils it, typically one build phase plus its proof. For a larger task split the work across two or more build phases or agents rather than forcing all work into a single build: give each build a tight disjoint "writes" slice, its own immediately-following proof phase with "feedbackTo" naming its owner, and sequence the builds so later ones consume earlier envelopes. Each build is proven before anything is recorded; a rejection still halts the run.',
+    check: () => [],
   },
   {
     id: 'review-gates',

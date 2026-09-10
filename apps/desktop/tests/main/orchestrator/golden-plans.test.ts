@@ -67,6 +67,24 @@ const DOC_PROMPT = [
   'Fill status, summary, commit_message, and artifacts.',
 ].join('\n');
 
+const CSV_PROMPT = [
+  '## Purpose',
+  'implement CSV export for the reports page',
+  '## Write boundary',
+  'Write boundary: only touch reports/csv/**.',
+  '## Envelope fields',
+  'Fill status, summary, commit_message, and artifacts.',
+].join('\n');
+
+const PDF_PROMPT = [
+  '## Purpose',
+  'implement PDF export for the reports page',
+  '## Write boundary',
+  'Write boundary: only touch reports/pdf/**.',
+  '## Envelope fields',
+  'Fill status, summary, commit_message, and artifacts.',
+].join('\n');
+
 interface Golden {
   id: string;
   expect: 'pass' | 'reject';
@@ -453,6 +471,80 @@ const GOLDENS: Golden[] = [
       refinedRequest:
         'Tighten the Orchestrator cast pool in apps/desktop/src/main/orchestrator/plan.ts only. Do not rewrite the Android companion or migrate the website.',
     }),
+  },
+  {
+    id: 'multi-build-split',
+    expect: 'pass',
+    request: 'add CSV export and PDF export to the reports page',
+    contextSummary: 'A reports page with export actions. Tests live under npm test.',
+    commands: TEST_CMD,
+    models: POOL,
+    roster: [builder()],
+    reply: {
+      refinedRequest:
+        'Add CSV export and PDF export to the reports page, each proven by the project tests.',
+      rationale:
+        'The request splits into two disjoint slices, so two build phases each with its own proof keep the change reviewable.',
+      pipeline: {
+        name: 'Split exports',
+        description: 'Build CSV export and PDF export in sequence, proving each.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'build_csv',
+            kind: 'agent',
+            agent: 'csv_builder',
+            model: 'anthropic/claude-opus-4',
+            reasoningEffort: 'high',
+            description: 'Implement CSV export inside its boundary.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test_csv',
+            kind: 'code',
+            description: 'Prove CSV export with the project tests.',
+            command: { ref: 'test' },
+            feedbackTo: 'build_csv',
+          },
+          {
+            name: 'build_pdf',
+            kind: 'agent',
+            agent: 'pdf_builder',
+            model: 'anthropic/claude-opus-4',
+            reasoningEffort: 'high',
+            description: 'Implement PDF export inside its boundary.',
+            envelope: 'build',
+            prompt: { inputs: ['request', 'envelope:build_csv'] },
+          },
+          {
+            name: 'test_pdf',
+            kind: 'code',
+            description: 'Prove PDF export with the project tests.',
+            command: { ref: 'test' },
+            feedbackTo: 'build_pdf',
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'csv_builder',
+          purpose: 'implement CSV export',
+          systemPrompt: CSV_PROMPT,
+          userPrompt: 'Implement CSV export: {{request}}',
+          writes: ['reports/csv/**'],
+          envelope: 'build',
+        },
+        {
+          name: 'pdf_builder',
+          purpose: 'implement PDF export',
+          systemPrompt: PDF_PROMPT,
+          userPrompt: 'Implement PDF export: {{request}}',
+          writes: ['reports/pdf/**'],
+          envelope: 'build',
+        },
+      ],
+    },
   },
 ];
 

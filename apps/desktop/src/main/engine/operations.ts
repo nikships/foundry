@@ -84,6 +84,61 @@ async function modelIdsForPlan(
   return ids.length ? ids : null;
 }
 
+export interface WarmStartDeps {
+  projectById(id: string): ProjectDef | null;
+  settings(): AppSettings;
+  /** Persists the merged project row. */
+  saveProject(next: ProjectDef): void;
+  /**
+   * Same catalog read the start rail uses. Warming it builds pi's runtime
+   * while the proposal is under review instead of inside the Start click.
+   */
+  enabledModelIds?(): Promise<string[]>;
+  oneShot: OneShotFactory;
+}
+
+/**
+ * Pre-start work worth doing while the proposal is under review: the project
+ * card backfill and the model-catalog build `startRun` would otherwise await
+ * inside the Start click. Both are cached upstream (`ensureProjectContext`'s
+ * in-flight map, the memoized model runtime), so a start that follows reuses
+ * whatever finished and retries whatever failed. Never rejects.
+ */
+export async function warmStartPrep(deps: WarmStartDeps, projectId: string): Promise<void> {
+  const project = deps.projectById(projectId);
+  if (!project) return;
+  const settings = deps.settings();
+  const quiet = async (work: Promise<unknown>): Promise<void> => {
+    try {
+      await work;
+    } catch {
+      // A failed warm is retried at start time; the click never hears about it.
+    }
+  };
+  await Promise.all([
+    quiet(deps.enabledModelIds ? deps.enabledModelIds() : Promise.resolve()),
+    quiet(
+      ensureProjectContext({
+        project,
+        settings,
+        oneShot: deps.oneShot,
+        persist: (next) => {
+          // Operator edits during review (commands, base ref) must survive:
+          // merge the fresh card onto the current row, never the stale snapshot.
+          const current = deps.projectById(next.id);
+          if (!current) return;
+          deps.saveProject({
+            ...current,
+            contextSummary: next.contextSummary,
+            contextSummarySha: next.contextSummarySha,
+          });
+        },
+        refreshIfStale: true,
+      }),
+    ),
+  ]);
+}
+
 export async function startRun(
   deps: StartRunDeps,
   input: StartRunInput,
@@ -106,6 +161,12 @@ export async function startRun(
   // Synthesized agents shadow nothing: a name collision was a validation
   // error at plan time, so the union here can never be ambiguous.
   const agents = plan ? [...roster, ...plan.agents] : roster;
+
+  // Building pi's runtime is the expensive part of the catalog read, so start
+  // it alongside command detection and context backfill: a cold start pays
+  // both once, not in sequence. It touches no project state, so sharing the
+  // wait with the saves below is safe.
+  const allowedModelIdsPromise = modelIdsForPlan(deps, plan);
 
   // Missing project commands are a deterministic fail mid-run. Fill them from
   // manifests (free), then the default CLI, before refusing to start.
@@ -183,7 +244,7 @@ export async function startRun(
 
   const knownEnvelopes = deps.envelopeDefs().map((e) => e.name);
   const commandNames = project.commands.map((c) => c.name);
-  const allowedModelIds = await modelIdsForPlan(deps, plan);
+  const allowedModelIds = await allowedModelIdsPromise;
   if (allowedModelIds === null) {
     return startError(
       'plan',

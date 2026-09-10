@@ -140,6 +140,13 @@ const api: FoundryApi = {
     workflowStates: (teamId) => call(IPC.linearWorkflowStates, teamId),
     startRun: (input) => call(IPC.linearStartRun, input),
   },
+  tavily: {
+    state: () => call(IPC.tavilyState),
+    install: () => call(IPC.tavilyInstall),
+    remove: () => call(IPC.tavilyRemove),
+    setApiKey: (apiKey) => call(IPC.tavilySetApiKey, apiKey),
+    clearApiKey: () => call(IPC.tavilyClearApiKey),
+  },
   runs: {
     start: (input) => call(IPC.runsStart, input),
     resume: (projectId, runId) => call(IPC.runsResume, projectId, runId),

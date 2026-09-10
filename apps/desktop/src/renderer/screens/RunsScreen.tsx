@@ -216,8 +216,11 @@ function OrchestratedComposer({
       }
       onRequestChange('');
       orchestrator.discard();
-      await refreshAll();
+      // Navigate before the lists refresh: the detail screen loads its own
+      // data, and the lists also refresh on 'runs-changed'. Awaiting the full
+      // refresh here kept the proposal on screen after the run already existed.
       if (result.runId) onOpen(result.runId);
+      void refreshAll();
     } catch (error) {
       setStartIssues([{ level: 'error', where: 'start', message: (error as Error).message }]);
     } finally {
