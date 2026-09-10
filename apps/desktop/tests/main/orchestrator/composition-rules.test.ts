@@ -15,7 +15,7 @@ import {
   compositionRuleBullets,
   generatedCompositionIssues,
 } from '../../../src/main/orchestrator/composition.js';
-import type { ModelInfo } from '../../../src/shared/types.js';
+import type { AgentDef, ModelInfo, PhaseDef } from '../../../src/shared/types.js';
 
 const model = (id: string, displayName: string): ModelInfo => ({
   id,
@@ -43,6 +43,7 @@ describe('orchestrator composition rules', () => {
     expect(COMPOSITION_RULES.map((rule) => rule.id)).toEqual([
       'refined-request',
       'proof',
+      'scaling',
       'review-gates',
       'independent-review-before-pr',
       'phase-model',
@@ -116,6 +117,83 @@ describe('orchestrator composition rules', () => {
 
     // Amendments and image-only planning carry no raw request: the rail stands down.
     expect(briefIssues(undefined, 'Rewrite src/invented/path.ts anyway.')).toEqual([]);
+  });
+
+  it('accepts two build phases each with its own proof', () => {
+    const builder: AgentDef = {
+      name: 'builder',
+      purpose: 'build things',
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      systemPrompt: 'You build.',
+      userPrompt: 'Build: {{request}}',
+      writes: null,
+      envelope: 'build',
+      color: '#5ad2dd',
+    };
+    const buildPhase = (name: string): PhaseDef => ({
+      name,
+      kind: 'agent',
+      agent: 'builder',
+      model: 'anthropic/claude-opus-4',
+      reasoningEffort: 'high',
+      description: `Implement slice ${name} inside the worktree.`,
+      envelope: 'build',
+      prompt: { inputs: ['request'] },
+    });
+    const proofPhase = (name: string, owner: string): PhaseDef => ({
+      name,
+      kind: 'code',
+      description: `Prove ${owner} with the project tests.`,
+      command: { ref: 'test' },
+      feedbackTo: owner,
+    });
+    const phases: PhaseDef[] = [
+      buildPhase('build_a'),
+      proofPhase('test_a', 'build_a'),
+      { ...buildPhase('build_b'), prompt: { inputs: ['request', 'envelope:build_a'] } },
+      proofPhase('test_b', 'build_b'),
+    ];
+    expect(generatedCompositionIssues({ phases }, [], [builder], ['test'])).toEqual([]);
+  });
+
+  it('rejects a second build without its own proof', () => {
+    const builder: AgentDef = {
+      name: 'builder',
+      purpose: 'build things',
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      systemPrompt: 'You build.',
+      userPrompt: 'Build: {{request}}',
+      writes: null,
+      envelope: 'build',
+      color: '#5ad2dd',
+    };
+    const buildPhase = (name: string): PhaseDef => ({
+      name,
+      kind: 'agent',
+      agent: 'builder',
+      model: 'anthropic/claude-opus-4',
+      reasoningEffort: 'high',
+      description: `Implement slice ${name} inside the worktree.`,
+      envelope: 'build',
+      prompt: { inputs: ['request'] },
+    });
+    const phases: PhaseDef[] = [
+      buildPhase('build_a'),
+      {
+        name: 'test_a',
+        kind: 'code',
+        description: 'Prove build_a with the project tests.',
+        command: { ref: 'test' },
+        feedbackTo: 'build_a',
+      },
+      buildPhase('build_b'),
+    ];
+    const issues = generatedCompositionIssues({ phases }, [], [builder], ['test']);
+    expect(
+      issues.some((issue) => issue.message.includes('immediately followed by a configured proof')),
+    ).toBe(true);
   });
 
   it('lists more than two cast-pool ids when more are enabled', () => {

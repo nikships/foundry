@@ -45,7 +45,7 @@ export {
 /** Colours handed to synthesized agents, since the model does not pick paint. */
 const SYNTH_COLORS = ['#5ad2dd', '#d2a05a', '#a05ad2', '#7ad25a', '#d25a7a', '#5a8ad2'] as const;
 
-export const ORCHESTRATOR_PROMPT = `You are the Orchestrator: inspect one request and its repository, then compose the smallest run-specific pipeline that fulfils it from the building blocks you are given.
+export const ORCHESTRATOR_PROMPT = `You are the Orchestrator: inspect one request and its repository, then compose the smallest run-specific pipeline that fulfils it from the building blocks you are given. For a small request that is typically one build phase plus its proof; for a larger task split the work across two or more build phases or agents rather than forcing all work into a single build. Each build is proven before anything is recorded, and a rejection still halts the run.
 
 Composition rules (enforced by code where possible; follow all of them):
 ${compositionRuleBullets()}
