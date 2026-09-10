@@ -11,6 +11,13 @@
  * `submit_result` answer channel, so there is no filesystem write for policy
  * to refuse. A write-capable one gets the built-ins behind a policy scoped to
  * its own directory; claims are still independently validated by the caller.
+ *
+ * Packages are opt-in per turn (`OneShotOptions.packages`). Most one-shots are
+ * internal housekeeping with no business reaching the network, so resolution
+ * is skipped for them entirely. A caller that opts in — the Orchestrator's
+ * planning turn, so far — gets the operator's installed packages on the same
+ * footing a run phase does: a `read` turn takes only the extensions marked
+ * safe for a read-only profile.
  */
 
 import {
@@ -28,6 +35,7 @@ import {
   openFoundrySession,
   promptUntilIdle,
 } from './open-session.js';
+import { resolveBundledPackages } from './packages.js';
 import { evaluate } from './policy.js';
 import { policyOnlyExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
@@ -60,6 +68,8 @@ class PiOneShot implements OneShotSession {
   private readonly extension: ReturnType<typeof policyOnlyExtension>;
   private aborted = false;
   private availableModelCount = 0;
+  /** Package tools this turn actually admitted, read back for the policy. */
+  private loadedPackageTools: string[] = [];
 
   constructor(private readonly opts: PiOneShotOptions) {
     this.outputTool = opts.outputFormat ? submitResultTool(opts.outputFormat.schema) : null;
@@ -137,12 +147,24 @@ class PiOneShot implements OneShotSession {
 
     const agentDir = join(this.opts.supportDir, 'pi');
     const settingsManager = foundrySettings();
+    // Opt-in only: most one-shots are internal housekeeping turns with no
+    // business reaching the network. A caller that opts in still gets the
+    // same read/write filtering a run phase does — a `read` turn takes only
+    // the packages marked safe for a read-only profile.
+    const packageResources = this.opts.packages
+      ? await resolveBundledPackages({
+          supportDir: this.opts.supportDir,
+          skillsOnly: this.opts.access === 'read',
+          onWarning: (message) => this.opts.onWarning?.(message),
+        })
+      : undefined;
     const resourceLoader = foundryResourceLoader({
       cwd: this.opts.cwd,
       agentDir,
       settingsManager,
       harness: FOUNDRY_ONESHOT_HARNESS,
       extensionFactory: this.extension.factory,
+      packageResources,
     });
     const opened = await openFoundrySession({
       cwd: this.opts.cwd,
@@ -164,6 +186,7 @@ class PiOneShot implements OneShotSession {
     });
     if (opened.modelFallbackMessage) this.opts.onWarning?.(opened.modelFallbackMessage);
 
+    this.loadedPackageTools = opened.packageTools;
     const session = opened.session;
     this.session = session;
     this.unsubscribe = subscribeSessionEvents(session, this.events, this.opts.onEvent);
@@ -185,6 +208,9 @@ class PiOneShot implements OneShotSession {
         protectedPaths: [],
       },
       this.outputTool ? [ONESHOT_OUTPUT_TOOL_NAME] : [],
+      // Read off what this turn actually loaded, exactly as a run session does:
+      // the names only exist once packages have been resolved and loaded.
+      this.loadedPackageTools,
     );
     this.opts.onDecision?.(ask, outcome.decision, outcome.reason);
     return outcome.decision;

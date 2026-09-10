@@ -240,6 +240,9 @@ export class PlanSession {
   ): Promise<OneShotResult | null> {
     // The Orchestrator reads the operator's own checkout, where nothing
     // would revert a write, so the session has no tool that could make one.
+    // Packages opt-in: a planning turn may still carry the operator's
+    // installed research tools (e.g. Tavily), filtered to the read-only
+    // subset a `read` session gets, same as a reviewer phase would.
     return this.panel.ask({
       oneShot: this.deps.oneShot,
       cwd: this.deps.projectPath,
@@ -249,6 +252,7 @@ export class PlanSession {
       systemPrompt: ORCHESTRATOR_PROMPT,
       outputFormat,
       prompt,
+      packages: true,
       ...(this.deps.images?.length ? { images: this.deps.images } : {}),
     });
   }

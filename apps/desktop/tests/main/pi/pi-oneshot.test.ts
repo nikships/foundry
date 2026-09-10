@@ -44,6 +44,8 @@ interface LoaderCall {
   systemPromptOverride?: (base: string | undefined) => string | undefined;
   appendSystemPromptOverride?: (base: string[]) => string[];
   extensionFactories: { name: string; hidden?: boolean }[];
+  additionalExtensionPaths?: string[];
+  additionalSkillPaths?: string[];
 }
 
 interface PiModelStub {
@@ -68,6 +70,12 @@ const spy = {
     parameters: unknown;
     execute: (...args: unknown[]) => Promise<unknown>;
   }[],
+  /** Package extensions the loader should report as loaded, by tool name. */
+  loadedPackageTools: [] as string[],
+  /** Calls into `resolveBundledPackages`, for verifying the opt-in gate. */
+  resolveBundledPackagesCalls: [] as { supportDir: string; skillsOnly?: boolean }[],
+  /** What the mocked `resolveBundledPackages` should resolve to next. */
+  resolvedPackages: { extensionPaths: [] as string[], skillPaths: [] as string[] },
 };
 
 /** A stand-in for Pi's `AgentSession`, scripted per test. */
@@ -217,9 +225,21 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
     reload(): Promise<void> {
       return Promise.resolve();
     }
-    /** A one-shot never loads packages, so there is nothing to report. */
-    getExtensions(): { extensions: []; errors: [] } {
-      return { extensions: [], errors: [] };
+    /**
+     * What loaded. Foundry's own extension is inline and skipped by name;
+     * this reports one package tool per additional extension path the loader
+     * was handed, standing in for a shipped package's own registrations.
+     */
+    getExtensions(): {
+      extensions: { path: string; tools: Map<string, unknown> }[];
+      errors: [];
+    } {
+      const paths = spy.loaders[spy.loaders.length - 1]?.additionalExtensionPaths ?? [];
+      const extensions = paths.map((path, i) => ({
+        path,
+        tools: new Map<string, unknown>([[spy.loadedPackageTools[i] ?? 'package_tool', {}]]),
+      }));
+      return { extensions, errors: [] };
     }
   },
   createAgentSession: (opts: CreateCall) => {
@@ -241,6 +261,16 @@ vi.mock('../../../src/main/pi/runtime.js', () => ({
   resetModelRuntimes: () => {},
 }));
 
+vi.mock('../../../src/main/pi/packages.js', () => ({
+  resolveBundledPackages: async (opts: { supportDir: string; skillsOnly?: boolean }) => {
+    spy.resolveBundledPackagesCalls.push({
+      supportDir: opts.supportDir,
+      skillsOnly: opts.skillsOnly,
+    });
+    return spy.resolvedPackages;
+  },
+}));
+
 const { piOneShots } = await import('../../../src/main/pi/pi-oneshot.js');
 
 interface Harness {
@@ -250,7 +280,10 @@ interface Harness {
   warnings: string[];
   supportDir: string;
   cwd: string;
-  open: (access?: 'read' | 'write') => ReturnType<ReturnType<typeof piOneShots>>;
+  open: (
+    access?: 'read' | 'write',
+    options?: { packages?: boolean },
+  ) => ReturnType<ReturnType<typeof piOneShots>>;
   openWithOutput: (outputFormat: OutputFormat) => ReturnType<ReturnType<typeof piOneShots>>;
 }
 
@@ -269,12 +302,13 @@ function harness(opts: { model?: string; hiddenModelIds?: () => readonly string[
     warnings,
     supportDir,
     cwd,
-    open: (access = 'read') =>
+    open: (access = 'read', options) =>
       factory({
         cwd,
         model: opts.model ?? 'anthropic/claude-sonnet-4',
         reasoningEffort: 'off',
         access,
+        ...(options?.packages ? { packages: true } : {}),
         onEvent: (e) => events.push(e),
         onWarning: (w) => warnings.push(w),
       }),
@@ -298,6 +332,9 @@ beforeEach(() => {
   spy.sessionManagers = [];
   spy.order = [];
   spy.registeredTools = [];
+  spy.loadedPackageTools = [];
+  spy.resolveBundledPackagesCalls = [];
+  spy.resolvedPackages = { extensionPaths: [], skillPaths: [] };
   spy.models = [
     {
       provider: 'anthropic',
@@ -336,6 +373,41 @@ describe('what a one-shot session is allowed to do', () => {
     expect(spy.creates[0]!.tools).not.toContain('report_progress');
     expect(spy.creates[0]!.tools).not.toContain('submit_envelope');
     expect(spy.loaders[0]!.extensionFactories.map((e) => e.name)).toEqual(['foundry']);
+  });
+
+  it('never resolves installed packages unless the caller opts in', async () => {
+    spy.resolvedPackages = { extensionPaths: ['/pkg/tavily/extensions'], skillPaths: [] };
+    const h = harness();
+    await h.open('read').send('go');
+    // Most one-shots are internal housekeeping turns with no business
+    // reaching the network; resolution never runs for them, so the loader
+    // never sees the operator's Tavily extension, opted in or not.
+    expect(spy.resolveBundledPackagesCalls).toEqual([]);
+    expect(spy.loaders[0]!.additionalExtensionPaths).toBeUndefined();
+    expect(spy.creates[0]!.tools).toEqual(['read', 'grep', 'find', 'ls']);
+  });
+
+  it('resolves packages for a caller that opts in, filtered read-only on a read turn', async () => {
+    spy.resolvedPackages = { extensionPaths: ['/pkg/tavily/extensions'], skillPaths: [] };
+    spy.loadedPackageTools = ['web_search'];
+    const h = harness();
+    await h.open('read', { packages: true }).send('go');
+    expect(spy.resolveBundledPackagesCalls).toEqual([
+      { supportDir: h.supportDir, skillsOnly: true },
+    ]);
+    expect(spy.loaders[0]!.additionalExtensionPaths).toEqual(['/pkg/tavily/extensions']);
+    // The tool the loaded extension registered joins the allowlist: a package
+    // cleared for read-only work is usable, exactly as a run phase gets it.
+    expect(spy.creates[0]!.tools).toContain('web_search');
+  });
+
+  it('does not filter to read-only extensions for a write turn that opts in', async () => {
+    spy.resolvedPackages = { extensionPaths: ['/pkg/tavily/extensions'], skillPaths: [] };
+    const h = harness();
+    await h.open('write', { packages: true }).send('go');
+    expect(spy.resolveBundledPackagesCalls).toEqual([
+      { supportDir: h.supportDir, skillsOnly: false },
+    ]);
   });
 });
 
