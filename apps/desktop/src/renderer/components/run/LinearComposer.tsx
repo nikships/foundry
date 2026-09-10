@@ -594,8 +594,10 @@ export default function LinearComposer({
         return;
       }
       orchestrator.discard();
-      await refreshAll();
+      // Navigate before the lists refresh: the detail screen loads its own
+      // data, and the lists also refresh on 'runs-changed'.
       if (result.runId) onOpen(result.runId);
+      void refreshAll();
     } catch (error) {
       setErrors([{ level: 'error', where: 'linear', message: (error as Error).message }]);
     } finally {

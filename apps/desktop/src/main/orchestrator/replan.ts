@@ -58,7 +58,7 @@ const AMENDMENT_OUTPUT_FORMAT: OutputFormat = {
 
 const REPLAN_SYSTEM_PROMPT = `You are the Orchestrator revising an orchestrated run after its existing recovery paths were exhausted.
 
-Propose the smallest valid replacement for the not-yet-completed pipeline tail. Completed phases are immutable. You may re-include the failed phase, insert a repair phase, reorder the remaining work, or extend it. Prefer an agent in the supplied active roster when its summary fits; synthesize one only when none can own a required phase. A code phase's feedbackTo may target only an earlier phase in your replacement tail, never a completed phase.
+Propose the smallest valid replacement for the not-yet-completed pipeline tail. Completed phases are immutable. You may re-include the failed phase, insert a repair phase, reorder the remaining work, or extend it. When the remaining work is large, the replacement tail may itself span two or more build phases or agents under the same per-build proof rule. Prefer an agent in the supplied active roster when its summary fits; synthesize one only when none can own a required phase. A code phase's feedbackTo may target only an earlier phase in your replacement tail, never a completed phase.
 
 Every agent phase in your replacement tail names its own "model", copied verbatim from a model id that already appears on a phase of the confirmed plan, and its own "reasoningEffort". Use a reasoning level that model uses in the confirmed plan. Never omit the model, write "inherit", or leave the model choice to the agent or install default — an amendment with an unnamed model is rejected. A phase that failed on a weak appointment is a reason to choose a stronger model and reasoning level from those confirmed choices.
 

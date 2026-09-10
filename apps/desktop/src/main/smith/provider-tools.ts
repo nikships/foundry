@@ -23,13 +23,19 @@ export const SMITH_PROVIDER_OPERATIONS = [
   'linear_test',
   'linear_set_api_key',
   'linear_clear_api_key',
+  'tavily_state',
+  'tavily_install',
+  'tavily_remove',
+  'tavily_set_api_key',
+  'tavily_clear_api_key',
 ] as const;
 
 type ProviderOperation = (typeof SMITH_PROVIDER_OPERATIONS)[number];
 type LinearProviderOperation = Extract<ProviderOperation, `linear_${string}`>;
+type TavilyProviderOperation = Extract<ProviderOperation, `tavily_${string}`>;
 type ProviderActionOperation = Exclude<
   ProviderOperation,
-  'state' | 'stored_keys' | LinearProviderOperation
+  'state' | 'stored_keys' | LinearProviderOperation | TavilyProviderOperation
 >;
 
 const ACTION_CHANNELS: Record<ProviderActionOperation, string> = {
@@ -56,7 +62,7 @@ export function smithProvidersTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_providers',
     label: 'Smith providers',
     description:
-      'Inspect and configure model providers plus Linear: state, stored_keys, connect/disconnect/cancel_login(provider), set_api_key/clear_api_key(providerId), linear_state/linear_test/linear_set_api_key/linear_clear_api_key. API key values are entered only in the masked approval card.',
+      'Inspect and configure model providers plus Linear and Tavily: state, stored_keys, connect/disconnect/cancel_login(provider), set_api_key/clear_api_key(providerId), linear_state/linear_test/linear_set_api_key/linear_clear_api_key, tavily_state/tavily_install/tavily_remove/tavily_set_api_key/tavily_clear_api_key. API key values are entered only in the masked approval card.',
     parameters: {
       type: 'object',
       properties: {
@@ -75,6 +81,7 @@ export function smithProvidersTool(deps: SmithActionToolDeps): ToolDefinition {
       if (op === 'state') return immediate(deps, IPC.bridgeState);
       if (op === 'stored_keys') return immediate(deps, IPC.bridgeStoredKeys);
       if (isLinearProviderOperation(op)) return linearProviderOperation(deps, op);
+      if (isTavilyProviderOperation(op)) return tavilyProviderOperation(deps, op);
 
       const nameField = isKeyOperation(op) ? 'providerId' : 'provider';
       const name = stringField(params, nameField);
@@ -137,5 +144,46 @@ function linearProviderOperation(
       : {}),
     execute: (secret) =>
       op === 'linear_set_api_key' ? deps.invoke(channel, secret) : deps.invoke(channel),
+  });
+}
+
+function isTavilyProviderOperation(op: ProviderOperation): op is TavilyProviderOperation {
+  return op.startsWith('tavily_');
+}
+
+function tavilyProviderOperation(
+  deps: SmithActionToolDeps,
+  op: TavilyProviderOperation,
+): ReturnType<typeof immediate> {
+  if (op === 'tavily_state') return immediate(deps, IPC.tavilyState);
+  const channel = {
+    tavily_install: IPC.tavilyInstall,
+    tavily_remove: IPC.tavilyRemove,
+    tavily_set_api_key: IPC.tavilySetApiKey,
+    tavily_clear_api_key: IPC.tavilyClearApiKey,
+  }[op];
+  const label = op.replaceAll('_', ' ');
+  return proposeAction(deps, {
+    operation: op,
+    title: label,
+    summary:
+      op === 'tavily_install'
+        ? 'Download the pinned Tavily web-search extension package for run agents.'
+        : `${label}.`,
+    args: {},
+    // Enabling downloads code an agent will run; removal only deletes that
+    // download; the key operations touch a stored credential.
+    risk: op === 'tavily_install' ? 'external' : op === 'tavily_remove' ? 'write' : 'credential',
+    ...(op === 'tavily_set_api_key'
+      ? {
+          secretRequest: {
+            kind: 'api-key' as const,
+            label: 'Tavily API key',
+            placeholder: 'Enter Tavily API key',
+          },
+        }
+      : {}),
+    execute: (secret) =>
+      op === 'tavily_set_api_key' ? deps.invoke(channel, secret) : deps.invoke(channel),
   });
 }

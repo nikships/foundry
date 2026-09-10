@@ -44,12 +44,12 @@
   },
   "config": {
     "bridge": {
-      "version": "7.2.152",
+      "version": "7.2.157",
       "releaseBaseUrl": "https://github.com/router-for-me/CLIProxyAPI/releases/download",
       "dir": "resources/bridge",
       "binary": "cli-proxy-api",
-      "archiveSha256": "37c3f48b2cd78f3fa1a26e4e0966617d00efad4bbea16599c6a00640b49f8af1",
-      "binarySha256": "9077b648eb47cce2ec934af9084502149bcce849655929b66a76c05d5254a252"
+      "archiveSha256": "f8adffd1b9d6aaa69df5f99a2a32f61f86835872fee709f52af6c58072d7936c",
+      "binarySha256": "fc9a6e9a1ccaafd7a465cf7992026358426eeca96d3f912eadbac8bdf51d06b7"
     }
   },
   "dependencies": {
@@ -57,7 +57,6 @@
     "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.8.9",
     "lucide-react": "^1.33.0",
-    "phaser": "3.90.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zod": "^4.4.3"

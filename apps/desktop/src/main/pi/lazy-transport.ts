@@ -53,6 +53,9 @@ export function lazyTransport(load: () => Promise<AgentTransport>): AgentTranspo
     get lastUserMessageId() {
       return inner?.lastUserMessageId ?? null;
     },
+    get packageTools() {
+      return inner?.packageTools ?? [];
+    },
     get availableModels() {
       return inner?.availableModels ?? [];
     },

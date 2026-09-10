@@ -26,7 +26,6 @@ import styles from './App.module.css';
 const RunsScreen = lazy(() => import('./screens/RunsScreen.js'));
 const RunDetailScreen = lazy(() => import('./screens/RunDetailScreen.js'));
 const InspectorScreen = lazy(() => import('./screens/InspectorScreen.js'));
-const WorkshopScreen = lazy(() => import('./screens/WorkshopScreen.js'));
 const DesignScreen = lazy(() => import('./screens/DesignScreen.js'));
 const PullRequestsScreen = lazy(() => import('./screens/PullRequestsScreen.js'));
 const SettingsScreen = lazy(() => import('./screens/SettingsScreen.js'));
@@ -66,11 +65,6 @@ function AppInner(): React.JSX.Element {
   const [creatingProject, setCreatingProject] = useState(false);
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
-  const [workshop, setWorkshop] = useState({
-    runId: '',
-    projectId: '',
-    returnTo: 'inspector' as View,
-  });
   const [settingsPane, setSettingsPane] = useState('app');
   /** ⌘K opens Settings' search palette; the nonce re-raises it on every press. */
   const [settingsPaletteNonce, setSettingsPaletteNonce] = useState(0);
@@ -241,12 +235,6 @@ function AppInner(): React.JSX.Element {
     setView('inspector');
   };
 
-  const openWorkshop = (runId: string): void => {
-    setWorkshop({ runId, projectId, returnTo: view });
-    setInspectorRunId(runId);
-    setView('workshop');
-  };
-
   const addProject = useCallback(async (): Promise<void> => {
     const added = await api.projects.add();
     if (added) {
@@ -274,12 +262,8 @@ function AppInner(): React.JSX.Element {
 
   // Escape walks back up one level: run detail → the runs list.
   const escapeBack = useCallback((): void => {
-    if (view === 'workshop') {
-      setView(workshop.returnTo);
-      return;
-    }
     setOpenRunId('');
-  }, [view, workshop.returnTo]);
+  }, []);
 
   const openSettingsPane = useCallback(
     (pane: string): void => {
@@ -334,7 +318,6 @@ function AppInner(): React.JSX.Element {
             runId={openRunId}
             onBack={() => setOpenRunId('')}
             onOpenInspector={openInspector}
-            onOpenWorkshop={openWorkshop}
           />
         ) : (
           <RunsScreen
@@ -350,24 +333,7 @@ function AppInner(): React.JSX.Element {
           />
         );
       case 'inspector':
-        return (
-          <InspectorScreen
-            pinnedRunId={inspectorRunId}
-            onOpenRun={openRun}
-            onOpenWorkshop={openWorkshop}
-          />
-        );
-      case 'workshop':
-        return (
-          <WorkshopScreen
-            key={`${workshop.projectId}:${workshop.runId}`}
-            projectId={workshop.projectId}
-            runId={workshop.runId}
-            onDetail={() => openRun(workshop.runId)}
-            onInspector={() => openInspector(workshop.runId)}
-            onExit={escapeBack}
-          />
-        );
+        return <InspectorScreen pinnedRunId={inspectorRunId} onOpenRun={openRun} />;
       case 'design':
         return (
           <DesignScreen
@@ -417,22 +383,18 @@ function AppInner(): React.JSX.Element {
         </Suspense>
       ) : ready ? (
         <>
-          {view !== 'workshop' && (
-            <>
-              <Sidebar
-                view={view}
-                openRunId={openRunId}
-                onNavigate={go}
-                onAddProject={addProject}
-                onNewProject={newProject}
-                onOpenSettings={openSettingsPane}
-                onOpenInspector={openInspector}
-                onOpenSmith={openSmith}
-                inspectorRunId={inspectorRunId}
-              />
-              <div className={styles.sidebarDivider} aria-hidden />
-            </>
-          )}
+          <Sidebar
+            view={view}
+            openRunId={openRunId}
+            onNavigate={go}
+            onAddProject={addProject}
+            onNewProject={newProject}
+            onOpenSettings={openSettingsPane}
+            onOpenInspector={openInspector}
+            onOpenSmith={openSmith}
+            inspectorRunId={inspectorRunId}
+          />
+          <div className={styles.sidebarDivider} aria-hidden />
           <main
             className={styles.content}
             data-testid="app-view"
@@ -454,7 +416,7 @@ function AppInner(): React.JSX.Element {
        * The Smith mini chat: a launcher docked in the titlebar band on other
        * screens, hidden when already viewing the dedicated Smith screen.
        */}
-      {ready && !needsOnboarding && view !== 'smith' && view !== 'workshop' && (
+      {ready && !needsOnboarding && view !== 'smith' && (
         <Suspense fallback={null}>
           <SmithBubble
             screenContext={liveScreenContext}
