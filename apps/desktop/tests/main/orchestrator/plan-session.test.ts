@@ -696,6 +696,90 @@ describe('PlanSession', () => {
     expect(agent.color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
+  it('accepts a two-build plan with a proof per build in a single turn', async () => {
+    const twoBuild = validReply({
+      refinedRequest:
+        'Add CSV export and PDF export to the reports page, each proven by the project tests.',
+      rationale:
+        'Two disjoint slices need two builds, each with its own immediately-following proof.',
+      pipeline: {
+        name: 'Split exports',
+        description: 'Build CSV export then PDF export, proving each.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'build_csv',
+            kind: 'agent',
+            agent: 'csv_builder',
+            model: 'anthropic/claude-opus-4',
+            reasoningEffort: 'high',
+            description: 'Implement CSV export inside its boundary.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test_csv',
+            kind: 'code',
+            description: 'Prove CSV export with the project tests.',
+            command: { ref: 'test' },
+            feedbackTo: 'build_csv',
+          },
+          {
+            name: 'build_pdf',
+            kind: 'agent',
+            agent: 'pdf_builder',
+            model: 'anthropic/claude-haiku-4',
+            reasoningEffort: 'low',
+            description: 'Implement PDF export inside its boundary.',
+            envelope: 'build',
+            prompt: { inputs: ['request', 'envelope:build_csv'] },
+          },
+          {
+            name: 'test_pdf',
+            kind: 'code',
+            description: 'Prove PDF export with the project tests.',
+            command: { ref: 'test' },
+            feedbackTo: 'build_pdf',
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'csv_builder',
+          purpose: 'implement CSV export',
+          systemPrompt: synthPrompt(
+            'implement CSV export',
+            'Write boundary: only touch docs/csv/**.',
+            ['status', 'summary', 'commit_message', 'artifacts'],
+          ),
+          userPrompt: 'Implement CSV export: {{request}}',
+          writes: ['docs/csv/**'],
+          envelope: 'build',
+        },
+        {
+          name: 'pdf_builder',
+          purpose: 'implement PDF export',
+          systemPrompt: synthPrompt(
+            'implement PDF export',
+            'Write boundary: only touch docs/pdf/**.',
+            ['status', 'summary', 'commit_message', 'artifacts'],
+          ),
+          userPrompt: 'Implement PDF export: {{request}}',
+          writes: ['docs/pdf/**'],
+          envelope: 'build',
+        },
+      ],
+    });
+    const { state } = await run({
+      turns: [submitted(twoBuild)],
+      prompt: 'add CSV export and PDF export to the reports page',
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.plan!.pipeline.phases).toHaveLength(4);
+    expect(state.entries.some((entry) => entry.text.includes('Rejected:'))).toBe(false);
+  });
+
   it('fails the session once the correction budget is spent, keeping the raw reply', async () => {
     const attempts = 1 + FIXED_ENGINE_DEFAULTS.envelopeRetries;
     const { state, oneShots } = await run({
