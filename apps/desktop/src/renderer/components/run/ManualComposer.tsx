@@ -149,8 +149,10 @@ export default function ManualComposer({
       }
       onRequestChange('');
       setStartNote('');
-      await refreshAll();
+      // Navigate before the lists refresh: the detail screen loads its own
+      // data, and the lists also refresh on 'runs-changed'.
       if (result.runId) onOpen(result.runId);
+      void refreshAll();
     } catch (e) {
       setIssues([{ level: 'error', where: 'start', message: (e as Error).message }]);
       setStartNote('');
