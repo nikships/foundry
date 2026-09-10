@@ -53,16 +53,6 @@ export interface OneShotOptions {
    * separately from assistant prose.
    */
   outputFormat?: OutputFormat;
-  /**
-   * Load the operator's bundled/optional pi packages (for example the
-   * Tavily web-search extension) into this turn, on the same footing a run
-   * phase gets: a `read` caller still takes only the packages marked safe
-   * for a read-only profile. Off by default — most one-shots are internal
-   * housekeeping turns (detection, repair, setup generation) with no
-   * business reaching the network. A caller that wants its turn to carry
-   * the operator's installed research tools opts in explicitly.
-   */
-  packages?: boolean;
 }
 
 export interface OneShotResult {

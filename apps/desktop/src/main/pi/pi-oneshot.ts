@@ -12,12 +12,14 @@
  * to refuse. A write-capable one gets the built-ins behind a policy scoped to
  * its own directory; claims are still independently validated by the caller.
  *
- * Packages are opt-in per turn (`OneShotOptions.packages`). Most one-shots are
- * internal housekeeping with no business reaching the network, so resolution
- * is skipped for them entirely. A caller that opts in — the Orchestrator's
- * planning turn, so far — gets the operator's installed packages on the same
- * footing a run phase does: a `read` turn takes only the extensions marked
- * safe for a read-only profile.
+ * Every one-shot resolves the operator's bundled/optional pi packages (for
+ * example the Tavily web-search extension) on the same footing a run phase
+ * or Smith's chat gets them — unconditionally, never a per-caller opt-in. A
+ * `read` turn still takes only the extensions marked safe for a read-only
+ * profile, same as a reviewer phase; a `write` turn takes all of them. This
+ * is what makes it "all or nothing": once the operator enables a package in
+ * Settings, every AI turn in Foundry can reach for it, with no call site
+ * deciding case by case whether it is allowed to.
  */
 
 import {
@@ -147,17 +149,16 @@ class PiOneShot implements OneShotSession {
 
     const agentDir = join(this.opts.supportDir, 'pi');
     const settingsManager = foundrySettings();
-    // Opt-in only: most one-shots are internal housekeeping turns with no
-    // business reaching the network. A caller that opts in still gets the
-    // same read/write filtering a run phase does — a `read` turn takes only
-    // the packages marked safe for a read-only profile.
-    const packageResources = this.opts.packages
-      ? await resolveBundledPackages({
-          supportDir: this.opts.supportDir,
-          skillsOnly: this.opts.access === 'read',
-          onWarning: (message) => this.opts.onWarning?.(message),
-        })
-      : undefined;
+    // Unconditional, same as a run phase and Smith's chat: a `read` turn
+    // takes only the packages marked safe for a read-only profile, a `write`
+    // turn takes all of them. Nothing here decides per caller whether the
+    // operator's enabled packages apply — enabling one in Settings is the
+    // only switch.
+    const packageResources = await resolveBundledPackages({
+      supportDir: this.opts.supportDir,
+      skillsOnly: this.opts.access === 'read',
+      onWarning: (message) => this.opts.onWarning?.(message),
+    });
     const resourceLoader = foundryResourceLoader({
       cwd: this.opts.cwd,
       agentDir,

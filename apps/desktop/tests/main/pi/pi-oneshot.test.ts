@@ -72,7 +72,7 @@ const spy = {
   }[],
   /** Package extensions the loader should report as loaded, by tool name. */
   loadedPackageTools: [] as string[],
-  /** Calls into `resolveBundledPackages`, for verifying the opt-in gate. */
+  /** Calls into `resolveBundledPackages`, for verifying the read/write filtering. */
   resolveBundledPackagesCalls: [] as { supportDir: string; skillsOnly?: boolean }[],
   /** What the mocked `resolveBundledPackages` should resolve to next. */
   resolvedPackages: { extensionPaths: [] as string[], skillPaths: [] as string[] },
@@ -280,10 +280,7 @@ interface Harness {
   warnings: string[];
   supportDir: string;
   cwd: string;
-  open: (
-    access?: 'read' | 'write',
-    options?: { packages?: boolean },
-  ) => ReturnType<ReturnType<typeof piOneShots>>;
+  open: (access?: 'read' | 'write') => ReturnType<ReturnType<typeof piOneShots>>;
   openWithOutput: (outputFormat: OutputFormat) => ReturnType<ReturnType<typeof piOneShots>>;
 }
 
@@ -302,13 +299,12 @@ function harness(opts: { model?: string; hiddenModelIds?: () => readonly string[
     warnings,
     supportDir,
     cwd,
-    open: (access = 'read', options) =>
+    open: (access = 'read') =>
       factory({
         cwd,
         model: opts.model ?? 'anthropic/claude-sonnet-4',
         reasoningEffort: 'off',
         access,
-        ...(options?.packages ? { packages: true } : {}),
         onEvent: (e) => events.push(e),
         onWarning: (w) => warnings.push(w),
       }),
@@ -375,36 +371,38 @@ describe('what a one-shot session is allowed to do', () => {
     expect(spy.loaders[0]!.extensionFactories.map((e) => e.name)).toEqual(['foundry']);
   });
 
-  it('never resolves installed packages unless the caller opts in', async () => {
-    spy.resolvedPackages = { extensionPaths: ['/pkg/tavily/extensions'], skillPaths: [] };
+  it('resolves no packages when none are installed, and offers nothing extra', async () => {
     const h = harness();
     await h.open('read').send('go');
-    // Most one-shots are internal housekeeping turns with no business
-    // reaching the network; resolution never runs for them, so the loader
-    // never sees the operator's Tavily extension, opted in or not.
-    expect(spy.resolveBundledPackagesCalls).toEqual([]);
+    // Every one-shot resolves unconditionally; with nothing installed, that
+    // is a no-op and the tool list stays exactly the read-only four.
+    expect(spy.resolveBundledPackagesCalls).toEqual([
+      { supportDir: h.supportDir, skillsOnly: true },
+    ]);
     expect(spy.loaders[0]!.additionalExtensionPaths).toBeUndefined();
     expect(spy.creates[0]!.tools).toEqual(['read', 'grep', 'find', 'ls']);
   });
 
-  it('resolves packages for a caller that opts in, filtered read-only on a read turn', async () => {
+  it('resolves installed packages for every turn, filtered read-only on a read turn', async () => {
     spy.resolvedPackages = { extensionPaths: ['/pkg/tavily/extensions'], skillPaths: [] };
     spy.loadedPackageTools = ['web_search'];
     const h = harness();
-    await h.open('read', { packages: true }).send('go');
+    await h.open('read').send('go');
     expect(spy.resolveBundledPackagesCalls).toEqual([
       { supportDir: h.supportDir, skillsOnly: true },
     ]);
     expect(spy.loaders[0]!.additionalExtensionPaths).toEqual(['/pkg/tavily/extensions']);
-    // The tool the loaded extension registered joins the allowlist: a package
-    // cleared for read-only work is usable, exactly as a run phase gets it.
+    // The tool the loaded extension registered joins the allowlist: all or
+    // nothing per the operator's Settings toggle, with no call site opting in
+    // or out for itself — a package cleared for read-only work is usable,
+    // exactly as a run phase gets it.
     expect(spy.creates[0]!.tools).toContain('web_search');
   });
 
-  it('does not filter to read-only extensions for a write turn that opts in', async () => {
+  it('does not filter to read-only extensions for a write turn', async () => {
     spy.resolvedPackages = { extensionPaths: ['/pkg/tavily/extensions'], skillPaths: [] };
     const h = harness();
-    await h.open('write', { packages: true }).send('go');
+    await h.open('write').send('go');
     expect(spy.resolveBundledPackagesCalls).toEqual([
       { supportDir: h.supportDir, skillsOnly: false },
     ]);

@@ -56,8 +56,6 @@ export interface AskTurn {
   textCap?: number;
   /** Optional images forwarded to the one-shot turn. */
   images?: readonly OneShotImage[];
-  /** Forwarded to the one-shot: load the operator's installed pi packages. */
-  packages?: boolean;
 }
 
 export class PanelSession<TState extends PanelStateCore> {
@@ -171,7 +169,6 @@ export class PanelSession<TState extends PanelStateCore> {
       },
       ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
       ...(input.outputFormat ? { outputFormat: input.outputFormat } : {}),
-      ...(input.packages ? { packages: true } : {}),
     });
     this.bind(session);
     const turn = await session.send(input.prompt, input.images);
