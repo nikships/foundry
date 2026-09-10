@@ -11,6 +11,15 @@
  * `submit_result` answer channel, so there is no filesystem write for policy
  * to refuse. A write-capable one gets the built-ins behind a policy scoped to
  * its own directory; claims are still independently validated by the caller.
+ *
+ * Every one-shot resolves the operator's bundled/optional pi packages (for
+ * example the Tavily web-search extension) on the same footing a run phase
+ * or Smith's chat gets them — unconditionally, never a per-caller opt-in. A
+ * `read` turn still takes only the extensions marked safe for a read-only
+ * profile, same as a reviewer phase; a `write` turn takes all of them. This
+ * is what makes it "all or nothing": once the operator enables a package in
+ * Settings, every AI turn in Foundry can reach for it, with no call site
+ * deciding case by case whether it is allowed to.
  */
 
 import {
@@ -28,6 +37,7 @@ import {
   openFoundrySession,
   promptUntilIdle,
 } from './open-session.js';
+import { resolveBundledPackages } from './packages.js';
 import { evaluate } from './policy.js';
 import { policyOnlyExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
@@ -60,6 +70,8 @@ class PiOneShot implements OneShotSession {
   private readonly extension: ReturnType<typeof policyOnlyExtension>;
   private aborted = false;
   private availableModelCount = 0;
+  /** Package tools this turn actually admitted, read back for the policy. */
+  private loadedPackageTools: string[] = [];
 
   constructor(private readonly opts: PiOneShotOptions) {
     this.outputTool = opts.outputFormat ? submitResultTool(opts.outputFormat.schema) : null;
@@ -137,12 +149,23 @@ class PiOneShot implements OneShotSession {
 
     const agentDir = join(this.opts.supportDir, 'pi');
     const settingsManager = foundrySettings();
+    // Unconditional, same as a run phase and Smith's chat: a `read` turn
+    // takes only the packages marked safe for a read-only profile, a `write`
+    // turn takes all of them. Nothing here decides per caller whether the
+    // operator's enabled packages apply — enabling one in Settings is the
+    // only switch.
+    const packageResources = await resolveBundledPackages({
+      supportDir: this.opts.supportDir,
+      skillsOnly: this.opts.access === 'read',
+      onWarning: (message) => this.opts.onWarning?.(message),
+    });
     const resourceLoader = foundryResourceLoader({
       cwd: this.opts.cwd,
       agentDir,
       settingsManager,
       harness: FOUNDRY_ONESHOT_HARNESS,
       extensionFactory: this.extension.factory,
+      packageResources,
     });
     const opened = await openFoundrySession({
       cwd: this.opts.cwd,
@@ -164,6 +187,7 @@ class PiOneShot implements OneShotSession {
     });
     if (opened.modelFallbackMessage) this.opts.onWarning?.(opened.modelFallbackMessage);
 
+    this.loadedPackageTools = opened.packageTools;
     const session = opened.session;
     this.session = session;
     this.unsubscribe = subscribeSessionEvents(session, this.events, this.opts.onEvent);
@@ -185,6 +209,9 @@ class PiOneShot implements OneShotSession {
         protectedPaths: [],
       },
       this.outputTool ? [ONESHOT_OUTPUT_TOOL_NAME] : [],
+      // Read off what this turn actually loaded, exactly as a run session does:
+      // the names only exist once packages have been resolved and loaded.
+      this.loadedPackageTools,
     );
     this.opts.onDecision?.(ask, outcome.decision, outcome.reason);
     return outcome.decision;
