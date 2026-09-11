@@ -868,6 +868,8 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
     case 'agent_end':
       return <UsageRow event={event} />;
     case 'log':
+      // Identity for Smith conversation paging, not a timeline row.
+      if (event.name === 'phase session') return null;
       return <LogRow event={event} />;
     case 'agent_start':
     case 'phase_start':

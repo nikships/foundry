@@ -182,7 +182,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       if (!parsed.ok) {
         lastError = parsed.detail;
         tracer.closePhase(phaseId, 'fail', lastError);
-        return { kind: 'abort', detail: lastError };
+        return { kind: 'abort', detail: lastError, interrupted: parsed.interrupted };
       }
       envelope = parsed.envelope;
 
@@ -304,7 +304,9 @@ export class AgentPhaseRunner implements PhaseRunner {
     ctx: RunContext,
     rewinder: PhaseRewinder,
     nextCorrectionIndex: () => number,
-  ): Promise<{ ok: true; envelope: Envelope } | { ok: false; detail: string }> {
+  ): Promise<
+    { ok: true; envelope: Envelope } | { ok: false; detail: string; interrupted?: boolean }
+  > {
     let prompt = firstPrompt;
     // The wire constraint and the parse come off the same zod schema, so a
     // reply that satisfies the constraint always satisfies the parse.
@@ -326,7 +328,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         });
         if (outcome.interrupted) {
           if (ctx.cancelled()) return { ok: false, detail: KILLED_DETAIL };
-          return { ok: false, detail: 'the agent turn was interrupted' };
+          return { ok: false, detail: 'the agent turn was interrupted', interrupted: true };
         }
       } catch (e) {
         // A turn the operator ended is not an agent failure, and filing it as

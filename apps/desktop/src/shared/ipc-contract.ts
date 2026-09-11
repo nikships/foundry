@@ -5,6 +5,12 @@
  */
 
 import type {
+  PhaseMessage,
+  RunAgentStateResult,
+  SessionHistoryCursor,
+  SessionHistoryPage,
+} from './run-agent-state.js';
+import type {
   AgentDef,
   AgentSessionRow,
   AppSettings,
@@ -694,6 +700,21 @@ export interface FoundryApi {
     resume(projectId: string, runId: string): Promise<WorktreeAction>;
     list(projectId: string, includeArchived: boolean): Promise<RunRow[]>;
     detail(projectId: string, runId: string): Promise<RunDetail>;
+    agents(projectId: string, runId: string): Promise<RunAgentStateResult | null>;
+    conversation(
+      projectId: string,
+      runId: string,
+      phaseId: string,
+      cursor?: SessionHistoryCursor,
+    ): Promise<SessionHistoryPage | null>;
+    messages(projectId: string, runId: string): Promise<PhaseMessage[]>;
+    messagePhase(
+      projectId: string,
+      runId: string,
+      phaseId: string,
+      text: string,
+    ): Promise<PhaseMessage>;
+    interruptPhase(projectId: string, runId: string, phaseId: string): Promise<boolean>;
     events(projectId: string, runId: string, afterChangeId: number): Promise<EventPage>;
     liveTail(phaseId: string): Promise<string>;
     /**
@@ -1008,6 +1029,11 @@ export const IPC = {
   runsResume: 'runs:resume',
   runsList: 'runs:list',
   runsDetail: 'runs:detail',
+  runsAgents: 'runs:agents',
+  runsConversation: 'runs:conversation',
+  runsMessages: 'runs:messages',
+  runsMessagePhase: 'runs:messagePhase',
+  runsInterruptPhase: 'runs:interruptPhase',
   runsEvents: 'runs:events',
   runsLiveTail: 'runs:liveTail',
   runsContextBreakdown: 'runs:contextBreakdown',

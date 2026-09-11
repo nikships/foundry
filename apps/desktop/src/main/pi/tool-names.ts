@@ -13,6 +13,7 @@ export const FOUNDRY_TOOL_NAMES = [
   'read_phase_context',
   'git_diff',
   'submit_envelope',
+  'acknowledge_direction',
 ] as const;
 export type FoundryToolName = (typeof FOUNDRY_TOOL_NAMES)[number];
 /** Schema-bound answer channel for one-shot helpers such as the Orchestrator. */

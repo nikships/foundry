@@ -215,6 +215,7 @@ export function gitDiffTool(ctx: FoundryToolContext): ToolDefinition {
 /** A schema-bound submission tool plus the arguments last accepted through it. */
 export interface SubmissionTool {
   definition: ToolDefinition;
+  clear(): void;
   /** The most recent submission, or null when the turn never called the tool. */
   submitted(): Record<string, unknown> | null;
 }
@@ -237,7 +238,13 @@ function submissionTool(input: {
       return Promise.resolve(text(input.confirmation));
     },
   });
-  return { definition, submitted: () => captured };
+  return {
+    definition,
+    submitted: () => captured,
+    clear: () => {
+      captured = null;
+    },
+  };
 }
 
 /**

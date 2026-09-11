@@ -13,6 +13,11 @@
 import { parseModelFallbackWarning } from '@shared/model-fallback.js';
 import type { AgentDef, ContextBreakdown, ReasoningEffort, UsageBreakdown } from '@shared/types.js';
 import type { CompactionFacts } from '../engine/compaction.js';
+import {
+  pendingPhaseMessages,
+  phaseDirectionPrompt,
+  readPhaseMessages,
+} from '../engine/phase-messages.js';
 import type { Tracer } from '../trace/tracer.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate } from './policy.js';
@@ -118,6 +123,7 @@ export class AgentSession {
   private killed = false;
   private announcedOpen = false;
   private fallbackModel: string | null = null;
+  private turnInterrupted = false;
 
   constructor(
     private readonly agent: AgentDef,
@@ -249,6 +255,28 @@ export class AgentSession {
       mode: this.mode,
       color: this.agent.color,
     });
+    this.recordPhaseSession();
+  }
+
+  /**
+   * One row per phase conversation identity. The agent-session table is keyed
+   * by roster name, so a later phase that reuses the agent overwrites it.
+   * Smith pages history from this event, not from that live pointer.
+   */
+  private recordPhaseSession(): void {
+    const phaseId = this.currentPhaseId;
+    const agentSessionId = this.agentSessionId;
+    if (!phaseId || !agentSessionId) return;
+    const model = this.activeModel;
+    const previous = this.deps.tracer.phaseSessionEvents(this.deps.runId, phaseId).at(-1)?.payload;
+    if (previous?.agentSessionId === agentSessionId && previous.model === model) return;
+    this.deps.tracer.event({
+      runId: this.deps.runId,
+      phaseId,
+      type: 'log',
+      name: 'phase session',
+      payload: { model, agentSessionId },
+    });
   }
 
   /**
@@ -290,7 +318,9 @@ export class AgentSession {
 
   async send(prompt: string, ctx: AgentTurnContext): Promise<TurnOutcome> {
     this.currentPhaseId = ctx.phaseId;
+    this.turnInterrupted = false;
     await this.ensureStarted();
+    this.recordPhaseSession();
 
     const folder = new EventFolder({
       tracer: this.deps.tracer,
@@ -302,22 +332,59 @@ export class AgentSession {
     this.currentFolder = folder;
 
     try {
-      const result = await this.turn(prompt, folder, ctx);
+      let result = await this.turn(prompt, folder, ctx);
+      const usage = toUsageBreakdown(result.usage ?? folder.usage);
+      await this.refreshContext();
+      while (
+        !this.killed &&
+        !this.turnInterrupted &&
+        !result.interrupted &&
+        pendingPhaseMessages(this.deps.tracer, this.deps.runId, ctx.phaseId).some(
+          (note) => note.status === 'delivered',
+        )
+      ) {
+        result = await this.turn(
+          'New direction arrived before this phase finished. Re-evaluate your verdict after addressing it.',
+          folder,
+          ctx,
+        );
+        const nextUsage = toUsageBreakdown(result.usage ?? folder.usage);
+        for (const key of [
+          'inputTokens',
+          'outputTokens',
+          'cacheCreationTokens',
+          'cacheReadTokens',
+          'thinkingTokens',
+        ] as const) {
+          usage[key] += nextUsage[key];
+        }
+        usage.reported ||= nextUsage.reported;
+        await this.refreshContext();
+      }
       if (this.killed) {
         folder.closeDangling(KILLED_DETAIL);
         throw new RunKilledError();
       }
       folder.closeDangling('turn ended before this call reported a result');
-      await this.refreshContext();
+      if (
+        !result.interrupted &&
+        !this.turnInterrupted &&
+        pendingPhaseMessages(this.deps.tracer, this.deps.runId, ctx.phaseId).length
+      ) {
+        throw new Error(
+          'The agent did not acknowledge all phase direction. Resume to address the outstanding notes.',
+        );
+      }
       return {
         text: result.text,
-        usage: toUsageBreakdown(result.usage ?? folder.usage),
+        usage,
         reason: result.reason,
-        interrupted: result.interrupted,
+        interrupted: result.interrupted || this.turnInterrupted,
         structuredOutput: result.structuredOutput,
       };
     } finally {
       this.currentFolder = null;
+      this.currentPhaseId = null;
     }
   }
 
@@ -334,9 +401,21 @@ export class AgentSession {
   ): Promise<TurnResult> {
     const transport = this.transport;
     if (!transport) throw new Error('agent session is not open');
+    folder.resetUsage();
+    const supplied = new Set<string>();
     try {
       return await transport.send(prompt, {
         outputFormat: ctx.outputFormat,
+        direction: () => {
+          if (!this.currentPhaseId) return null;
+          const notes = readPhaseMessages(
+            this.deps.tracer,
+            this.deps.runId,
+            this.currentPhaseId,
+          ).filter((note) => !supplied.has(note.messageId));
+          for (const note of notes) supplied.add(note.messageId);
+          return notes.length ? phaseDirectionPrompt(notes) : null;
+        },
         ...(ctx.systemPrompt ? { systemPrompt: ctx.systemPrompt } : {}),
       });
     } catch (e) {
@@ -486,7 +565,14 @@ export class AgentSession {
   }
 
   async interrupt(): Promise<void> {
+    this.turnInterrupted = true;
     await this.transport?.interrupt();
+  }
+
+  async interruptPhase(phaseId: string): Promise<boolean> {
+    if (this.currentPhaseId !== phaseId || !this.currentFolder) return false;
+    await this.interrupt();
+    return true;
   }
 
   async close(): Promise<void> {

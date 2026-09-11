@@ -21,6 +21,8 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { foundryCompactionSummary } from '../engine/compaction.js';
 import type { CompactionFacts } from '../engine/compaction.js';
+import { installSparkPayloadRewrite } from './spark-payload.js';
+import { acknowledgeDirectionTool } from './direction-tool.js';
 import {
   gitDiffTool,
   readPhaseContextTool,
@@ -64,6 +66,7 @@ export interface FoundryExtensionOptions {
 /** What the transport keeps so it can swap the envelope tool between turns. */
 export interface FoundryExtensionHandle {
   factory: ExtensionFactory;
+  useDirection(read: (() => string | null) | undefined): void;
   /**
    * Install this phase's `submit_envelope`. A no-op until the extension has
    * bound, which is when `pi` exists to register against.
@@ -94,6 +97,7 @@ function makePolicyExtension(
     factory: (pi) => {
       bind?.(pi);
       installPolicy(pi, decide);
+      installSparkPayloadRewrite(pi);
       system.apply(pi);
     },
     useSystemPrompt(text) {
@@ -135,18 +139,57 @@ function compactionSlot(): {
 export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensionHandle {
   let api: ExtensionAPI | null = null;
   let pending: SubmissionTool | null = null;
+  let readDirection: (() => string | null) | undefined;
+  let directions: string[] = [];
   const compaction = compactionSlot();
   const base = makePolicyExtension(opts.decide, (pi) => {
     api = pi;
     pi.registerTool(reportProgressTool(opts.tools));
     pi.registerTool(readPhaseContextTool(opts.tools));
     pi.registerTool(gitDiffTool(opts.tools));
+    pi.registerTool(acknowledgeDirectionTool(opts.tools));
+    pi.on('context', (event) => {
+      const direction = readDirection?.();
+      if (direction) {
+        pending?.clear();
+        directions.push(direction);
+      }
+      // Pi's in-flight context is separate from agent.state.messages. Replay
+      // injections until a refreshed context includes their persisted entries.
+      const missing = directions.filter(
+        (content) =>
+          !event.messages.some(
+            (message) =>
+              message.role === 'custom' &&
+              message.customType === 'foundry-direction' &&
+              message.content === content,
+          ),
+      );
+      if (!missing.length) return;
+      return {
+        messages: [
+          ...event.messages,
+          ...missing.map((content) => ({
+            role: 'custom' as const,
+            customType: 'foundry-direction',
+            content,
+            display: true,
+            timestamp: Date.now(),
+          })),
+        ],
+      };
+    });
     if (pending) pi.registerTool(pending.definition);
     compaction.apply(pi);
   });
 
   return {
     factory: base.factory,
+    useDirection(read) {
+      readDirection = read;
+      directions = [];
+      pending?.clear();
+    },
     useEnvelopeTool(tool) {
       pending = tool;
       if (api && tool) api.registerTool(tool.definition);

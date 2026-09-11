@@ -153,6 +153,14 @@ const api: FoundryApi = {
     resume: (projectId, runId) => call(IPC.runsResume, projectId, runId),
     list: (projectId, includeArchived) => call(IPC.runsList, projectId, includeArchived),
     detail: (projectId, runId) => call(IPC.runsDetail, projectId, runId),
+    agents: (projectId, runId) => call(IPC.runsAgents, projectId, runId),
+    conversation: (projectId, runId, phaseId, cursor) =>
+      call(IPC.runsConversation, projectId, runId, phaseId, cursor),
+    messages: (projectId, runId) => call(IPC.runsMessages, projectId, runId),
+    messagePhase: (projectId, runId, phaseId, text) =>
+      call(IPC.runsMessagePhase, projectId, runId, phaseId, text),
+    interruptPhase: (projectId, runId, phaseId) =>
+      call(IPC.runsInterruptPhase, projectId, runId, phaseId),
     events: (projectId, runId, afterChangeId) =>
       call(IPC.runsEvents, projectId, runId, afterChangeId),
     liveTail: (phaseId) => call(IPC.runsLiveTail, phaseId),

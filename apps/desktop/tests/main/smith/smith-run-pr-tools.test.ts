@@ -31,6 +31,60 @@ async function approve(h: ReturnType<typeof setup>, params: Record<string, unkno
 }
 
 describe('Smith run and PR tools', () => {
+  it('routes agent inspection and conversation cursors without approval', async () => {
+    const h = setup('runs');
+    await h.execute({ operation: 'agents', runId: 'r' });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsAgents, 'session', 'r');
+    await h.execute({ operation: 'messages', projectId: 'explicit', runId: 'r' });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsMessages, 'explicit', 'r');
+    const cursor = { line: 2, offset: 30, agentSessionId: 'original-session' };
+    await h.execute({ operation: 'conversation', runId: 'r', phaseId: 'p', cursor });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsConversation, 'session', 'r', 'p', cursor);
+    expect(h.queue.list()).toEqual([]);
+  });
+
+  it.each([
+    { operation: 'agents' },
+    { operation: 'conversation', runId: 'r' },
+    { operation: 'conversation', runId: 'r', phaseId: 'p', cursor: { line: 0, offset: 0 } },
+    { operation: 'message_phase', runId: 'r', phaseId: 'p', text: ' ' },
+    { operation: 'message_phase', runId: 'r', phaseId: 'p', text: 'x'.repeat(12_001) },
+    { operation: 'interrupt_phase', runId: 'r' },
+  ])(
+    'rejects invalid agent-operation input before invoking or proposing: $operation',
+    async (params) => {
+      const h = setup('runs');
+      expect(json(await h.execute(params))).toMatchObject({ ok: false });
+      expect(h.invoke).not.toHaveBeenCalled();
+      expect(h.queue.list()).toEqual([]);
+    },
+  );
+
+  it.each(['message_phase', 'interrupt_phase'])(
+    'requires separate approval for %s and never resumes implicitly',
+    async (operation) => {
+      const h = setup('runs');
+      const pending = h.execute({
+        operation,
+        runId: 'r',
+        phaseId: 'phase',
+        text: 'Exact operator ruling',
+      });
+      await vi.waitFor(() => expect(h.queue.list()).toHaveLength(1));
+      expect(h.invoke).not.toHaveBeenCalled();
+      await h.queue.answer(h.queue.list()[0]!.id, { approved: false });
+      await pending;
+      expect(h.invoke).not.toHaveBeenCalled();
+      await approve(h, { operation, runId: 'r', phaseId: 'phase', text: 'Exact operator ruling' });
+      expect(h.invoke).toHaveBeenCalledTimes(1);
+      expect(h.invoke.mock.calls[0]).toEqual(
+        operation === 'message_phase'
+          ? [IPC.runsMessagePhase, 'session', 'r', 'phase', 'Exact operator ruling']
+          : [IPC.runsInterruptPhase, 'session', 'r', 'phase'],
+      );
+    },
+  );
+
   it.each([
     ['runs', SMITH_RUN_OPERATIONS],
     ['prs', SMITH_PR_OPERATIONS],

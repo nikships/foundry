@@ -83,7 +83,9 @@ export interface RunContext {
 
 /** Where the walk goes after a phase. Unchanged from executor.ts. */
 export type PhaseJump =
-  { kind: 'next' } | { kind: 'goto'; phase: string } | { kind: 'abort'; detail: string };
+  | { kind: 'next' }
+  | { kind: 'goto'; phase: string }
+  | { kind: 'abort'; detail: string; interrupted?: boolean };
 
 /**
  * One runner per phase kind. A runner owns everything inside one phase

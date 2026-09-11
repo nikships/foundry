@@ -106,6 +106,13 @@ describe('SMITH_CHAT_HARNESS', () => {
     expect(SMITH_CHAT_HARNESS).toContain('All projects scope');
   });
 
+  it('teaches directing a live pipeline agent without implicit resume', () => {
+    expect(SMITH_CHAT_HARNESS).toContain('Directing pipeline agents');
+    expect(SMITH_CHAT_HARNESS).toContain('message_phase');
+    expect(SMITH_CHAT_HARNESS).toContain('interrupt_phase');
+    expect(SMITH_CHAT_HARNESS).toContain('Sending never resumes a run');
+  });
+
   it('drops the CLI reference — the tools carry that contract now', () => {
     for (const gone of [
       'foundry-cli',

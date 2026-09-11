@@ -25,6 +25,7 @@ import type {
   PermissionDecision,
 } from '../../../src/main/pi/transport.js';
 import { jsonSchemaFor } from '../../../src/main/engine/envelopes.js';
+import { DIRECT_PROVIDERS } from '../../../src/shared/direct-providers.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
 import { Tracer } from '../../../src/main/trace/tracer.js';
 
@@ -36,6 +37,8 @@ interface FakeApi {
     input: Record<string, unknown>;
   }) => Promise<{ block: true; reason: string } | undefined | void>;
   beforeAgentStart?: (event: { systemPrompt: string }) => { systemPrompt: string } | undefined;
+  beforeProviderRequest?: (event: { payload: unknown }) => unknown;
+  context?: (event: { messages: unknown[] }) => { messages: unknown[] } | undefined;
   sessionBeforeCompact?: (event: {
     preparation: {
       firstKeptEntryId: string;
@@ -65,11 +68,15 @@ function fakeApi(): {
     },
     on: (event: string, handler: unknown) => {
       if (event === 'tool_call') state.toolCall = handler as FakeApi['toolCall'];
+      if (event === 'context') state.context = handler as FakeApi['context'];
       if (event === 'before_agent_start') {
         state.beforeAgentStart = handler as FakeApi['beforeAgentStart'];
       }
       if (event === 'session_before_compact') {
         state.sessionBeforeCompact = handler as FakeApi['sessionBeforeCompact'];
+      }
+      if (event === 'before_provider_request') {
+        state.beforeProviderRequest = handler as FakeApi['beforeProviderRequest'];
       }
     },
   };
@@ -106,6 +113,7 @@ describe('what the extension registers', () => {
       'report_progress',
       'read_phase_context',
       'git_diff',
+      'acknowledge_direction',
     ]);
   });
 
@@ -147,7 +155,58 @@ describe('what the extension registers', () => {
       'report_progress',
       'read_phase_context',
       'git_diff',
+      'acknowledge_direction',
     ]);
+  });
+
+  it('does not invalidate a revised verdict when replaying already supplied direction', async () => {
+    const { handle, state } = bind(allow);
+    const envelope = submitEnvelopeTool({ type: 'object' });
+    handle.useEnvelopeTool(envelope);
+    let supplied = false;
+    handle.useDirection(() => {
+      if (supplied) return null;
+      supplied = true;
+      return 'Check rollback.';
+    });
+    state.context?.({ messages: [] });
+    await envelope.definition.execute(
+      'revised',
+      { approved: true },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(state.context?.({ messages: [] })?.messages).toHaveLength(1);
+    expect(envelope.submitted()).toEqual({ approved: true });
+  });
+
+  it('injects direction at the next model call and invalidates a pre-direction verdict', async () => {
+    const { handle, state } = bind(allow);
+    const envelope = submitEnvelopeTool({ type: 'object' });
+    handle.useEnvelopeTool(envelope);
+    handle.useDirection(() => 'Re-evaluate the four operator rulings.');
+    await envelope.definition.execute(
+      'old',
+      { approved: false },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(envelope.submitted()).toEqual({ approved: false });
+    expect(state.context?.({ messages: [] })?.messages).toEqual([
+      expect.objectContaining({
+        role: 'custom',
+        content: 'Re-evaluate the four operator rulings.',
+      }),
+    ]);
+    expect(envelope.submitted()).toBeNull();
+    handle.useDirection(undefined);
+    await envelope.definition.execute('new', { approved: true }, undefined, undefined, {} as never);
+    expect(state.context?.({ messages: [] })).toBeUndefined();
+    expect(envelope.submitted()).toEqual({ approved: true });
+    handle.useDirection(undefined);
+    expect(envelope.submitted()).toBeNull();
   });
 });
 
@@ -219,6 +278,31 @@ describe('the policy hook', () => {
       block: true,
       reason: 'slow but denied',
     });
+  });
+});
+
+describe('the Spark payload hook', () => {
+  it('rewrites tool-result images before the request goes to Meta', () => {
+    const { state } = bind(allow);
+    const sparkId = DIRECT_PROVIDERS.find((provider) => provider.id === 'meta')?.models[0]?.id;
+    const png = {
+      type: 'input_image',
+      detail: 'auto',
+      image_url: 'data:image/png;base64,aaa',
+    };
+    const payload = {
+      model: sparkId,
+      input: [
+        {
+          type: 'function_call_output',
+          call_id: 'c1',
+          output: [{ type: 'input_text', text: 'Read image file [image/png]' }, png],
+        },
+      ],
+    };
+    const next = state.beforeProviderRequest?.({ payload }) as { input: { output?: unknown }[] };
+    expect(next.input[0]?.output).toBe('Read image file [image/png]');
+    expect(next.input[1]).toMatchObject({ role: 'user' });
   });
 });
 

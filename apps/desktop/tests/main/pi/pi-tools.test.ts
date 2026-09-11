@@ -30,6 +30,7 @@ import {
   submitResultTool,
   type PhaseContextEntry,
 } from '../../../src/main/pi/tools.js';
+import { acknowledgeDirectionTool } from '../../../src/main/pi/direction-tool.js';
 import type { FoundryToolContext } from '../../../src/main/pi/transport.js';
 import { jsonSchemaFor, type Envelope } from '../../../src/main/engine/envelopes.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
@@ -129,12 +130,13 @@ function textOf(result: { content: { type: string; text: string }[] }): string {
 }
 
 describe('the Foundry tool set', () => {
-  it('is exactly the four tools the policy knows about', () => {
+  it('is exactly the five tools the policy knows about', () => {
     expect([...FOUNDRY_TOOL_NAMES]).toEqual([
       'report_progress',
       'read_phase_context',
       'git_diff',
       'submit_envelope',
+      'acknowledge_direction',
     ]);
   });
 
@@ -145,6 +147,7 @@ describe('the Foundry tool set', () => {
       readPhaseContextTool(context(h)),
       gitDiffTool(context(h)),
       submitEnvelopeTool(jsonSchemaFor('build') as unknown as Record<string, unknown>).definition,
+      acknowledgeDirectionTool(context(h)),
     ];
     for (const tool of tools) {
       expect(tool.parameters, `${tool.name} must carry a schema`).toBeDefined();

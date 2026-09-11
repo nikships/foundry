@@ -29,6 +29,8 @@ export interface FoundryToolContext {
   /** Validated envelopes for this run, keyed by phase name, insertion order. */
   envelopes: () => ReadonlyMap<string, Envelope>;
   tracer: Pick<Tracer, 'event'>;
+  /** Acknowledges only direction read by this session's current phase. */
+  acknowledgeDirection?: (input: unknown) => void;
   /**
    * The run's worktree and the commit it branched from — the scope `git_diff`
    * answers within. The engine resolves both; the model never names a ref, so
@@ -65,6 +67,8 @@ export interface OutputFormat {
 }
 
 export interface TurnOptions {
+  /** Read durable queued direction immediately before each model call. */
+  direction?: () => string | null;
   /** Adds a schema-bound answer channel; other mid-turn tool use is unaffected. */
   outputFormat?: OutputFormat;
   /**

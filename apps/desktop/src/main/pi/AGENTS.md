@@ -32,7 +32,7 @@ Do not import pi’s transitive packages directly. Derive needed types from `pi-
 - **Every tool call receives a verdict.** Unknown tools fail closed. Engine post-call diffing remains the final write-boundary enforcement.
 - Bind policy extensions before the first prompt.
 - A structured one-shot result is only a candidate; caller-owned schema and domain validation remain authoritative.
-- Agent turns have no Foundry timeout. They end on provider completion/failure or explicit cancellation.
+- Agent turns have no Foundry timeout. They end on provider completion/failure or explicit cancellation. Operator direction is a persisted `foundry-direction` custom message, replayed until Pi's in-flight context includes it. Each phase records a `phase session` identity so Smith can page that conversation after the agent is reused.
 - Swap envelope tool definitions between turns rather than mutating schemas; pi caches validators by schema identity.
 - Compaction and rewind reuse the same session. Pi rewinds conversation only; the engine restores files.
 - Resolve run worktree paths fail-closed. Never fall back to `process.cwd()`.
@@ -40,6 +40,7 @@ Do not import pi’s transitive packages directly. Derive needed types from `pi-
 - `PI_OFFLINE=1` is read when constructing `ModelRuntime`; offline refreshes must not allow network.
 - Persistent direct API keys use the catalog login path. In-memory overrides must not be described as durable.
 - A provider absent from pi's table is registered on the runtime before it is handed out, never written into `models.json`, which the operator and the Bridge own. Registration carries no credential, so such a provider stays out of `getAvailable()` until a key is stored. Its models are pinned in `shared/direct-providers.ts` because the vendor endpoint reports ids alone.
+- Meta Spark rejects images inside `function_call_output`. Lift them onto a following user message in `before_provider_request` (`spark-payload.ts`) so a `read` of a PNG does not 400. Other models keep Pi's native encoding.
 - Model fallback records the model that actually ran and skips operator-hidden failover targets. Any provider error is retried five times on the current model; the first hop prefers Settings `defaultModel`, then the rest of the catalog.
 - Callers verify claims independently: repair checks Git and command detection executes proposed commands.
 

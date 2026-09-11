@@ -34,6 +34,7 @@ import { AgentSession, KILLED_DETAIL, type Mode, type TransportRequest } from '.
 import { lazyTransport } from '../pi/lazy-transport.js';
 import type { AgentTransport } from '../pi/transport.js';
 import { decideAcceptance } from './acceptance.js';
+import { acknowledgePhaseMessage } from './phase-messages.js';
 import { capturePhaseStart } from './checkpoint.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
@@ -225,6 +226,25 @@ export class Executor {
 
   get runId(): string {
     return this.deps.runId;
+  }
+
+  async interruptPhase(phaseId: string): Promise<boolean> {
+    for (const session of this.sessions.values()) {
+      if (await session.interruptPhase(phaseId)) {
+        this.deps.tracer.event({
+          runId: this.runId,
+          phaseId,
+          type: 'interrupt',
+          name: 'operator interrupted phase',
+          payload: {
+            message:
+              'Current turn interrupted. Worktree retained; resume is a separate operator action.',
+          },
+        });
+        return true;
+      }
+    }
+    return false;
   }
 
   cancel(): void {
@@ -497,6 +517,11 @@ export class Executor {
       await this.checkpointPhaseStart(phase);
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
+        if (this.cancelled) return this.settleKilled();
+        if (jump.interrupted) {
+          await this.closeSessions();
+          return this.finish('rejected', jump.detail);
+        }
         if (await this.tryReplan(index, phase, jump.detail)) {
           // The failed definition was removed from the active pipeline. The
           // first replacement occupies the same logical index.
@@ -1193,6 +1218,11 @@ export class Executor {
           phaseId: req.phaseId,
           envelopes: () => this.envelopes,
           tracer: this.deps.tracer,
+          acknowledgeDirection: (input) => {
+            const phaseId = req.phaseId();
+            if (!phaseId) throw new Error('no active phase');
+            acknowledgePhaseMessage(this.deps.tracer, req.runId, phaseId, input);
+          },
           // Resolved here, not by the agent: `git_diff` answers within the run's
           // own worktree and branch point, and a model-supplied ref would be a
           // way to read outside it. Read per call because a repair can move the
