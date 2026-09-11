@@ -69,6 +69,7 @@ All commands run from the repository root.
 | Full local gate            | `npm run check`                                           |
 | Fetch Bridge               | `npm run fetch:bridge`                                    |
 | Refresh model intelligence | `npm run fetch:intelligence` (`-- --check` verifies only) |
+| Dogfood seed / launch      | `npm run dogfood:seed`; `npm run dogfood`                 |
 | Package signed macOS app   | `npm run package`                                         |
 
 Vitest accepts a file or name filter, for example:
