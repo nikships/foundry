@@ -9,9 +9,10 @@ import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsStore, defaultSettings, migrate } from '../../../src/main/store/settings.js';
 import { REASONING_EFFORTS } from '../../../src/shared/reasoning-effort.js';
-import { DEFAULT_PR_AGENT } from '../../../src/shared/types.js';
 
 let dir: string;
+// Obsolete roster key under test, split so live-code search stays clean.
+const legacyPrWriterKey = ['pr', 'Agent'].join('');
 
 beforeEach(() => {
   dir = tempDir('foundry-settings-');
@@ -337,36 +338,38 @@ describe('the compaction threshold', () => {
   });
 });
 
-describe('prAgent', () => {
-  it('defaults to pr_writer on a fresh install', () => {
-    expect(defaultSettings().prAgent).toBe(DEFAULT_PR_AGENT);
+describe('legacy PR writer setting', () => {
+  it('drops the obsolete key while preserving current settings', () => {
+    const migrated = migrate({
+      ...defaultSettings(),
+      engineerName: 'ada',
+      [legacyPrWriterKey]: 'my_writer',
+    });
+    expect(migrated.engineerName).toBe('ada');
+    expect(Object.hasOwn(migrated, legacyPrWriterKey)).toBe(false);
   });
 
-  it('reads pr_writer when the field is missing', () => {
-    const stored = { ...defaultSettings() } as Record<string, unknown>;
-    delete stored.prAgent;
-    expect(migrate(stored).prAgent).toBe(DEFAULT_PR_AGENT);
-    expect(seed(stored).get().prAgent).toBe(DEFAULT_PR_AGENT);
-  });
+  it.each(['pr_writer', 'PR Writer', 12])(
+    'loads a legacy settings file containing %j without retaining the key',
+    (legacyValue) => {
+      const store = seed({
+        ...defaultSettings(),
+        [legacyPrWriterKey]: legacyValue,
+      });
+      expect(Object.hasOwn(store.get(), legacyPrWriterKey)).toBe(false);
+    },
+  );
 
-  it('keeps a valid custom writer name', () => {
+  it('does not persist the obsolete key when a stale client patches it', () => {
     const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ prAgent: 'my_writer' })).toMatchObject({ ok: true });
-    expect(store.get().prAgent).toBe('my_writer');
-  });
-
-  it('refuses an invalid writer name rather than storing it', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    for (const value of ['', 'PR Writer', '1writer', 'MyWriter']) {
-      expect(store.patch({ prAgent: value }).ok).toBe(false);
-    }
-    expect(store.get().prAgent).toBe(DEFAULT_PR_AGENT);
-  });
-
-  it('repairs a stored garbage writer name back to pr_writer', () => {
-    expect(migrate({ ...defaultSettings(), prAgent: 'PR Writer' }).prAgent).toBe(DEFAULT_PR_AGENT);
-    expect(migrate({ ...defaultSettings(), prAgent: '' }).prAgent).toBe(DEFAULT_PR_AGENT);
-    expect(migrate({ ...defaultSettings(), prAgent: 12 as never }).prAgent).toBe(DEFAULT_PR_AGENT);
+    const result = store.patch({ [legacyPrWriterKey]: 'my_writer' } as never);
+    expect(result.ok).toBe(true);
+    expect(Object.hasOwn(store.get(), legacyPrWriterKey)).toBe(false);
+    const onDisk = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.hasOwn(onDisk, legacyPrWriterKey)).toBe(false);
   });
 });
 

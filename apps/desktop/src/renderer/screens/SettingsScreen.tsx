@@ -24,7 +24,6 @@ import {
   normalizeReasoningEffortForModelChoice,
 } from '@shared/reasoning-effort.js';
 import { api, plain } from '../api.js';
-import { isKnownPrWriter, prWriterOptions } from '../view-models/pr-draft.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import ModelPicker from '../components/common/ModelPicker.js';
@@ -265,8 +264,7 @@ export default function SettingsScreen({
   /** Bumped by the app shell's ⌘K chord; each bump opens the search palette. */
   paletteNonce?: number;
 }): React.JSX.Element {
-  const { settings, project, projects, agents, refreshAll, patchSettings, selectProject } =
-    useApp();
+  const { settings, project, projects, refreshAll, patchSettings, selectProject } = useApp();
   const [pane, setPane] = useState<Pane>(normalizePane(initialPane));
   const { models, refresh: refreshModels } = useAgentModels();
   const [modelFilter, setModelFilter] = useState('');
@@ -1874,29 +1872,6 @@ export default function SettingsScreen({
                               model={smithModelInfo}
                               onChange={(effort) => void set({ smithReasoningEffort: effort })}
                               data-testid="settings-smith-effort"
-                            />
-                          </Field>
-                        </div>
-                      </Section>
-                      <Section
-                        label="Pull requests"
-                        note="Who drafts a PR when a pipeline asks for one."
-                      >
-                        <div className={styles.settingsFields}>
-                          <Field
-                            label="PR writer"
-                            hint="Roster agent used when adding a PR phase. A pipeline that names an agent still wins."
-                            error={
-                              isKnownPrWriter(settings.prAgent, agents)
-                                ? undefined
-                                : "Not in this project's roster. Settings still load; pick a writer that exists."
-                            }
-                          >
-                            <Dropdown
-                              value={settings.prAgent}
-                              options={prWriterOptions(agents, settings.prAgent)}
-                              aria-label="PR writer"
-                              onChange={(next) => void set({ prAgent: next })}
                             />
                           </Field>
                         </div>
