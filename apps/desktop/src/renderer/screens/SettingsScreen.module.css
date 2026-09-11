@@ -202,8 +202,10 @@
   }
   .settingsNav {
     flex-direction: row;
+    gap: var(--s3);
   }
   .railGroup {
+    flex: none;
     flex-direction: row;
   }
   .railHead {

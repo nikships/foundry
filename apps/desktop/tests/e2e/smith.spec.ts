@@ -187,9 +187,22 @@ test.describe('smith / chat', () => {
       await clear('inspector/pinned-run');
 
       await window.getByTestId('nav-settings').click();
-      await expect(window.getByTestId('settings-tab-app')).toHaveAttribute('aria-selected', 'true');
-      await expect(window.getByTestId('app-view')).toHaveAttribute('data-settings-pane', 'app');
-      for (const pane of ['models', 'project', 'app'] as const) {
+      await expect(window.getByTestId('settings-tab-preferences')).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(window.getByTestId('app-view')).toHaveAttribute(
+        'data-settings-pane',
+        'preferences',
+      );
+      for (const pane of [
+        'providers',
+        'models',
+        'integrations',
+        'project',
+        'preferences',
+        'system',
+      ] as const) {
         await window.getByTestId(`settings-tab-${pane}`).click();
         await expect(window.getByTestId('app-view')).toHaveAttribute('data-settings-pane', pane);
         await clear(`settings/${pane}`);

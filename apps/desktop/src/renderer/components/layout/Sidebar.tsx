@@ -319,7 +319,7 @@ export default function Sidebar({
       </button>
       <button
         className={navItemClass(view === 'settings', styles.settingsItem)}
-        onClick={() => onOpenSettings('app')}
+        onClick={() => onOpenSettings('preferences')}
         title={collapsed ? 'Settings (⌘,)' : undefined}
         aria-label={collapsed ? 'Settings ⌘,' : undefined}
         aria-keyshortcuts="Meta+, Control+,"

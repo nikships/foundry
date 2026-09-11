@@ -12,15 +12,8 @@
 
 import type React from 'react';
 
-export type SettingsPaneId = 'models' | 'integrations' | 'project' | 'app';
-
-/**
- * The section groupings this registry is written in, which predate the
- * current rail. `currentPane` folds them onto the panes that render today,
- * so a section can be re-homed without rewriting every entry below.
- */
-type LegacySettingsPaneId =
-  'general' | 'providers' | 'defaults' | 'integrations' | 'project' | 'maintenance' | 'about';
+export type SettingsPaneId =
+  'providers' | 'models' | 'integrations' | 'project' | 'preferences' | 'system';
 
 export interface SettingsPaneMeta {
   id: SettingsPaneId;
@@ -30,18 +23,21 @@ export interface SettingsPaneMeta {
   keywords: string;
 }
 
-/**
- * The rail's grouping: whose stuff a pane configures. `SettingsScreen` keeps
- * its own literal PANES list (tests pin the literals there), so this list's
- * ids are pinned to the same four by tests/settings-search.test.ts.
- */
+/** The six categories rendered in the Settings rail, in display order. */
 export const SETTINGS_PANES: SettingsPaneMeta[] = [
   {
-    id: 'models',
-    label: 'Models & Providers',
-    hint: 'Providers, API keys, models, agent defaults, and Smith',
+    id: 'providers',
+    label: 'Providers',
+    hint: 'Bridge, subscriptions, API keys, and direct provider connections',
     keywords:
-      'anthropic openai google openrouter xai api key subscription models bridge connect oauth reasoning helper pr writer smith chat',
+      'provider anthropic openai google openrouter xai bridge connect oauth subscription api key token credential direct',
+  },
+  {
+    id: 'models',
+    label: 'Models & agent defaults',
+    hint: 'Model catalog, defaults, reasoning, Smith, and context limits',
+    keywords:
+      'model catalog hide reachable default helper healing reasoning effort smith chat pr writer compaction context retries',
   },
   {
     id: 'integrations',
@@ -52,21 +48,28 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
   {
     id: 'project',
     label: 'Project',
-    hint: 'Repo, readiness, git, commands, boundaries',
+    hint: 'Repo, readiness, git, commands, and boundaries',
     keywords:
       'repository path git base ref merge policy protected paths setup script commands scope remove repository card refresh context',
   },
   {
-    id: 'app',
-    label: 'App',
-    hint: 'Appearance, notifications, updates, phone, and maintenance',
+    id: 'preferences',
+    label: 'Appearance & notifications',
+    hint: 'Themes, alerts, dock badge, and sounds',
     keywords:
-      'theme appearance dark light midnight forest ember contrast sand mist palette color notify sound effects audio updates phone companion application quit relaunch retention history orphan version build replay intro',
+      'theme appearance dark light midnight forest ember contrast sand mist palette color notification notify alert dock badge sound audio',
+  },
+  {
+    id: 'system',
+    label: 'System & maintenance',
+    hint: 'Checks, updates, phone, lifecycle, retention, cleanup, and build information',
+    keywords:
+      'doctor diagnostics system update version companion phone pairing quit relaunch retention trace database orphan worktree cleanup build about intro',
   },
 ];
 
 export interface SettingsSectionRef {
-  pane: LegacySettingsPaneId;
+  pane: SettingsPaneId;
   /** Exact `Section label` text in SettingsScreen. */
   label: string;
   /** Exact `Section note` text, surfaced as the result's second line. */
@@ -75,40 +78,40 @@ export interface SettingsSectionRef {
 }
 
 export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
-  // General
+  // System
   {
-    pane: 'general',
+    pane: 'system',
     label: 'Checks',
     note: 'What Foundry found on this machine at launch.',
     keywords: 'doctor environment diagnostics recheck',
   },
   {
-    pane: 'general',
+    pane: 'preferences',
     label: 'Appearance',
     note: 'Choose the palette Foundry uses across the desktop.',
     keywords:
       'theme appearance dark light midnight forest ember contrast high contrast sand mist light theme dark mode palette color mode',
   },
   {
-    pane: 'general',
+    pane: 'preferences',
     label: 'Notifications',
     note: 'Only the moments that need you.',
     keywords: 'notify accepted rejected failed waiting dock badge alerts sound effects audio tone',
   },
   {
-    pane: 'general',
+    pane: 'system',
     label: 'Software updates',
     note: 'Foundry checks only when you ask it to.',
     keywords: 'version update download install restart check',
   },
   {
-    pane: 'general',
+    pane: 'system',
     label: 'Phone',
     note: 'A paired phone can watch runs, start one, and open the PR.',
     keywords: 'companion qr pair android device unpair mobile',
   },
   {
-    pane: 'general',
+    pane: 'system',
     label: 'Application',
     note: 'Quit or relaunch the desktop app.',
     keywords: 'relaunch quit restart',
@@ -133,50 +136,50 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     keywords: 'key token secret google openrouter xai gemini grok paste store clear',
   },
   {
-    pane: 'providers',
+    pane: 'models',
     label: 'Models',
     note: 'What every picker in the app will offer.',
     keywords: 'hide model catalog picker context window refresh reachable',
   },
-  // Agent defaults
+  // Models and agent defaults
   {
-    pane: 'defaults',
+    pane: 'models',
     label: 'Agent defaults',
     note: 'What an agent set to inherit gets.',
     keywords: 'inherit fallback per-agent',
   },
   {
-    pane: 'defaults',
+    pane: 'models',
     label: 'Model',
     note: 'Every model a connected provider offers.',
     keywords: 'default model reasoning effort picker',
   },
   {
-    pane: 'defaults',
+    pane: 'models',
     label: 'Helper tasks',
     note: 'Used for project detection and Agent Readiness.',
     keywords: 'detection readiness helper model reasoning effort',
   },
   {
-    pane: 'defaults',
+    pane: 'models',
     label: 'Healing',
     note: 'Repairs a failed check before the failure escalates.',
     keywords: 'healing heal repair fix failed test lint format command model reasoning effort',
   },
   {
-    pane: 'defaults',
+    pane: 'models',
     label: 'Smith',
     note: 'The model the in-app chat runs on.',
     keywords: 'smith chat default model picker provider',
   },
   {
-    pane: 'defaults',
+    pane: 'models',
     label: 'Pull requests',
     note: 'Who drafts a PR when a pipeline asks for one.',
     keywords: 'pr writer draft roster agent',
   },
   {
-    pane: 'defaults',
+    pane: 'models',
     label: 'Advanced',
     note: 'Stable engine policy and context limits.',
     keywords:
@@ -250,34 +253,34 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     note: "Where this project's agents and pipelines are saved.",
     keywords: 'global project-local roster pipelines design',
   },
-  // Maintenance
+  // System maintenance
   {
-    pane: 'maintenance',
+    pane: 'system',
     label: 'Retention',
     note: 'Nothing is deleted behind your back.',
     keywords: 'delete history days runs compact trace databases vacuum',
   },
   {
-    pane: 'maintenance',
+    pane: 'system',
     label: 'Leftover worktrees',
     note: 'Left behind by a crashed or killed run.',
     keywords: 'orphan worktree cleanup remove branch uncommitted',
   },
-  // About
+  // System information
   {
-    pane: 'about',
+    pane: 'system',
     label: 'Foundry',
     note: 'A software factory you can watch.',
     keywords: 'about tagline',
   },
   {
-    pane: 'about',
+    pane: 'system',
     label: 'Build',
     note: 'What this copy of Foundry is running.',
     keywords: 'version harness models projects facts',
   },
   {
-    pane: 'about',
+    pane: 'system',
     label: 'Elsewhere',
     note: 'Providers and the cinematic intro.',
     keywords: 'replay intro onboarding manage providers',
@@ -288,7 +291,7 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
 export interface SettingsToggleDef {
   /** Root booleans plus the three `notifications` switches. */
   id: 'accepted' | 'rejected' | 'failed' | 'dockBadge' | 'soundEffects';
-  /** Mirrors the row labels in the General → Notifications section. */
+  /** Mirrors the row labels in the Appearance & notifications → Notifications section. */
   title: string;
   keywords: string;
 }
@@ -334,11 +337,24 @@ function paneLabel(id: SettingsPaneId): string {
   return SETTINGS_PANES.find((p) => p.id === id)?.label ?? id;
 }
 
-function currentPane(id: LegacySettingsPaneId): SettingsPaneId {
-  if (id === 'integrations') return 'integrations';
-  if (id === 'project') return 'project';
-  if (id === 'providers' || id === 'defaults') return 'models';
-  return 'app';
+const SETTINGS_PANE_ALIASES: Record<string, SettingsPaneId> = {
+  defaults: 'models',
+  app: 'preferences',
+  general: 'preferences',
+  maintenance: 'system',
+  about: 'system',
+  'project-commands': 'project',
+};
+
+/** Resolve canonical and legacy navigation ids to a pane the current rail renders. */
+export function normalizeSettingsPane(value: string): SettingsPaneId {
+  const canonical = SETTINGS_PANES.find((pane) => pane.id === value);
+  // Navigation targets can come from saved state and assistant-generated UI,
+  // so do not let inherited object properties become a non-pane destination.
+  const alias = Object.hasOwn(SETTINGS_PANE_ALIASES, value)
+    ? SETTINGS_PANE_ALIASES[value]
+    : undefined;
+  return canonical?.id ?? alias ?? 'preferences';
 }
 
 /** Lower number sorts earlier; -1 means no match. */
@@ -381,7 +397,7 @@ export function searchSettings(query: string, cap = 12): SettingsHit[] {
   for (const section of SETTINGS_SECTIONS) {
     const score = scoreSection(section, q);
     if (score < 0) continue;
-    const pane = currentPane(section.pane);
+    const pane = section.pane;
     scored.push({
       hit: {
         pane,
