@@ -59,10 +59,14 @@ function AppInner(): React.JSX.Element {
   const [view, setView] = useState<View>('runs');
   const [runRequest, setRunRequest] = useState('');
   const [orchestratorChoice, setOrchestratorChoice] = useState(loadOrchestratorChoice);
-  // A planning turn can take minutes and its proposal awaits an explicit
-  // operator decision. Keep it at the same view-independent lifetime as the
-  // composer text instead of cancelling it when Runs briefly unmounts.
+  // Planning turns can take minutes and each proposal awaits an explicit
+  // operator decision. The hook lives here — above any single view — so
+  // navigating away from Runs (or unmounting it) never stops or loses
+  // generation; durability itself lives in main. No navigation or project
+  // switch cancels a proposal (FOU-349).
   const orchestrator = useOrchestratorPlan(projectId, orchestratorChoice);
+  /** Sidebar proposal deep-link: the Runs list scrolls to this card on arrival. */
+  const [focusedProposalId, setFocusedProposalId] = useState<string | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
@@ -236,6 +240,16 @@ function AppInner(): React.JSX.Element {
     setView('inspector');
   };
 
+  /**
+   * Open a durable proposal from Activity: land on Runs and scroll to its
+   * card. Never routes to the Inspector — a proposal is not a run yet.
+   */
+  const openProposal = useCallback((planId: string): void => {
+    setFocusedProposalId(planId);
+    setOpenRunId('');
+    setView('runs');
+  }, []);
+
   const addProject = useCallback(async (): Promise<void> => {
     const added = await api.projects.add();
     if (added) {
@@ -326,6 +340,7 @@ function AppInner(): React.JSX.Element {
             orchestratorChoice={orchestratorChoice}
             onOrchestratorChoiceChange={setOrchestratorChoice}
             orchestrator={orchestrator}
+            focusProposalId={focusedProposalId}
             onOpen={openRun}
             onAddProject={() => void addProject()}
             onNewProject={newProject}
@@ -391,6 +406,7 @@ function AppInner(): React.JSX.Element {
             onNewProject={newProject}
             onOpenSettings={openSettingsPane}
             onOpenInspector={openInspector}
+            onOpenProposal={openProposal}
             onOpenSmith={openSmith}
             inspectorRunId={inspectorRunId}
           />

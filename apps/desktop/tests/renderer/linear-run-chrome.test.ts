@@ -111,7 +111,9 @@ describe('Linear run chrome', () => {
 
   it('shows why the primary action is blocked before an issue is selected', () => {
     const composer = read('src/renderer/components/run/LinearComposer.tsx');
-    expect(composer).toContain("currentBlocked && !starting && orchestrator.stage === 'compose'");
+    // ownStage scopes the Linear composer to its own proposal: a
+    // Runs-composer proposal generating in parallel never flips this hint.
+    expect(composer).toContain("currentBlocked && !starting && ownStage === 'compose'");
     expect(composer).not.toContain('currentBlocked && issue && !starting');
   });
 

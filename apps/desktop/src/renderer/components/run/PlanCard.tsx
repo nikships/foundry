@@ -23,6 +23,7 @@ import styles from './PlanCard.module.css';
  * or talk the proposal over with the Orchestrator, before doing so.
  */
 export default function PlanCard({
+  planId,
   plan,
   original,
   starting,
@@ -41,6 +42,8 @@ export default function PlanCard({
   sourceBadge,
   sourceDetail,
 }: {
+  /** Durable proposal id for accept-by-id; defaults to the plan's own id. */
+  planId?: string;
   plan: GeneratedRunPlan;
   /** The plan as the Orchestrator proposed it, before any operator override. */
   original: GeneratedRunPlan;
@@ -116,7 +119,12 @@ export default function PlanCard({
   const commandPronoun = missingCommandRefs.length === 1 ? 'it' : 'them';
 
   return (
-    <section ref={cardRef} className={`${styles.card} card`} data-testid="plan-card">
+    <section
+      ref={cardRef}
+      className={`${styles.card} card`}
+      data-testid="plan-card"
+      data-plan-id={planId ?? plan.planId}
+    >
       <header className={styles.head}>
         <div className={styles.headText}>
           <h2 className={styles.title}>{view.title}</h2>

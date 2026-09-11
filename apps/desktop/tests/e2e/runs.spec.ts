@@ -17,12 +17,63 @@ test.describe('Runs / Orchestrator', () => {
 
       // Replace only the expensive planner boundary. The real renderer, preload,
       // IPC push channel, React lifecycle, navigation, and plan card stay under test.
+      // The stub also mirrors the durable `orchestrator:list` read so a
+      // remount (Settings detour) restores the proposal like the real store.
       await app.evaluate(({ BrowserWindow, ipcMain }) => {
+        const mirror = new Map<string, Record<string, unknown>>();
         ipcMain.removeHandler('orchestrator:plan');
         ipcMain.handle('orchestrator:plan', (_event, projectId, prompt, model, reasoningEffort) => {
           const planId = 'plan-e2e-navigation-safe';
           const startedAt = Date.now();
+          const plan = {
+            planId,
+            projectId,
+            prompt,
+            refinedRequest:
+              'Persist the live Runs proposal across a Settings detour without planning twice.',
+            rationale:
+              'The proposal remains pending until the operator starts, regenerates, or discards it.',
+            pipeline: {
+              id: 'generated-plan-e2e-navigation-safe',
+              name: 'Navigation-safe proposal',
+              description: 'Retain the reviewed proposal while the operator checks Settings.',
+              builtin: false,
+              acceptance: { kind: 'all_phases_pass' },
+              phases: [
+                {
+                  name: 'build',
+                  kind: 'agent',
+                  description: 'Implement and verify the scoped renderer lifetime change.',
+                  agent: 'builder',
+                  model: 'fixture/model',
+                },
+              ],
+            },
+            agents: [],
+            warnings: [],
+            model,
+            reasoningEffort,
+          };
           setTimeout(() => {
+            const at = Date.now();
+            mirror.set(planId, {
+              planId,
+              projectId,
+              prompt,
+              model,
+              reasoningEffort,
+              status: 'ready',
+              detail: 'Plan ready.',
+              entries: [],
+              plan,
+              rawReply: '',
+              messages: [],
+              revision: 1,
+              acceptedRunId: null,
+              acceptedPlan: null,
+              createdAt: startedAt,
+              updatedAt: at,
+            });
             BrowserWindow.getAllWindows()[0]?.webContents.send('event:orchestrator-progress', {
               planId,
               projectId,
@@ -31,35 +82,7 @@ test.describe('Runs / Orchestrator', () => {
               reasoningEffort,
               prompt,
               entries: [],
-              plan: {
-                planId,
-                projectId,
-                prompt,
-                refinedRequest:
-                  'Persist the live Runs proposal across a Settings detour without planning twice.',
-                rationale:
-                  'The proposal remains pending until the operator starts, regenerates, or discards it.',
-                pipeline: {
-                  id: 'generated-plan-e2e-navigation-safe',
-                  name: 'Navigation-safe proposal',
-                  description: 'Retain the reviewed proposal while the operator checks Settings.',
-                  builtin: false,
-                  acceptance: { kind: 'all_phases_pass' },
-                  phases: [
-                    {
-                      name: 'build',
-                      kind: 'agent',
-                      description: 'Implement and verify the scoped renderer lifetime change.',
-                      agent: 'builder',
-                      model: 'fixture/model',
-                    },
-                  ],
-                },
-                agents: [],
-                warnings: [],
-                model,
-                reasoningEffort,
-              },
+              plan,
               rawReply: '',
               detail: 'Plan ready.',
               startedAt,
@@ -70,6 +93,10 @@ test.describe('Runs / Orchestrator', () => {
           }, 20);
           return { planId };
         });
+        ipcMain.removeHandler('orchestrator:list');
+        ipcMain.handle('orchestrator:list', (_event, projectId: string) =>
+          [...mirror.values()].filter((row) => row.projectId === projectId),
+        );
       });
 
       await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
@@ -133,10 +160,12 @@ test.describe('Runs / Orchestrator', () => {
           },
         ]);
 
-        ipcMain.removeHandler('runs:start');
-        ipcMain.handle('runs:start', (_event, input) => {
-          (globalThis as Record<string, unknown>).foundryE2eStartInput = input;
-          return { ok: true, issues: [] };
+        // Proposal accepts go through `orchestrator:accept` (exactly-once in
+        // main), not `runs:start` directly — capture the accepted snapshot here.
+        ipcMain.removeHandler('orchestrator:accept');
+        ipcMain.handle('orchestrator:accept', (_event, planId, plan) => {
+          (globalThis as Record<string, unknown>).foundryE2eStartInput = { planId, plan };
+          return { ok: true, runId: 'run-e2e-proposal-canvas' };
         });
 
         ipcMain.removeHandler('orchestrator:plan');
@@ -461,6 +490,345 @@ test.describe('Runs / Orchestrator', () => {
       const chatProof = testInfo.outputPath('plan-chat-revised.png');
       await window.screenshot({ path: chatProof, fullPage: true, animations: 'disabled' });
       await testInfo.attach('plan chat revision', { path: chatProof, contentType: 'image/png' });
+    } finally {
+      await app?.close();
+    }
+  });
+});
+
+test.describe('Runs / Parallel proposals (FOU-349)', () => {
+  /**
+   * Durable-proposal stub at the IPC seam. The real renderer, preload, React
+   * lifecycle, navigation, sidebar, and proposal cards stay under test; only
+   * the expensive planner and run start are replaced. Proposals persist in
+   * the main process (globalThis), so a renderer reload re-reads them through
+   * `orchestrator:list` exactly like the real ProposalStore.
+   */
+  async function installParallelStub(app: ElectronApplication, doneDelayMs: number): Promise<void> {
+    await app.evaluate(
+      (electronExports: unknown, args: { doneDelayMs: number }) => {
+        const delay = args.doneDelayMs;
+        const g = globalThis as Record<string, unknown>;
+        const store = new Map<
+          string,
+          {
+            planId: string;
+            projectId: string;
+            prompt: string;
+            model: string;
+            reasoningEffort: string;
+            status: string;
+            detail: string;
+            plan: unknown;
+            revision: number;
+            acceptedRunId: string | null;
+            createdAt: number;
+            updatedAt: number;
+          }
+        >();
+        g.foundryE2eProposals = store;
+        g.foundryE2eAcceptCalls = 0;
+        g.foundryE2eSequence = 0;
+        const timers = new Map<string, unknown[]>();
+        // First evaluate arg is Playwright's CrossProcessExports, mirroring
+        // the existing specs' `({ BrowserWindow, ipcMain })` seam.
+        const { BrowserWindow, ipcMain } = electronExports as {
+          BrowserWindow: {
+            getAllWindows(): { webContents?: { send(c: string, p?: unknown): void } }[];
+          };
+          ipcMain: {
+            removeHandler(channel: string): void;
+            handle(channel: string, listener: (...args: never[]) => unknown): void;
+          };
+        };
+        const win = (): unknown => BrowserWindow.getAllWindows()[0];
+        const send = (channel: string, payload: unknown): void => {
+          const w = win() as { webContents?: { send(c: string, p?: unknown): void } } | undefined;
+          w?.webContents?.send(channel, payload);
+        };
+        for (const channel of [
+          'orchestrator:plan',
+          'orchestrator:list',
+          'orchestrator:get',
+          'orchestrator:accept',
+          'orchestrator:discard',
+          'orchestrator:cancel',
+        ]) {
+          try {
+            ipcMain.removeHandler(channel);
+          } catch {
+            // Fresh handler table; nothing to remove.
+          }
+        }
+        const listed = (projectId: string): unknown[] =>
+          [...store.values()]
+            .filter((p) => p.projectId === projectId && p.status !== 'discarded')
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .map((p) => ({
+              planId: p.planId,
+              projectId: p.projectId,
+              prompt: p.prompt,
+              model: p.model,
+              reasoningEffort: p.reasoningEffort,
+              status: p.status,
+              detail: p.detail,
+              entries: [],
+              plan: p.plan,
+              rawReply: '',
+              messages: [],
+              revision: p.revision,
+              acceptedRunId: p.acceptedRunId,
+              acceptedPlan: p.plan,
+              createdAt: p.createdAt,
+              updatedAt: p.updatedAt,
+            }));
+        ipcMain.handle(
+          'orchestrator:plan',
+          (_event: unknown, projectId: string, prompt: string, model: string, effort: string) => {
+            const seq = (g.foundryE2eSequence as number) + 1;
+            g.foundryE2eSequence = seq;
+            const planId = `plan-e2e-parallel-${seq}`;
+            const startedAt = Date.now();
+            store.set(planId, {
+              planId,
+              projectId,
+              prompt,
+              model,
+              reasoningEffort: effort,
+              status: 'generating',
+              detail: 'Reading the request…',
+              plan: null,
+              revision: 0,
+              acceptedRunId: null,
+              createdAt: startedAt,
+              updatedAt: startedAt,
+            });
+            send('event:proposals-changed', { projectId, planId });
+            const pending: unknown[] = [];
+            timers.set(planId, pending);
+            pending.push(
+              setTimeout(() => {
+                const current = store.get(planId);
+                if (!current || current.status !== 'generating') return;
+                const plan = {
+                  planId,
+                  projectId,
+                  prompt,
+                  refinedRequest: `Parallel proposal ${seq}: ${prompt}`,
+                  rationale: 'A build proven by the project test command.',
+                  pipeline: {
+                    id: `generated-${planId}`,
+                    name: `Parallel proposal ${seq}`,
+                    description: 'Build, then prove it with the test command.',
+                    builtin: false,
+                    acceptance: { kind: 'all_phases_pass' },
+                    phases: [
+                      {
+                        name: 'build',
+                        kind: 'agent',
+                        description: 'Implement the scoped change.',
+                        agent: 'builder',
+                        model: 'fixture/model',
+                      },
+                    ],
+                  },
+                  agents: [],
+                  warnings: [],
+                  model,
+                  reasoningEffort: effort,
+                };
+                store.set(planId, {
+                  ...current,
+                  status: 'ready',
+                  detail: 'Plan ready.',
+                  plan,
+                  revision: 1,
+                  updatedAt: Date.now(),
+                });
+                send('event:orchestrator-progress', {
+                  planId,
+                  projectId,
+                  status: 'done',
+                  model,
+                  reasoningEffort: effort,
+                  prompt,
+                  entries: [],
+                  plan,
+                  rawReply: '',
+                  detail: 'Plan ready.',
+                  startedAt,
+                  endedAt: Date.now(),
+                  messages: [],
+                  revision: 1,
+                });
+                send('event:proposals-changed', { projectId, planId });
+              }, delay),
+            );
+            return { planId };
+          },
+        );
+        ipcMain.handle('orchestrator:list', (_event: unknown, projectId: string) =>
+          listed(projectId),
+        );
+        ipcMain.handle('orchestrator:get', (_event: unknown, planId: string) => {
+          const found = store.get(planId as string);
+          return found ?? null;
+        });
+        ipcMain.handle('orchestrator:cancel', (_event: unknown, planId: string) => {
+          const current = store.get(planId as string);
+          if (!current || current.status !== 'generating') return false;
+          for (const timer of timers.get(planId as string) ?? []) {
+            clearTimeout(timer as NodeJS.Timeout);
+          }
+          store.set(planId as string, { ...current, status: 'cancelled', updatedAt: Date.now() });
+          send('event:proposals-changed', { projectId: current.projectId, planId });
+          return true;
+        });
+        ipcMain.handle('orchestrator:discard', (_event: unknown, planId: string) => {
+          const current = store.get(planId as string);
+          if (!current || current.status === 'accepted') return false;
+          if (current.status === 'discarded') return true;
+          for (const timer of timers.get(planId as string) ?? []) {
+            clearTimeout(timer as NodeJS.Timeout);
+          }
+          store.set(planId as string, { ...current, status: 'discarded', updatedAt: Date.now() });
+          send('event:proposals-changed', { projectId: current.projectId, planId });
+          return true;
+        });
+        ipcMain.handle('orchestrator:accept', (_event: unknown, planId: string) => {
+          const current = store.get(planId as string);
+          if (!current) {
+            return {
+              ok: false,
+              issues: [{ level: 'error', where: 'plan', message: 'proposal not found' }],
+            };
+          }
+          if (current.acceptedRunId) return { ok: true, runId: current.acceptedRunId };
+          g.foundryE2eAcceptCalls = (g.foundryE2eAcceptCalls as number) + 1;
+          const runId = `run-e2e-parallel-${planId}`;
+          store.set(planId as string, {
+            ...current,
+            status: 'accepted',
+            acceptedRunId: runId,
+            updatedAt: Date.now(),
+          });
+          send('event:proposals-changed', { projectId: current.projectId, planId });
+          return { ok: true, runId };
+        });
+      },
+      { doneDelayMs },
+    );
+  }
+
+  test('submits two prompts concurrently without blocking or cancelling', async ({
+    browserName: _browserName,
+  }, testInfo) => {
+    const fixture = seedOnboardedFixture();
+    let app: ElectronApplication | undefined;
+    try {
+      const launched = await launchFoundry(fixture.userDataDir);
+      app = launched.app;
+      const { window } = launched;
+      await installParallelStub(app, 900);
+
+      await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
+      await window.getByTestId('run-request').fill('First parallel prompt.');
+      await window.getByTestId('run-plan').click();
+      // The composer stays usable while the first proposal generates.
+      await expect(window.getByTestId('run-request')).toBeEnabled();
+      await expect(window.getByTestId('run-plan')).toBeEnabled();
+      await expect(window.getByTestId('proposal-list')).toBeVisible();
+
+      await window.getByTestId('run-request').fill('Second parallel prompt.');
+      await window.getByTestId('run-plan').click();
+
+      // Both proposals coexist; neither submission cancelled the other.
+      const proposals = window.getByTestId('proposal-list').locator('[data-testid^="proposal-"]');
+      await expect(proposals).toHaveCount(2, { timeout: 10_000 });
+      // Sidebar shows both before any run exists.
+      const sidebarProposals = window.locator('[data-testid^="sidebar-proposal-"]');
+      await expect(sidebarProposals).toHaveCount(2, { timeout: 10_000 });
+
+      // Both complete independently into actionable cards.
+      await expect(window.getByTestId('plan-card').first()).toBeVisible({ timeout: 15_000 });
+      await expect(window.getByTestId('plan-card')).toHaveCount(2, { timeout: 15_000 });
+
+      const proofPath = testInfo.outputPath('FOU-349-parallel-proposals.png');
+      await window.screenshot({ path: proofPath, fullPage: true, animations: 'disabled' });
+      await testInfo.attach('FOU-349 parallel proposals', {
+        path: proofPath,
+        contentType: 'image/png',
+      });
+    } finally {
+      await app?.close();
+    }
+  });
+
+  test('keeps generation alive across navigation and restores after reload', async ({
+    browserName: _browserName,
+  }) => {
+    const fixture = seedOnboardedFixture();
+    let app: ElectronApplication | undefined;
+    try {
+      const launched = await launchFoundry(fixture.userDataDir);
+      app = launched.app;
+      const { window } = launched;
+      await installParallelStub(app, 1_200);
+
+      await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
+      await window.getByTestId('run-request').fill('Survive a Settings detour and a reload.');
+      await window.getByTestId('run-plan').click();
+      await expect(window.getByTestId('proposal-list')).toBeVisible();
+
+      // Navigating away does not stop or lose generation.
+      await window.getByTestId('nav-settings').click();
+      await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'settings');
+      await window.getByTestId('nav-runs').click();
+      await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'runs');
+      await expect(window.getByTestId('proposal-list')).toBeVisible();
+
+      // Reload restores the durable proposal and receives its late completion.
+      await window.reload();
+      await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
+      await expect(window.getByTestId('proposal-list')).toBeVisible({ timeout: 15_000 });
+      await expect(window.getByTestId('plan-card').first()).toBeVisible({ timeout: 15_000 });
+      await expect(window.locator('[data-testid^="sidebar-proposal-"]').first()).toBeVisible({
+        timeout: 15_000,
+      });
+    } finally {
+      await app?.close();
+    }
+  });
+
+  test('accepts exactly once even on a double-click start', async ({
+    browserName: _browserName,
+  }) => {
+    const fixture = seedOnboardedFixture();
+    let app: ElectronApplication | undefined;
+    try {
+      const launched = await launchFoundry(fixture.userDataDir);
+      app = launched.app;
+      const { window } = launched;
+      await installParallelStub(app, 60);
+
+      await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
+      await window.getByTestId('run-request').fill('Exactly-once acceptance.');
+      await window.getByTestId('run-plan').click();
+      const startButton = window.getByTestId('plan-start').first();
+      await expect(startButton).toBeVisible({ timeout: 15_000 });
+      await startButton.dblclick();
+
+      await app.evaluate(async () => {
+        const deadline = Date.now() + 5_000;
+        const g = globalThis as Record<string, unknown>;
+        while ((g.foundryE2eAcceptCalls as number) < 1 && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
+      const acceptCalls = await app.evaluate(
+        () => (globalThis as Record<string, unknown>).foundryE2eAcceptCalls,
+      );
+      expect(acceptCalls).toBe(1);
     } finally {
       await app?.close();
     }

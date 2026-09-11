@@ -1345,6 +1345,53 @@ export interface GeneratedRunPlan {
   reasoningEffort: ReasoningEffort;
 }
 
+/**
+ * Durable orchestrator proposal status. `generating` covers a live planning
+ * turn; `ready` means a validated plan is waiting; `failed`/`cancelled` are
+ * terminal without a run; `accepted` has exactly one run; `discarded` is a
+ * tombstone hidden from list/sidebar by default.
+ */
+export type ProposalStatus =
+  'generating' | 'ready' | 'failed' | 'cancelled' | 'accepted' | 'discarded';
+
+/**
+ * One durable orchestrator proposal, persisted before any run exists. One row
+ * per `startPlan` call; concurrent starts create distinct rows and never
+ * cancel siblings. `images` are never persisted (in-memory on the live
+ * `PlanSession` only). `entries` is the capped tail (same 300 as panels).
+ * Renderer-safe: plain data, no functions. `messages` mirrors
+ * `PlanChatMessage` in `shared/ipc-contract.ts` without importing it, so the
+ * two shared modules stay cycle-free at the type level.
+ */
+export interface ProposalSnapshot {
+  planId: string;
+  projectId: string;
+  prompt: string;
+  model: string;
+  reasoningEffort: ReasoningEffort;
+  status: ProposalStatus;
+  detail: string;
+  entries: PanelEntry[];
+  /** Set only when `status` is `ready` or `accepted`. */
+  plan: GeneratedRunPlan | null;
+  rawReply: string;
+  messages: Array<{
+    id: string;
+    role: 'operator' | 'orchestrator';
+    text: string;
+    revisedPlan?: boolean;
+    at: number;
+  }>;
+  revision: number;
+  /** Set once on accept; the idempotency key across restarts. */
+  acceptedRunId: string | null;
+  /** Exact snapshot sent to `startRun` on accept. */
+  acceptedPlan: GeneratedRunPlan | null;
+  createdAt: number;
+  updatedAt: number;
+  endedAt?: number;
+}
+
 export const PLAN_IMAGE_MIME_TYPES = [
   'image/png',
   'image/jpeg',

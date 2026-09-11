@@ -98,6 +98,18 @@
   letter-spacing: 0;
 }
 
+.laneModelFallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--red);
+}
+
+.laneFallbackIcon {
+  flex: none;
+  color: var(--red);
+}
+
 .laneStats {
   margin-left: auto;
   display: flex;

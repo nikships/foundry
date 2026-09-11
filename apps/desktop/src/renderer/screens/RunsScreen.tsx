@@ -1,6 +1,6 @@
 import { CircleDot, Sparkles, Workflow } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { ReadinessInspectResult, ValidationIssue } from '@shared/types.js';
+import type { ReadinessInspectResult } from '@shared/types.js';
 import type { CompanionHostState } from '@shared/companion.js';
 import type { LinearConnectionState } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
@@ -15,13 +15,12 @@ import {
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
 import EmptyState from '../components/common/EmptyState.js';
 import BaseSyncBar from '../components/project/BaseSyncBar.js';
-import PanelTranscript from '../components/readiness/PanelTranscript.js';
 import ManualComposer from '../components/run/ManualComposer.js';
 import OrchestratorAttachments from '../components/run/OrchestratorAttachments.js';
 import OrchestratorPicker, {
   type OrchestratorChoice,
 } from '../components/run/OrchestratorPicker.js';
-import PlanCard from '../components/run/PlanCard.js';
+import ProposalList from '../components/run/ProposalList.js';
 import { Button } from '../components/ui/Button.js';
 import { readinessBanner, showReadinessOnRuns } from '../view-models/readiness-view.js';
 import styles from './RunsScreen.module.css';
@@ -170,6 +169,7 @@ function OrchestratedComposer({
   onRequestChange,
   onOpen,
   baseSyncing,
+  focusPlanId,
 }: {
   header: ReactNode;
   request: string;
@@ -179,11 +179,12 @@ function OrchestratedComposer({
   onRequestChange: (request: string) => void;
   onOpen: (runId: string) => void;
   baseSyncing: boolean;
+  focusPlanId?: string | null;
 }): React.JSX.Element {
-  const { project, projectId, refreshAll } = useApp();
-  const [starting, setStarting] = useState(false);
-  const [startIssues, setStartIssues] = useState<ValidationIssue[]>([]);
+  const { project } = useApp();
   const [attachError, setAttachError] = useState('');
+  // The composer never blocks on planning: every submit opens one
+  // independent proposal and the field stays usable for the next prompt.
   const composeBlocked = !project
     ? 'Add a project first'
     : !request.trim() && orchestrator.images.length === 0
@@ -193,39 +194,22 @@ function OrchestratedComposer({
         : null;
 
   const submitPlan = (): void => {
-    if (composeBlocked || orchestrator.planningLive) return;
-    setStartIssues([]);
+    if (composeBlocked) return;
     void orchestrator.submit(request);
   };
 
-  const startFromPlan = async (): Promise<void> => {
-    if (!orchestrator.plan || starting || baseSyncing) return;
-    setStarting(true);
-    setStartIssues([]);
-    try {
-      const result = await api.runs.start({
-        projectId,
-        pipelineId: orchestrator.plan.pipeline.id,
-        request: orchestrator.plan.refinedRequest,
-        plan: orchestrator.plan,
-      });
-      if (!result.ok) {
-        setStartIssues(result.issues);
-        await refreshAll();
-        return;
-      }
-      onRequestChange('');
-      orchestrator.discard();
-      // Navigate before the lists refresh: the detail screen loads its own
-      // data, and the lists also refresh on 'runs-changed'. Awaiting the full
-      // refresh here kept the proposal on screen after the run already existed.
-      if (result.runId) onOpen(result.runId);
-      void refreshAll();
-    } catch (error) {
-      setStartIssues([{ level: 'error', where: 'start', message: (error as Error).message }]);
-    } finally {
-      setStarting(false);
-    }
+  const retryPrompt = (prompt: string): void => {
+    if (!project || baseSyncing) return;
+    if (prompt.trim()) onRequestChange(prompt);
+    void orchestrator.submit(prompt);
+  };
+
+  const handleOpen = (runId: string): void => {
+    // Navigate before the lists refresh: the detail screen loads its own
+    // data, and the lists also refresh on 'runs-changed'. Awaiting the full
+    // refresh here kept the proposal on screen after the run already existed.
+    onRequestChange('');
+    onOpen(runId);
   };
 
   const onRequestKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -261,18 +245,18 @@ function OrchestratedComposer({
     })();
   };
 
+  const hasProposals = orchestrator.proposals.length > 0;
+
   return (
     <div className={styles.composerColumn}>
       <section className={`${styles.composerCard} card`} data-testid="run-composer">
         {header}
-        {orchestrator.stage === 'compose' && (
-          <h1 className={styles.composerTitle}>What should the factory build?</h1>
-        )}
+        {!hasProposals && <h1 className={styles.composerTitle}>What should the factory build?</h1>}
         <textarea
           className={`textarea ${styles.request}`}
           value={request}
           onChange={(event) => onRequestChange(event.target.value)}
-          rows={orchestrator.stage === 'compose' ? 4 : 2}
+          rows={hasProposals ? 2 : 4}
           placeholder="Describe the change. The Orchestrator rewrites it into a behavior-level brief and composes the pipeline."
           onKeyDown={onRequestKeyDown}
           onPaste={onRequestPaste}
@@ -282,30 +266,20 @@ function OrchestratedComposer({
         />
         <OrchestratorAttachments images={orchestrator.images} onRemove={orchestrator.removeImage} />
         <div className={styles.composerControls}>
-          <OrchestratorPicker
-            choice={choice}
-            disabled={orchestrator.planningLive}
-            onChange={onChoiceChange}
-          />
+          <OrchestratorPicker choice={choice} disabled={!project} onChange={onChoiceChange} />
           <Button
             variant="primary"
             className={styles.planButton}
-            disabled={Boolean(composeBlocked) || orchestrator.planningLive}
+            disabled={Boolean(composeBlocked)}
             title={composeBlocked ?? undefined}
             onClick={submitPlan}
             data-testid="run-plan"
           >
-            {orchestrator.stage === 'ready'
-              ? 'Regenerate plan'
-              : orchestrator.planningLive
-                ? 'Planning…'
-                : 'Plan run'}
-            {!composeBlocked && !orchestrator.planningLive && <kbd>⌘↵</kbd>}
+            Plan run
+            {!composeBlocked && <kbd>⌘↵</kbd>}
           </Button>
         </div>
-        {composeBlocked && orchestrator.stage === 'compose' && (
-          <p className={styles.hintLine}>{composeBlocked}</p>
-        )}
+        {composeBlocked && !hasProposals && <p className={styles.hintLine}>{composeBlocked}</p>}
         {attachError && (
           <p className={styles.planError} role="alert" data-testid="run-request-attach-error">
             {attachError}
@@ -318,57 +292,13 @@ function OrchestratedComposer({
         )}
       </section>
 
-      {orchestrator.stage === 'planning' && (
-        <section className={`${styles.planning} card`} data-testid="planning-panel">
-          <div className={styles.planningHead}>
-            <span className={styles.planningTitle}>
-              {orchestrator.planning?.status === 'failed'
-                ? 'Planning failed'
-                : 'The Orchestrator is planning'}
-            </span>
-            <span className={styles.planningDetail}>
-              {orchestrator.planning?.detail ?? 'Opening the planning session…'}
-            </span>
-            {orchestrator.planningLive && !orchestrator.requestingPlan && (
-              <Button size="sm" variant="ghost" onClick={orchestrator.cancel}>
-                Cancel
-              </Button>
-            )}
-            {orchestrator.planning?.status === 'failed' && (
-              <Button size="sm" onClick={submitPlan}>
-                Try again
-              </Button>
-            )}
-          </div>
-          <PanelTranscript
-            entries={orchestrator.planning?.entries ?? []}
-            live={orchestrator.planningLive}
-          />
-        </section>
-      )}
-
-      {orchestrator.stage === 'ready' && orchestrator.plan && orchestrator.original && (
-        <PlanCard
-          plan={orchestrator.plan}
-          original={orchestrator.original}
-          starting={starting}
-          startBlocked={baseSyncing ? `Updating ${project?.baseRef ?? 'base branch'} first` : null}
-          issues={startIssues}
-          messages={orchestrator.messages}
-          replying={orchestrator.replying}
-          chatError={orchestrator.chatError}
-          onSendMessage={(text) => void orchestrator.sendMessage(text)}
-          onPhaseModelChange={orchestrator.setPhaseModel}
-          onPhaseReasoningEffortChange={orchestrator.setPhaseReasoningEffort}
-          onResetPhaseOverrides={orchestrator.resetPhaseOverrides}
-          onStart={() => void startFromPlan()}
-          onRegenerate={submitPlan}
-          onDiscard={() => {
-            orchestrator.discard();
-            setStartIssues([]);
-          }}
-        />
-      )}
+      <ProposalList
+        proposals={orchestrator.proposals}
+        baseSyncing={baseSyncing}
+        focusPlanId={focusPlanId}
+        onOpen={handleOpen}
+        onRetry={retryPrompt}
+      />
     </div>
   );
 }
@@ -383,6 +313,7 @@ export default function RunsScreen({
   onAddProject,
   onNewProject,
   onOpenSettings,
+  focusProposalId,
 }: {
   request: string;
   onRequestChange: (request: string) => void;
@@ -394,6 +325,8 @@ export default function RunsScreen({
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
   onOpenSettings?: (pane: string) => void;
+  /** Sidebar proposal deep-link: scrolls to the proposal card once listed. */
+  focusProposalId?: string | null;
 }): React.JSX.Element {
   const { project, projectId } = useApp();
   const [mode, setMode] = useState<RunsMode>(loadMode);
@@ -476,6 +409,7 @@ export default function RunsScreen({
                 onRequestChange={onRequestChange}
                 onOpen={onOpen}
                 baseSyncing={baseSyncing}
+                focusPlanId={focusProposalId}
               />
             </div>
           )}

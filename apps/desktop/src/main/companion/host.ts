@@ -29,6 +29,7 @@ import type {
   ModelInfo,
   PipelineDef,
   ProjectDef,
+  ProposalSnapshot,
   ReasoningEffort,
   RunSource,
   SmithProposal,
@@ -40,6 +41,7 @@ import type {
 import { isReasoningEffort } from '@shared/reasoning-effort.js';
 import type {
   LinearConnectionState,
+  OrchestratorAcceptResult,
   OrchestratorState,
   SmithChatState,
   SmithScreenContext,
@@ -130,12 +132,18 @@ export interface CompanionHostDeps {
   gh?: GhOptions;
 }
 
-/** The existing desktop plan registry projected onto companion HTTP. */
+/**
+ * The durable proposal store projected onto companion HTTP. `list`/`accept`
+ * are optional so older test stubs (options/start/state/cancel only) keep
+ * constructing a host; missing verbs answer 404 rather than inventing state.
+ */
 export interface CompanionOrchestratorDeps {
   options(): Promise<CompanionOrchestratorOptions>;
   start(input: CompanionOrchestratorStartRequest): CompanionOrchestratorStartResult;
   state(planId: string): OrchestratorState | null;
   cancel(planId: string): boolean;
+  list?(projectId: string): ProposalSnapshot[];
+  accept?(planId: string, plan?: GeneratedRunPlan): Promise<OrchestratorAcceptResult>;
 }
 
 /** Linear reads plus the one setting write a Linear-backed start performs. */
@@ -466,7 +474,7 @@ export class CompanionHost {
       }));
     }
 
-    if (head === 'orchestrator') return this.orchestratorRoute(method, rest, req);
+    if (head === 'orchestrator') return this.orchestratorRoute(method, rest, req, url);
 
     if (head === 'linear') return this.linearRoute(method, rest, url, req);
 
@@ -498,11 +506,12 @@ export class CompanionHost {
     throw new RouteError(404, 'not_found', 'no such route');
   }
 
-  /** Routes under `/v1/orchestrator`. */
+  /** Routes under `/v1/orchestrator`. List/accept read the durable store. */
   private async orchestratorRoute(
     method: string,
     rest: string[],
     req: IncomingMessage,
+    url: URL,
   ): Promise<unknown> {
     const orchestrator = this.deps.orchestrator;
     if (!orchestrator) throw new RouteError(404, 'not_found', 'Orchestrator is not available');
@@ -531,6 +540,12 @@ export class CompanionHost {
         reasoningEffort: body.reasoningEffort,
       });
     }
+    if (method === 'GET' && rest[0] === 'plans' && rest.length === 1) {
+      if (!orchestrator.list) throw new RouteError(404, 'not_found', 'no such route');
+      const projectId = url.searchParams.get('projectId') ?? '';
+      if (!projectId) throw new RouteError(400, 'bad_request', 'list needs projectId');
+      return orchestrator.list(projectId);
+    }
     const planId = rest[0] === 'plans' ? rest[1] : undefined;
     if (method === 'GET' && planId && rest.length === 2) {
       const state = orchestrator.state(planId);
@@ -539,6 +554,15 @@ export class CompanionHost {
     }
     if (method === 'POST' && planId && rest[2] === 'cancel' && rest.length === 3) {
       return { ok: orchestrator.cancel(planId) };
+    }
+    if (method === 'POST' && planId && rest[2] === 'accept' && rest.length === 3) {
+      if (!orchestrator.accept) throw new RouteError(404, 'not_found', 'no such route');
+      const body = (await readJson(req)) as Partial<{ plan?: unknown }>;
+      const plan = body.plan === undefined ? undefined : parseGeneratedPlan(body.plan);
+      if (body.plan !== undefined && !plan) {
+        throw new RouteError(400, 'bad_request', 'plan is not a generated run plan');
+      }
+      return plan ? orchestrator.accept(planId, plan) : orchestrator.accept(planId);
     }
     throw new RouteError(404, 'not_found', 'no such route');
   }

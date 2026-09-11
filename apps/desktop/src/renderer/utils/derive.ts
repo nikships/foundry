@@ -5,6 +5,8 @@
  * real usage visible instead of overwriting it.
  */
 
+import type { ModelFallback } from '@shared/model-fallback.js';
+import { modelFallbackForEvents } from '@shared/model-fallback.js';
 import type { EventRow, PhaseRow, RunRow, UsageBreakdown } from '@shared/types.js';
 
 export interface PhaseUsage extends UsageBreakdown {
@@ -63,6 +65,15 @@ export function phaseDuration(phase: PhaseRow, now: number): number | null {
 export function modelFor(events: EventRow[]): string | null {
   const start = events.find((e) => e.type === 'agent_start');
   return (start?.payload.model as string | undefined) ?? null;
+}
+
+/**
+ * The active model fallback for a phase's events, when a mid-turn failover
+ * moved the turn onto a replacement model. Null when no failover warning was
+ * recorded, so callers keep their existing model presentation untouched.
+ */
+export function modelFallbackFor(events: EventRow[]): ModelFallback | null {
+  return modelFallbackForEvents(events);
 }
 
 /**
