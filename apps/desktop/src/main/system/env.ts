@@ -16,7 +16,7 @@
 
 import { execFile, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -37,11 +37,17 @@ const SHELL_TIMEOUT_MS = 5_000;
 const HOME_BIN_DIRS = [
   '.npm-global/bin',
   '.local/bin',
+  '.local/share/mise/shims',
+  '.local/share/pnpm',
   '.cargo/bin',
   '.bun/bin',
   'go/bin',
   '.volta/bin',
   '.asdf/shims',
+  '.nodenv/shims',
+  '.pyenv/shims',
+  '.rbenv/shims',
+  'Library/pnpm',
 ];
 
 const SYSTEM_BIN_DIRS = [
@@ -88,8 +94,16 @@ let resolved: ResolvedEnv | null = null;
  * `.zshrc`, which a non-interactive login shell never reads. stdin is closed so
  * a profile that prompts cannot block startup.
  */
+function loginShell(): string | null {
+  const candidates = [process.env.SHELL, userInfo().shell];
+  return (
+    candidates.find((candidate): candidate is string => !!candidate && existsSync(candidate)) ??
+    null
+  );
+}
+
 async function askLoginShell(): Promise<string | null> {
-  const shell = process.env.SHELL;
+  const shell = loginShell();
   if (!shell || !existsSync(shell)) return null;
   try {
     const { stdout } = await exec(shell, ['-ilc', `printf '%s%s%s' '${BEGIN}' "$PATH" '${END}'`], {
@@ -130,6 +144,11 @@ export async function resolveEnv(): Promise<ResolvedEnv> {
         via: 'fallback',
         detail: `${process.env.SHELL ? `${process.env.SHELL} did not answer` : 'no SHELL in the environment'}; using the inherited PATH plus known install dirs`,
       };
+  // Pi is embedded in this Electron process. Its native bash tool builds the
+  // child environment from process.env directly, rather than going through
+  // spawnEnv(). Installing the resolved PATH here therefore gives in-process
+  // agent shells the exact same machine tooling as engine-owned spawns.
+  process.env.PATH = resolved.path;
   return resolved;
 }
 

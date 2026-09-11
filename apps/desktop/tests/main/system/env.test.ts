@@ -9,16 +9,29 @@
  * failure that made command detection look broken.
  */
 
+import { execFileSync } from 'node:child_process';
 import { writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolvedEnv, setResolvedEnvForTest, spawnEnv } from '../../../src/main/system/env.js';
+import {
+  resolveEnv,
+  resolvedEnv,
+  setResolvedEnvForTest,
+  spawnEnv,
+} from '../../../src/main/system/env.js';
 import { runCommand } from '../../../src/main/engine/commands.js';
+
+const originalPath = process.env.PATH;
+const originalShell = process.env.SHELL;
 
 afterEach(() => {
   setResolvedEnvForTest(null);
+  if (originalPath === undefined) delete process.env.PATH;
+  else process.env.PATH = originalPath;
+  if (originalShell === undefined) delete process.env.SHELL;
+  else process.env.SHELL = originalShell;
 });
 
 /** A directory holding one executable that exists nowhere on the real PATH. */
@@ -70,6 +83,30 @@ describe('spawnEnv', () => {
     setResolvedEnvForTest(null);
     expect(resolvedEnv().path).toBe(process.env.PATH ?? '');
     expect(() => spawnEnv()).not.toThrow();
+  });
+});
+
+describe('resolveEnv', () => {
+  it('installs the login-shell PATH into the process used by in-process agent tools', async () => {
+    const dir = tempDir('foundry-shell-');
+    const shell = join(dir, 'login-shell');
+    const toolDir = binDir('agent-only-tool');
+    writeFileSync(
+      shell,
+      `#!/bin/sh\nprintf '%s' '__FOUNDRY_PATH_BEGIN__${toolDir}:/usr/bin:/bin__FOUNDRY_PATH_END__'\n`,
+    );
+    chmodSync(shell, 0o755);
+    process.env.SHELL = shell;
+    process.env.PATH = '/usr/bin:/bin';
+
+    const env = await resolveEnv();
+
+    expect(env.via).toBe('login-shell');
+    expect(env.path.split(':')).toContain(toolDir);
+    expect(process.env.PATH).toBe(env.path);
+    expect(execFileSync('/bin/bash', ['-c', 'agent-only-tool'], { encoding: 'utf8' }).trim()).toBe(
+      'found-me',
+    );
   });
 });
 
