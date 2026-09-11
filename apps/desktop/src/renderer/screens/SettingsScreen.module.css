@@ -562,6 +562,65 @@
 .providerHead .settingsPill {
   margin-left: auto;
 }
+/* Key rows collapse to this header button: icon + name stay put, the status
+   pill never collapses, and the chevron hints the form below. */
+.providerHeadButton {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.providerHeadButton h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.providerHeadButton .settingsPill {
+  margin-left: auto;
+}
+.providerChevron {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1;
+  transition:
+    transform var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+.providerHeadButton:hover .providerChevron {
+  color: var(--text);
+}
+.providerChevron.open {
+  transform: rotate(180deg);
+}
+/* Collapsible key form: grid-rows animates the height while opacity fades,
+   on the app's standard motion tokens (honouring reduced-motion). */
+.keyCollapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--normal) var(--ease),
+    opacity var(--fast) var(--ease);
+}
+.keyCollapse.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.keyCollapseInner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
 .providerAccounts {
   list-style: none;
   display: flex;
