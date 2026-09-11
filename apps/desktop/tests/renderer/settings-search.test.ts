@@ -58,6 +58,8 @@ describe('settings search registry', () => {
     ['maintenance', 'system'],
     ['about', 'system'],
     ['unknown', 'preferences'],
+    ['toString', 'preferences'],
+    ['__proto__', 'preferences'],
   ] as const)('normalizes %s to %s', (input, expected) => {
     expect(normalizeSettingsPane(input)).toBe(expected);
   });

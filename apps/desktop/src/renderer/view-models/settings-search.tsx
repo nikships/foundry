@@ -349,7 +349,12 @@ const SETTINGS_PANE_ALIASES: Record<string, SettingsPaneId> = {
 /** Resolve canonical and legacy navigation ids to a pane the current rail renders. */
 export function normalizeSettingsPane(value: string): SettingsPaneId {
   const canonical = SETTINGS_PANES.find((pane) => pane.id === value);
-  return canonical?.id ?? SETTINGS_PANE_ALIASES[value] ?? 'preferences';
+  // Navigation targets can come from saved state and assistant-generated UI,
+  // so do not let inherited object properties become a non-pane destination.
+  const alias = Object.hasOwn(SETTINGS_PANE_ALIASES, value)
+    ? SETTINGS_PANE_ALIASES[value]
+    : undefined;
+  return canonical?.id ?? alias ?? 'preferences';
 }
 
 /** Lower number sorts earlier; -1 means no match. */
