@@ -45,9 +45,6 @@ export const BUILTIN_ENVELOPE_BLURBS: Record<EnvelopeKind, string> = {
 /** Hard schema bound for `pr.title` and `issue.title`. Style guidance is tighter (≤72). */
 export const PR_TITLE_MAX = 120;
 
-/** Default roster name for the PR writer setting. */
-export const DEFAULT_PR_AGENT = 'pr_writer';
-
 /**
  * Repository-relative PR template locations, first match wins.
  * A glob means the first matching file in lexicographic order.
@@ -308,11 +305,6 @@ export interface AppSettings {
   helperReasoningEffort: ReasoningEffort;
   /** Recorded on every run so a trace says who asked for it. */
   engineerName: string;
-  /**
-   * Roster name used when a pipeline (or later UI) needs a PR writer.
-   * Defaults to the shipped `pr_writer` builtin.
-   */
-  prAgent: string;
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
   /**

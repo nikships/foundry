@@ -235,7 +235,6 @@ function defaultMockSettings(): AppSettings {
     helperModel: 'inherit',
     helperReasoningEffort: 'high',
     engineerName: 'web-preview',
-    prAgent: 'pr_writer',
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     healingModel: 'inherit',

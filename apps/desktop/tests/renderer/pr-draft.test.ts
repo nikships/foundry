@@ -3,10 +3,8 @@ import type { EnvelopeRow, PhaseRow } from '@shared/types.js';
 import {
   defaultPrBody,
   defaultPrTitle,
-  isKnownPrWriter,
   manualPrDraft,
   prDraftFromEnvelope,
-  prWriterOptions,
   selectPrEnvelope,
 } from '@renderer/view-models/pr-draft.js';
 
@@ -178,32 +176,5 @@ describe('manualPrDraft', () => {
     ]);
     expect(draft.source).toBe('run');
     expect(draft.title).toBe(defaultPrTitle(run));
-  });
-});
-
-describe('prWriterOptions', () => {
-  const roster = [
-    { name: 'builder', purpose: 'Implement the plan.', builtin: true },
-    { name: 'pr_writer', purpose: 'Draft a PR.', builtin: true },
-    { name: 'my_writer', purpose: 'Custom PR voice.', builtin: false },
-  ];
-
-  it('lists builtin then custom roster names', () => {
-    const options = prWriterOptions(roster, 'pr_writer');
-    expect(options.map((option) => option.value)).toEqual(['builder', 'pr_writer', 'my_writer']);
-    expect(options.find((option) => option.value === 'pr_writer')?.group).toBe('Built-in');
-    expect(options.find((option) => option.value === 'my_writer')?.group).toBe('This roster');
-  });
-
-  it('keeps an unknown current writer visible instead of dropping it', () => {
-    const options = prWriterOptions(roster, 'retired_writer');
-    expect(options[0]).toEqual({
-      value: 'retired_writer',
-      label: 'retired_writer',
-      description: 'Not in this roster',
-      group: 'Unavailable',
-    });
-    expect(isKnownPrWriter('retired_writer', roster)).toBe(false);
-    expect(isKnownPrWriter('pr_writer', roster)).toBe(true);
   });
 });

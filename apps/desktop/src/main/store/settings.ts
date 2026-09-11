@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { REASONING_EFFORTS, isReasoningEffort } from '@shared/reasoning-effort.js';
 import { APP_THEME_IDS, isAppTheme } from '@shared/themes.js';
-import { DEFAULT_PR_AGENT, type AppSettings, type LinearStatusMapping } from '@shared/types.js';
+import type { AppSettings, LinearStatusMapping } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 
 /**
@@ -17,18 +17,11 @@ import { JsonStore } from './json-store.js';
  */
 const COMPACTION_BAND = [0.5, 0.95] as const;
 
-/** Same shape a roster agent name has: the setting names one of them. */
-const PR_AGENT_NAME = /^[a-z][a-z0-9_-]*$/;
-
 export const appSettingsSchema = z.object({
   theme: z.enum(APP_THEME_IDS),
   helperModel: z.string().min(1),
   helperReasoningEffort: z.enum(REASONING_EFFORTS),
   engineerName: z.string().min(1).max(80),
-  prAgent: z
-    .string()
-    .min(1)
-    .regex(PR_AGENT_NAME, 'lowercase letters, digits, dash, underscore; must start with a letter'),
   defaultModel: z.string().min(1),
   defaultReasoningEffort: z.enum(REASONING_EFFORTS),
   healingModel: z.string().min(1),
@@ -59,7 +52,6 @@ export function defaultSettings(): AppSettings {
     helperModel: 'inherit',
     helperReasoningEffort: 'high',
     engineerName: process.env.USER || 'engineer',
-    prAgent: DEFAULT_PR_AGENT,
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     healingModel: 'inherit',
@@ -108,9 +100,6 @@ export function migrate(raw: unknown): AppSettings {
   }
   if (!isNonEmptyString(merged.smithModel)) merged.smithModel = base.smithModel;
   if (!isNonEmptyString(merged.healingModel)) merged.healingModel = base.healingModel;
-  if (!isNonEmptyString(merged.prAgent) || !PR_AGENT_NAME.test(merged.prAgent)) {
-    merged.prAgent = DEFAULT_PR_AGENT;
-  }
 
   // A stored effort outside the known set is repaired to the shipped default.
   // Whether the chosen model actually offers the level is a separate question,

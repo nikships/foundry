@@ -131,6 +131,16 @@ describe('searchSettings', () => {
     ).toBe(true);
   });
 
+  it('no longer surfaces a Pull requests section', () => {
+    expect(searchSettings('pr writer').some((hit) => hit.title === 'Pull requests')).toBe(false);
+    expect(searchSettings('pull requests').some((hit) => hit.title === 'Pull requests')).toBe(
+      false,
+    );
+    expect(searchSettings('pr writer').some((hit) => hit.sectionId === 'pull-requests')).toBe(
+      false,
+    );
+  });
+
   it('keeps integrations and repository settings distinct', () => {
     expect(
       searchSettings('linear').some(

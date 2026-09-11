@@ -37,7 +37,7 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
     label: 'Models & agent defaults',
     hint: 'Model catalog, defaults, reasoning, Smith, and context limits',
     keywords:
-      'model catalog hide reachable default helper healing reasoning effort smith chat pr writer compaction context retries',
+      'model catalog hide reachable default helper healing reasoning effort smith chat compaction context retries',
   },
   {
     id: 'integrations',
@@ -171,12 +171,6 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     label: 'Smith',
     note: 'The model the in-app chat runs on.',
     keywords: 'smith chat default model picker provider',
-  },
-  {
-    pane: 'models',
-    label: 'Pull requests',
-    note: 'Who drafts a PR when a pipeline asks for one.',
-    keywords: 'pr writer draft roster agent',
   },
   {
     pane: 'models',
