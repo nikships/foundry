@@ -6,7 +6,10 @@
  * the trace that no pipeline produced.
  *
  * Finished sessions are kept briefly so a panel reopened right after one ends
- * still finds its result, then dropped: this is a cache, not a history.
+ * still finds its result, then dropped: this is a cache, not a history. The
+ * durable history lives in SQLite (e.g. the `proposals` table via `Tracer`);
+ * the caps below bound only live turns, so a swept session never loses its
+ * durable row.
  */
 
 export const SESSION_KEEP_MS = 10 * 60_000;
@@ -53,6 +56,15 @@ export class SessionRegistry<T extends Cancellable> {
 
   get(id: string): T | undefined {
     return this.sessions.get(id);
+  }
+
+  /**
+   * Read-only live entries for boot/debug. The DB is the history; this never
+   * substitutes for a durable read, so callers must not treat absence here
+   * as absence of the proposal.
+   */
+  entries(): Array<{ id: string; session: T }> {
+    return [...this.sessions.entries()].map(([id, session]) => ({ id, session }));
   }
 
   cancel(id: string): boolean {

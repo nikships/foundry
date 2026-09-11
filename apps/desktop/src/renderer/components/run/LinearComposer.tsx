@@ -508,8 +508,20 @@ export default function LinearComposer({
     };
   }, [issue, settings?.linearStatusMapping]);
 
+  // Proposals this composer submitted. Discard/cancel below only ever
+  // touches an owned proposal — a Runs-composer proposal generating in
+  // parallel is never replaced or cancelled from here (FOU-349).
+  const ownedPlansRef = useRef(new Set<string>());
+  const ownSelectedPlanId =
+    orchestrator.selectedPlanId && ownedPlansRef.current.has(orchestrator.selectedPlanId)
+      ? orchestrator.selectedPlanId
+      : null;
+  const discardOwnProposal = (): void => {
+    if (ownSelectedPlanId) orchestrator.discardPlan(ownSelectedPlanId);
+  };
+
   const selectIssue = (next: LinearIssueSnapshot): void => {
-    orchestrator.discard();
+    discardOwnProposal();
     setIssue(next);
     setStartIssues([]);
     setPlanStartIssues([]);
@@ -517,7 +529,7 @@ export default function LinearComposer({
   };
 
   const changeIssue = (): void => {
-    orchestrator.discard();
+    discardOwnProposal();
     setIssue(null);
     setMappingOpen(false);
     setStartIssues([]);
@@ -526,7 +538,7 @@ export default function LinearComposer({
   };
 
   const changeExecution = (next: LinearExecution): void => {
-    if (orchestrator.stage !== 'compose') return;
+    if (ownStage !== 'compose') return;
     setExecution(next);
     safeSetItem(EXECUTION_KEY, next);
     setStartIssues([]);
@@ -593,7 +605,7 @@ export default function LinearComposer({
         await refreshAll();
         return;
       }
-      orchestrator.discard();
+      discardOwnProposal();
       // Navigate before the lists refresh: the detail screen loads its own
       // data, and the lists also refresh on 'runs-changed'.
       if (result.runId) onOpen(result.runId);
@@ -606,16 +618,17 @@ export default function LinearComposer({
   };
 
   const submitPlan = async (): Promise<void> => {
-    if (planBlocked || orchestrator.planningLive || evidenceLoading || !issue) return;
+    if (planBlocked || evidenceLoading || !issue) return;
     setStartIssues([]);
     setPlanStartIssues([]);
     setEvidenceLoading(true);
     try {
       const detailedIssue = await api.linear.issue(issue.id);
       if (issueRef.current?.id !== issue.id) return;
-      await orchestrator.submit(
+      const planId = await orchestrator.submit(
         [linearIssueBrief(detailedIssue), linearIssueEvidence(detailedIssue)].join('\n\n'),
       );
+      if (planId) ownedPlansRef.current.add(planId);
     } catch (error) {
       if (issueRef.current?.id === issue.id) {
         setStartIssues([
@@ -632,9 +645,9 @@ export default function LinearComposer({
   };
 
   primaryActionRef.current = () => {
-    if (orchestrator.stage === 'planning') return;
-    if (orchestrator.stage === 'ready' && orchestrator.plan) {
-      void start(orchestrator.plan);
+    if (ownStage === 'planning') return;
+    if (ownStage === 'ready' && ownPlan) {
+      void start(ownPlan);
     } else if (execution === 'orchestrator') {
       void submitPlan();
     } else {
@@ -652,7 +665,14 @@ export default function LinearComposer({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [active, issue]);
 
-  const planningFailed = orchestrator.planning?.status === 'failed';
+  // This composer's view of the shared facade: only an owned proposal
+  // counts. A Runs-composer proposal generating in parallel never flips
+  // this composer's stage, lock, or footer.
+  const ownStage = ownSelectedPlanId ? orchestrator.stage : 'compose';
+  const ownPlanning = ownSelectedPlanId ? orchestrator.planning : null;
+  const ownPlan = ownSelectedPlanId ? orchestrator.plan : null;
+  const ownOriginal = ownSelectedPlanId ? orchestrator.original : null;
+  const planningFailed = ownPlanning?.status === 'failed';
   const currentBlocked = evidenceLoading
     ? 'Loading Linear issue details'
     : execution === 'orchestrator'
@@ -683,7 +703,7 @@ export default function LinearComposer({
           <div className={styles.composer} data-testid="linear-composer">
             <LinearIssuePicker
               issue={issue}
-              locked={orchestrator.stage !== 'compose'}
+              locked={ownStage !== 'compose'}
               query={query}
               issues={issues}
               searching={searching}
@@ -727,7 +747,7 @@ export default function LinearComposer({
 
             <LinearExecutionFooter
               execution={execution}
-              stage={orchestrator.stage}
+              stage={ownStage}
               planningFailed={planningFailed}
               choice={choice}
               pipeline={pipeline}
@@ -742,19 +762,21 @@ export default function LinearComposer({
               onChoiceChange={onChoiceChange}
               onPipelineChange={setSelectedPipeline}
               onMappingToggle={() => setMappingOpen((open) => !open)}
-              onCancel={orchestrator.cancel}
+              onCancel={() => {
+                if (ownSelectedPlanId) orchestrator.cancelPlan(ownSelectedPlanId);
+              }}
               onSubmitPlan={submitPlan}
               onStartPipeline={() => void start(null)}
             />
 
-            {issue && execution === 'orchestrator' && orchestrator.stage === 'compose' && (
+            {issue && execution === 'orchestrator' && ownStage === 'compose' && (
               <p className={styles.orchestratorHint}>
                 The Orchestrator reads {issue.identifier}&apos;s title as the brief and the
                 description, comments, labels, and parent as untrusted evidence, then composes the
                 pipeline.
               </p>
             )}
-            {currentBlocked && !starting && orchestrator.stage === 'compose' && (
+            {currentBlocked && !starting && ownStage === 'compose' && (
               <p className={styles.startHint}>{currentBlocked}</p>
             )}
             {orchestrator.planError && (
@@ -767,51 +789,45 @@ export default function LinearComposer({
         )}
       </section>
 
-      {active && orchestrator.stage === 'planning' && (
+      {active && ownStage === 'planning' && (
         <section className={`${styles.planningPanel} card`} data-testid="planning-panel">
           <div className={styles.planningHead}>
             <span className={styles.planningTitle}>
               {planningFailed ? 'Planning failed' : 'The Orchestrator is planning'}
             </span>
             <span className={styles.planningDetail}>
-              {orchestrator.planning?.detail ?? 'Opening the planning session…'}
+              {ownPlanning?.detail ?? 'Opening the planning session…'}
             </span>
           </div>
-          <PanelTranscript
-            entries={orchestrator.planning?.entries ?? []}
-            live={orchestrator.planningLive}
-          />
+          <PanelTranscript entries={ownPlanning?.entries ?? []} live={ownPlanning !== null} />
         </section>
       )}
 
-      {active &&
-        orchestrator.stage === 'ready' &&
-        orchestrator.plan &&
-        orchestrator.original &&
-        issue && (
-          <PlanCard
-            plan={orchestrator.plan}
-            original={orchestrator.original}
-            starting={starting}
-            startBlocked={baseSyncing ? `Updating ${baseRef} first` : null}
-            issues={planStartIssues}
-            messages={orchestrator.messages}
-            replying={orchestrator.replying}
-            chatError={orchestrator.chatError}
-            onSendMessage={(text) => void orchestrator.sendMessage(text)}
-            sourceBadge={`Linear · ${issue.identifier}`}
-            sourceDetail={lifecycle}
-            onPhaseModelChange={orchestrator.setPhaseModel}
-            onPhaseReasoningEffortChange={orchestrator.setPhaseReasoningEffort}
-            onResetPhaseOverrides={orchestrator.resetPhaseOverrides}
-            onStart={() => void start(orchestrator.plan)}
-            onRegenerate={submitPlan}
-            onDiscard={() => {
-              orchestrator.discard();
-              setPlanStartIssues([]);
-            }}
-          />
-        )}
+      {active && ownStage === 'ready' && ownPlan && ownOriginal && issue && (
+        <PlanCard
+          planId={ownSelectedPlanId ?? undefined}
+          plan={ownPlan}
+          original={ownOriginal}
+          starting={starting}
+          startBlocked={baseSyncing ? `Updating ${baseRef} first` : null}
+          issues={planStartIssues}
+          messages={orchestrator.messages}
+          replying={orchestrator.replying}
+          chatError={orchestrator.chatError}
+          onSendMessage={(text) => void orchestrator.sendMessage(text)}
+          sourceBadge={`Linear · ${issue.identifier}`}
+          sourceDetail={lifecycle}
+          onPhaseModelChange={orchestrator.setPhaseModel}
+          onPhaseReasoningEffortChange={orchestrator.setPhaseReasoningEffort}
+          onResetPhaseOverrides={orchestrator.resetPhaseOverrides}
+          onStart={() => void start(ownPlan)}
+          onRegenerate={submitPlan}
+          onDiscard={() => {
+            discardOwnProposal();
+            setPlanStartIssues([]);
+          }}
+        />
+      )}
     </div>
   );
 }

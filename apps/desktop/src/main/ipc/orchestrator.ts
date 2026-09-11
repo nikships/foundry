@@ -1,9 +1,13 @@
-import type { PlanImageAttachment, ReasoningEffort } from '@shared/types.js';
-import { IPC } from '@shared/ipc-contract.js';
+import type {
+  GeneratedRunPlan,
+  PlanImageAttachment,
+  ProposalSnapshot,
+  ReasoningEffort,
+} from '@shared/types.js';
+import { IPC, type OrchestratorAcceptResult } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import { enabledModelIds, enabledModels } from '../pi/enabled-models.js';
 import { warmStartPrep } from '../engine/operations.js';
-import { startPlan } from '../orchestrator/start.js';
 import { ghStatus } from '../system/gh.js';
 import { notifySettings } from './shared.js';
 import type { Handle } from './shared.js';
@@ -12,6 +16,7 @@ type Ctx = Pick<
   AppContext,
   | 'projects'
   | 'plans'
+  | 'proposals'
   | 'rosterFor'
   | 'envelopes'
   | 'supportDir'
@@ -35,8 +40,9 @@ export function register(ctx: Ctx, handle: Handle): void {
       reasoningEffort: ReasoningEffort,
       images?: PlanImageAttachment[],
     ): { planId: string } | { error: string } => {
-      const started = startPlan(
-        ctx.plans,
+      // Durable proposals: one independent row per call, never cancelling
+      // siblings. The composer stays usable for the next prompt immediately.
+      const started = ctx.proposals.start(
         ctx.projects.get(projectId),
         { prompt, model, reasoningEffort, images },
         {
@@ -79,5 +85,30 @@ export function register(ctx: Ctx, handle: Handle): void {
     ctx.plans.message(planId, text),
   );
 
-  handle(IPC.orchestratorCancel, (planId: string) => ctx.plans.cancel(planId));
+  handle(IPC.orchestratorCancel, (planId: string) => ctx.proposals.cancel(planId));
+
+  /**
+   * Durable reads for restore/reconnect: the DB is the source of truth, so a
+   * reloaded renderer re-reads these and subscribes to `proposals-changed`.
+   */
+  handle(IPC.orchestratorList, (projectId: string): ProposalSnapshot[] =>
+    ctx.proposals.list(projectId),
+  );
+
+  handle(IPC.orchestratorGet, (planId: string): ProposalSnapshot | null =>
+    ctx.proposals.get(planId),
+  );
+
+  /**
+   * Exactly-once accept: proposal accepts must go through here, not
+   * `runs:start` directly, so the durable `accepted_run_id` key covers
+   * restarts and double-clicks share one run.
+   */
+  handle(
+    IPC.orchestratorAccept,
+    (planId: string, plan?: GeneratedRunPlan): Promise<OrchestratorAcceptResult> =>
+      ctx.proposals.accept(planId, plan),
+  );
+
+  handle(IPC.orchestratorDiscard, (planId: string) => ctx.proposals.discard(planId));
 }

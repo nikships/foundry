@@ -11,7 +11,12 @@ import type {
   AgentSessionRow,
 } from '@shared/types.js';
 import { api } from '../api.js';
-import { selectActivityRuns } from '../view-models/activity-runs.js';
+import { useProposals } from '../hooks/useProposals.js';
+import {
+  selectActivityItems,
+  selectActivityRuns,
+  type ActivityItem,
+} from '../view-models/activity-runs.js';
 
 export interface RunView {
   run: RunRow | null;
@@ -225,6 +230,21 @@ export function useRunList(
   }, [tick]);
 
   return { runs, loading, error, refresh: tick };
+}
+
+/**
+ * Selected-project Activity, proposals interleaved with runs in sidebar
+ * order (generating proposals, live runs, ready/failed proposals, recent
+ * finished runs). The component renders the order verbatim.
+ */
+export function useActivityItems(projectId: string, recentLimit = 5): { items: ActivityItem[] } {
+  const { runs } = useRunList(projectId, false);
+  const { proposals } = useProposals(projectId);
+  const items = useMemo(
+    () => selectActivityItems(runs, proposals, projectId, recentLimit),
+    [runs, proposals, projectId, recentLimit],
+  );
+  return { items };
 }
 
 /** Selected-project Activity: every live run plus a short recency cap of finished runs. */

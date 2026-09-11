@@ -200,6 +200,11 @@ if (!app.requestSingleInstanceLock()) {
       console.warn(`finalised ${swept.runsFinalised.length} run(s) orphaned by a previous launch`);
     }
 
+    // A planning turn cannot resume after restart (one-shots cannot
+    // re-attach), so `generating` proposals become `failed/interrupted` while
+    // ready/failed/cancelled/accepted rows survive for restore + retry.
+    ctx.restoreProposals();
+
     // A Bridge that survived a crash still holds its port; left alone, this
     // launch would start a second one beside it. Awaited before the window so
     // the first `ensure()` cannot race the reclaim onto the next port up.
