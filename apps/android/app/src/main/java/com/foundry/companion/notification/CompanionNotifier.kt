@@ -21,6 +21,7 @@ class CompanionNotifier(
 ) {
 
     private val knownRunStatuses = mutableMapOf<String, String>()
+    private val knownWaitingRuns = mutableSetOf<String>()
 
     @Synchronized
     fun onRuns(runs: List<RunRow>) {
@@ -56,10 +57,30 @@ class CompanionNotifier(
         }
     }
 
+    /**
+     * Announces that an engineer phase is waiting on the operator (spec §3.7).
+     * Unlike settle alerts this fires even with the settle toggle off — a
+     * blocked run is not chatter — and it announces once per run until [reset].
+     * Read-only signal only: there is no companion answer route, so this never
+     * answers anything.
+     */
+    @Synchronized
+    fun onEngineerWaiting(run: RunRow, question: String = "") {
+        if (run.runId.isBlank()) return
+        if (run.runId in knownWaitingRuns) return
+        knownWaitingRuns.add(run.runId)
+        val notified = sessionManager?.getNotifiedWaitingRunIds().orEmpty()
+        if (run.runId in notified) return
+        if (notificationManager?.hasNotificationPermission() != true) return
+        sessionManager?.addNotifiedWaitingRunId(run.runId)
+        notificationManager?.postEngineerWaitingNotification(run, question)
+    }
+
     /** Drops watch state so a re-pair starts from a clean slate. */
     @Synchronized
     fun reset() {
         knownRunStatuses.clear()
+        knownWaitingRuns.clear()
     }
 
     companion object {

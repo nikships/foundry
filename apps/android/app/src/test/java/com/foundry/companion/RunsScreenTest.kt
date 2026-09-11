@@ -307,6 +307,49 @@ class RunsScreenTest {
     }
 
     @Test
+    fun testWaitingChipShowsOnLiveRunOnly() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunsScreen(
+                    runs = listOf(sampleLiveRun) + sampleHistoryRuns,
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    projectName = "Foundry",
+                    onRunClick = {},
+                    onStartRunClick = {},
+                    onConnectionPillClick = {},
+                    onRetryConnection = {},
+                    waitingRunIds = setOf("run_live_1")
+                )
+            }
+        }
+
+        // The waiting run keeps its RUNNING badge and gains the amber chip.
+        // Chip tag lives under the card's merged semantics, so query the unmerged tree.
+        composeTestRule.onNodeWithTag("waiting-chip", useUnmergedTree = true).assertIsDisplayed()
+        composeTestRule.onNodeWithText("WAITING").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("RUNNING")[0].assertIsDisplayed()
+    }
+
+    @Test
+    fun testNoWaitingChipWithoutPendingInterrupt() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunsScreen(
+                    runs = listOf(sampleLiveRun) + sampleHistoryRuns,
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    projectName = "Foundry",
+                    onRunClick = {},
+                    onStartRunClick = {},
+                    onConnectionPillClick = {},
+                    onRetryConnection = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("waiting-chip", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
     fun testOfflineFabIsDisabledWithReconnectHelper() {
         var started = false
 

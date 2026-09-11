@@ -542,6 +542,167 @@ class NewRunScreenTest {
     )
 
     @Test
+    fun testOrchestratorSavedPlansAcceptById() {
+        val proposals = listOf(
+            ProposalSnapshot(
+                planId = "plan_saved_1",
+                projectId = "proj_foundry_core",
+                prompt = "Saved durable proposal",
+                model = "scripted/alpha",
+                reasoningEffort = "high",
+                status = ProposalStatus.READY,
+                detail = "Plan ready.",
+                plan = sampleGeneratedPlan,
+                createdAt = 1L,
+                updatedAt = 2L
+            ),
+            ProposalSnapshot(
+                planId = "plan_accepted_9",
+                projectId = "proj_foundry_core",
+                prompt = "Already accepted",
+                status = ProposalStatus.ACCEPTED,
+                acceptedRunId = "run_acc_1",
+                createdAt = 0L,
+                updatedAt = 1L
+            )
+        )
+        var acceptedPlanId: String? = null
+        composeTestRule.setContent {
+            FoundryTheme {
+                NewRunScreen(
+                    projects = sampleProjects,
+                    selectedProjectId = "proj_foundry_core",
+                    onProjectSelect = {},
+                    onDismiss = {},
+                    onStartRun = { _, _, _ -> },
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    orchestratorOptions = sampleOrchestratorOptions,
+                    orchestratorProposals = proposals,
+                    onAcceptProposal = { acceptedPlanId = it }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        composeTestRule.onNodeWithTag("orchestrator-proposals").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("SAVED PLANS").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("Saved durable proposal").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("proposal-accept-plan_saved_1").performScrollTo().performClick()
+        assertEquals("plan_saved_1", acceptedPlanId)
+        // Accepted rows never offer a second accept (exactly-once stays server-side).
+        composeTestRule.onNodeWithTag("proposal-accept-plan_accepted_9").assertDoesNotExist()
+    }
+
+    @Test
+    fun testOrchestratorAcceptingDisablesAcceptsAndShowsFlight() {
+        val proposals = listOf(
+            ProposalSnapshot(
+                planId = "plan_saved_1",
+                projectId = "proj_foundry_core",
+                prompt = "Saved durable proposal",
+                status = ProposalStatus.READY,
+                plan = sampleGeneratedPlan,
+                createdAt = 1L,
+                updatedAt = 2L
+            )
+        )
+        var accepted = 0
+        composeTestRule.setContent {
+            FoundryTheme {
+                NewRunScreen(
+                    projects = sampleProjects,
+                    selectedProjectId = "proj_foundry_core",
+                    onProjectSelect = {},
+                    onDismiss = {},
+                    onStartRun = { _, _, _ -> },
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    orchestratorOptions = sampleOrchestratorOptions,
+                    orchestratorProposals = proposals,
+                    isAcceptingPlan = true,
+                    onAcceptProposal = { accepted += 1 }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        // Double-tap guard: the in-flight accept cannot be re-sent.
+        composeTestRule.onNodeWithTag("proposal-accept-plan_saved_1").performScrollTo().assertIsNotEnabled()
+        assertEquals(0, accepted)
+        composeTestRule.onNodeWithText("Accepting plan…").assertIsDisplayed()
+    }
+
+    @Test
+    fun testOrchestratorSavedPlansOfflineDisablesAccept() {
+        val proposals = listOf(
+            ProposalSnapshot(
+                planId = "plan_saved_1",
+                projectId = "proj_foundry_core",
+                prompt = "Saved durable proposal",
+                status = ProposalStatus.READY,
+                plan = sampleGeneratedPlan,
+                createdAt = 1L,
+                updatedAt = 2L
+            )
+        )
+        composeTestRule.setContent {
+            FoundryTheme {
+                NewRunScreen(
+                    projects = sampleProjects,
+                    selectedProjectId = "proj_foundry_core",
+                    onProjectSelect = {},
+                    onDismiss = {},
+                    onStartRun = { _, _, _ -> },
+                    connectionStatus = ConnectionStatus.Offline("Nik's Mac", "http://192.168.1.100"),
+                    orchestratorOptions = sampleOrchestratorOptions,
+                    orchestratorProposals = proposals
+                )
+            }
+        }
+
+        // Offline locks the composer tabs; Orchestrator stays unreachable and no
+        // accept can be sent — the phone never queues writes.
+        composeTestRule.onNodeWithText("ORCHESTRATOR").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("proposal-plan_saved_1").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Reconnect to start a run").assertIsDisplayed()
+    }
+
+    @Test
+    fun testOrchestratorStartShowsAcceptingFlight() {
+        val state = OrchestratorState(
+            planId = "plan_1",
+            projectId = "proj_foundry_core",
+            status = "done",
+            model = "scripted/alpha",
+            reasoningEffort = "high",
+            prompt = "Bring Android run creation to desktop parity",
+            plan = sampleGeneratedPlan,
+            detail = "Plan ready."
+        )
+        composeTestRule.setContent {
+            FoundryTheme {
+                NewRunScreen(
+                    projects = sampleProjects,
+                    selectedProjectId = "proj_foundry_core",
+                    onProjectSelect = {},
+                    onDismiss = {},
+                    onStartRun = { _, _, _ -> },
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    orchestratorOptions = sampleOrchestratorOptions,
+                    orchestratorState = state,
+                    isAcceptingPlan = true,
+                    onStartOrchestratedRun = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        // The edited composer plan travels as the accept override; repeats
+        // return the same run, so the button guards the flight.
+        // FoundryPrimaryButton uppercases its label and now keeps it visible while loading.
+        composeTestRule.onNodeWithText("ACCEPTING…").assertIsDisplayed()
+    }
+
+    @Test
     fun testLinearTabUnconnectedShowsSetupCopyAndDisablesStart() {
         composeTestRule.setContent {
             FoundryTheme {

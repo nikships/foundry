@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalInspectionMode
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.EventRow
+import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.data.model.RunDetail
 import com.foundry.companion.data.model.RunRow
@@ -91,6 +92,50 @@ class InspectorScreenScreenshotTest {
             )
         }
         saveScreenshot(bitmap, "android-inspector-collapsed.png")
+    }
+
+    @Test
+    fun captureInspectorWaitingStrip() {
+        val phases = listOf(
+            PhaseRunSummary(id = "p_1", name = "Plan", status = "success"),
+            PhaseRunSummary(id = "p_3", name = "Code", status = "running", attempt = 1)
+        )
+        val run = RunRow(
+            runId = "run_260818_live99",
+            pipelineName = "Feature Pipeline",
+            request = "Mobile Inspector transcript",
+            status = "running",
+            phases = phases
+        )
+        val waiting = PendingInterrupt(
+            eventId = "ev_interrupt_1",
+            runId = "run_260818_live99",
+            phaseId = "p_3",
+            question = "May I rewrite the inspector?"
+        )
+        val events = listOf(
+            EventRow(
+                eventId = "ev_text",
+                phaseId = "p_3",
+                type = "assistant_text",
+                name = "assistant_text",
+                payload = buildJsonObject { put("text", "Scaffolding the phone Inspector as one readable column.") },
+                startedAt = "23:30:18Z",
+                endedAt = "23:30:20Z"
+            )
+        )
+        val bitmap = renderToBitmap {
+            InspectorScreen(
+                runDetail = RunDetail(run = run, phases = phases, live = true),
+                events = events,
+                initialPhaseId = "p_3",
+                connectionStatus = ConnectionStatus.Connected("Nik’s Mac Studio", "http://192.168.1.100"),
+                onBackClick = {},
+                onPhaseSelected = {},
+                pendingInterrupt = waiting
+            )
+        }
+        saveScreenshot(bitmap, "android-inspector-waiting.png")
     }
 
     private fun renderToBitmap(content: @androidx.compose.runtime.Composable () -> Unit): Bitmap {

@@ -593,6 +593,91 @@ data class OrchestratorState(
     val endedAt: Long? = null
 )
 
+/** Durable orchestrator proposal status, mirroring desktop `ProposalStatus`. */
+object ProposalStatus {
+    const val GENERATING = "generating"
+    const val READY = "ready"
+    const val FAILED = "failed"
+    const val CANCELLED = "cancelled"
+    const val ACCEPTED = "accepted"
+    const val DISCARDED = "discarded"
+}
+
+/** One live transcript line on a durable proposal, mirroring desktop `PanelEntry`. */
+@Serializable
+data class ProposalEntry(
+    val id: String = "",
+    val kind: String = "text", // "text" | "tool" | "note" | "error"
+    val text: String = "",
+    val toolKind: String? = null,
+    val done: Boolean? = null,
+    val failed: Boolean? = null,
+    val at: Long = 0L
+)
+
+/** One operator↔orchestrator exchange about an accepted plan. */
+@Serializable
+data class ProposalMessage(
+    val id: String = "",
+    val role: String = "orchestrator", // "operator" | "orchestrator"
+    val text: String = "",
+    val revisedPlan: Boolean? = null,
+    val at: Long = 0L
+)
+
+/**
+ * One durable orchestrator proposal, mirroring desktop `ProposalSnapshot` in
+ * `shared/types.ts`. One row per `POST /v1/orchestrator/plans` call; the list
+ * route hides `discarded` rows, newest first.
+ */
+@Serializable
+data class ProposalSnapshot(
+    val planId: String,
+    val projectId: String,
+    val prompt: String = "",
+    val model: String = "inherit",
+    val reasoningEffort: String = "medium",
+    val status: String = ProposalStatus.GENERATING,
+    val detail: String = "",
+    val entries: List<ProposalEntry> = emptyList(),
+    /** Set only when `status` is `ready` or `accepted`. */
+    val plan: GeneratedRunPlan? = null,
+    val rawReply: String = "",
+    val messages: List<ProposalMessage> = emptyList(),
+    val revision: Int = 0,
+    /** Set once on accept; the idempotency key across restarts. */
+    val acceptedRunId: String? = null,
+    /** Exact snapshot sent to `startRun` on accept. */
+    val acceptedPlan: GeneratedRunPlan? = null,
+    val createdAt: Long = 0L,
+    val updatedAt: Long = 0L,
+    val endedAt: Long? = null
+) {
+    val isReady: Boolean get() = status == ProposalStatus.READY
+    val isAccepted: Boolean get() = status == ProposalStatus.ACCEPTED
+}
+
+/**
+ * Body of `POST /v1/orchestrator/plans/:planId/accept`. A null plan means
+ * "no override" and is omitted from the JSON body (`explicitNulls = false`).
+ */
+@Serializable
+data class OrchestratorAcceptRequest(
+    val plan: GeneratedRunPlan? = null
+)
+
+/**
+ * Exactly-once accept outcome, mirroring desktop `OrchestratorAcceptResult`.
+ * `ok:true` carries the one run id (repeats return the same id and start
+ * nothing); `ok:false` carries the rails/issues that refused the plan.
+ */
+@Serializable
+data class OrchestratorAcceptResult(
+    val ok: Boolean,
+    val runId: String? = null,
+    val issues: List<ValidationIssue> = emptyList()
+)
+
 @Serializable
 data class LinearWorkflowState(
     val id: String,

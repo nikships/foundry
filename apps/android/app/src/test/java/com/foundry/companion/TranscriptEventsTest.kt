@@ -38,6 +38,91 @@ class TranscriptEventsTest {
     }
 
     @Test
+    fun autoAllowPolicyLeftoversAreNotWaiting() {
+        val policy = EventRow(
+            eventId = "policy",
+            phaseId = "p_3",
+            type = "interrupt",
+            name = "allow (policy)",
+            payload = buildJsonObject { put("auto", true) },
+            startedAt = "23:30:00Z"
+        )
+        assertTrue(TranscriptEvents.isAutoAllowPolicy(policy))
+        assertFalse(TranscriptEvents.isWaitingInterrupt(policy))
+        assertFalse(TranscriptEvents.hasPendingInterrupt(listOf(policy)))
+        // Desktop Inspector drops leftovers from the lane as well.
+        assertTrue(TranscriptEvents.visibleForPhase(listOf(policy), "p_3").isEmpty())
+    }
+
+    @Test
+    fun pendingInterruptTakesTheLatestWaitingRow() {
+        val first = EventRow(
+            rowid = 3,
+            changeId = 3,
+            eventId = "int_1",
+            runId = "run_1",
+            phaseId = "p_2",
+            type = "interrupt",
+            name = "engineer checkpoint",
+            payload = buildJsonObject { put("question", "May I proceed?") },
+            startedAt = "23:30:00Z"
+        )
+        val later = EventRow(
+            rowid = 9,
+            changeId = 9,
+            eventId = "int_2",
+            runId = "run_1",
+            phaseId = "p_3",
+            type = "interrupt",
+            name = "engineer checkpoint",
+            payload = buildJsonObject { put("detail", "Confirm the migration.") },
+            startedAt = "23:30:10Z"
+        )
+        val pending = TranscriptEvents.pendingInterrupt(listOf(first, later))
+        assertEquals("int_2", pending?.eventId)
+        assertEquals("run_1", pending?.runId)
+        assertEquals("p_3", pending?.phaseId)
+        assertEquals("Confirm the migration.", pending?.question)
+    }
+
+    @Test
+    fun interruptDetailMirrorsDesktopBannerOrder() {
+        fun interrupt(payload: kotlinx.serialization.json.JsonObject) = EventRow(
+            eventId = "i",
+            phaseId = "p_1",
+            type = "interrupt",
+            name = "engineer checkpoint",
+            payload = payload,
+            startedAt = "23:30:00Z"
+        )
+        assertEquals(
+            "detail wins",
+            TranscriptEvents.interruptDetail(
+                interrupt(buildJsonObject {
+                    put("detail", "detail wins")
+                    put("question", "question loses")
+                    put("reason", "reason loses")
+                })
+            )
+        )
+        assertEquals(
+            "question next",
+            TranscriptEvents.interruptDetail(
+                interrupt(buildJsonObject {
+                    put("question", "question next")
+                    put("reason", "reason loses")
+                })
+            )
+        )
+        assertEquals(
+            "reason last",
+            TranscriptEvents.interruptDetail(
+                interrupt(buildJsonObject { put("reason", "reason last") })
+            )
+        )
+    }
+
+    @Test
     fun waterfallTicksComeFromToolGateAndInterruptOnly() {
         val phase = PhaseRunSummary(
             id = "p_3",

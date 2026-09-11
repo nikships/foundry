@@ -805,6 +805,105 @@ class RunDetailScreenTest {
     }
 
     @Test
+    fun testEngineerWaitingStripShowsWithAnswerAction() {
+        val waiting = PendingInterrupt(
+            eventId = "ev_interrupt_1",
+            runId = "run_260818_live99",
+            phaseId = "p_3",
+            question = "May I rewrite the inspector?"
+        )
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    pendingInterrupt = waiting,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        // Exact spec §3.7 copy, pinned above the header.
+        composeTestRule.onNodeWithTag("engineer-waiting-strip").assertIsDisplayed()
+        composeTestRule.onNodeWithText("An engineer phase is waiting for your answer.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Answer…").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Reconnect to answer").assertDoesNotExist()
+    }
+
+    @Test
+    fun testEngineerWaitingAnswerOpensReadOnlySheetAndDismissPersistsStrip() {
+        val waiting = PendingInterrupt(
+            eventId = "ev_interrupt_1",
+            runId = "run_260818_live99",
+            phaseId = "p_3",
+            question = "May I rewrite the inspector?"
+        )
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    pendingInterrupt = waiting,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        // Opening the sheet never answers: there is no companion answer route.
+        composeTestRule.onNodeWithText("Answer…").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("engineer-waiting-sheet").assertIsDisplayed()
+        composeTestRule.onNodeWithText("May I rewrite the inspector?").assertIsDisplayed()
+        // No Approve/Reject network actions exist on this build.
+        composeTestRule.onNodeWithText("APPROVE").assertDoesNotExist()
+        composeTestRule.onNodeWithText("REJECT").assertDoesNotExist()
+
+        composeTestRule.onNodeWithTag("engineer-waiting-dismiss").performClick()
+        // Dismiss does NOT answer — the strip persists.
+        composeTestRule.onNodeWithTag("engineer-waiting-strip").assertIsDisplayed()
+        composeTestRule.onNodeWithText("An engineer phase is waiting for your answer.").assertIsDisplayed()
+    }
+
+    @Test
+    fun testEngineerWaitingAnswerDisabledOfflineWithReconnectHint() {
+        val waiting = PendingInterrupt(
+            eventId = "ev_interrupt_1",
+            runId = "run_260818_live99",
+            phaseId = "p_3",
+            question = "May I rewrite the inspector?"
+        )
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    connectionStatus = ConnectionStatus.Offline("Nik's Mac", "http://192.168.1.100"),
+                    pendingInterrupt = waiting,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        // Offline: the strip shows but Answer… is disabled with the spec helper.
+        composeTestRule.onNodeWithTag("engineer-waiting-strip").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Answer…").assertIsNotEnabled()
+        composeTestRule.onNodeWithText("Reconnect to answer").assertIsDisplayed()
+    }
+
+    @Test
     fun testRestoreResultMessageRendersAndDismisses() {
         val checkpoints = RestorableCheckpointList(
             runId = settledRun.runId,

@@ -46,11 +46,20 @@ fun FoundryPrimaryButton(
         )
     ) {
         if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(18.dp),
-                color = Color.Black,
-                strokeWidth = 2.dp
-            )
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = Color.Black,
+                    strokeWidth = 2.dp
+                )
+                Text(
+                    text = text.uppercase(),
+                    style = typography.labelMono
+                )
+            }
         } else {
             Text(
                 text = text.uppercase(),

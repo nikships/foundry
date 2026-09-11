@@ -22,11 +22,14 @@ import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.EventRow
 import com.foundry.companion.data.model.GhStatus
+import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.RestorableCheckpoint
 import com.foundry.companion.data.model.RestorableCheckpointList
 import com.foundry.companion.data.model.RunDetail
 import com.foundry.companion.ui.components.*
 import com.foundry.companion.ui.screens.run.components.CreatePrConfirmSheet
+import com.foundry.companion.ui.screens.run.components.EngineerWaitingSheet
+import com.foundry.companion.ui.screens.run.components.EngineerWaitingStrip
 import com.foundry.companion.ui.screens.run.components.OutcomeCard
 import com.foundry.companion.ui.screens.run.components.PhaseWaterfall
 import com.foundry.companion.ui.screens.run.components.SelectedPhaseSummaryCard
@@ -66,7 +69,13 @@ fun RunDetailScreen(
     isRestoringCheckpoint: Boolean = false,
     restoreMessage: String? = null,
     onDismissRestoreMessage: (() -> Unit)? = null,
-    onRestoreCheckpoint: (runId: String, checkpointId: String, acceptPartial: Boolean) -> Unit = { _, _, _ -> }
+    onRestoreCheckpoint: (runId: String, checkpointId: String, acceptPartial: Boolean) -> Unit = { _, _, _ -> },
+    /**
+     * Read-only engineer-waiting signal (spec §3.7) for this run. The caller
+     * must scope it: `pendingInterrupt` for another run must never render here.
+     * There is no companion answer route, so this is display state only.
+     */
+    pendingInterrupt: PendingInterrupt? = null
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -74,6 +83,7 @@ fun RunDetailScreen(
 
     var showKillDialog by remember { mutableStateOf(false) }
     var showCreatePrSheet by rememberSaveable { mutableStateOf(false) }
+    var showWaitingSheet by rememberSaveable { mutableStateOf(false) }
     var isRequestExpanded by remember { mutableStateOf(false) }
     var restoreTarget by remember { mutableStateOf<RestorableCheckpoint?>(null) }
     var acceptPartialRestore by remember { mutableStateOf(false) }
@@ -228,6 +238,17 @@ fun RunDetailScreen(
                         )
                     }
                 }
+            }
+
+            // Engineer-waiting strip (spec §3.7, read-only): pinned above the header
+            // while this run has a pending interrupt. Dismissing the detail sheet
+            // never answers — the strip persists until the desktop trace clears.
+            if (pendingInterrupt != null) {
+                EngineerWaitingStrip(
+                    pending = pendingInterrupt,
+                    isConnected = isConnected,
+                    onAnswerClick = { showWaitingSheet = true }
+                )
             }
 
             // Header block: Status + Pipeline Name + When + Selectable Request + Meta
@@ -453,6 +474,14 @@ fun RunDetailScreen(
                 onCreatePr(run.runId)
             },
             onDismiss = { showCreatePrSheet = false }
+        )
+    }
+
+    // Read-only waiting detail: dismiss never answers (no companion answer route).
+    if (showWaitingSheet && pendingInterrupt != null) {
+        EngineerWaitingSheet(
+            pending = pendingInterrupt,
+            onDismiss = { showWaitingSheet = false }
         )
     }
 

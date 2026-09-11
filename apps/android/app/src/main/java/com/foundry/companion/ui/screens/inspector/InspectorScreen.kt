@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.EventRow
+import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.data.model.RunDetail
 import com.foundry.companion.data.model.TranscriptEvents
@@ -24,6 +25,8 @@ import com.foundry.companion.ui.components.ReconnectBanner
 import com.foundry.companion.ui.components.StatusBadge
 import com.foundry.companion.ui.screens.inspector.components.PhaseChipsRow
 import com.foundry.companion.ui.screens.inspector.components.TranscriptLane
+import com.foundry.companion.ui.screens.run.components.EngineerWaitingSheet
+import com.foundry.companion.ui.screens.run.components.EngineerWaitingStrip
 import com.foundry.companion.ui.theme.FoundryTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -40,7 +43,13 @@ fun InspectorScreen(
     onRetryConnection: () -> Unit = {},
     hasProject: Boolean = true,
     /** The desktop answered that it has no such run, so there is nothing to wait for. */
-    isRunMissing: Boolean = false
+    isRunMissing: Boolean = false,
+    /**
+     * Read-only engineer-waiting signal (spec §3.7) scoped to this run.
+     * Read-only: there is no companion answer route, so this renders the
+     * pinned strip + detail sheet only.
+     */
+    pendingInterrupt: PendingInterrupt? = null
 ) {
     val colors = FoundryTheme.colors
 
@@ -156,6 +165,18 @@ fun InspectorScreen(
             return@InspectorScaffold
         }
 
+        val isInspectorConnected = connectionStatus is ConnectionStatus.Connected
+        var showInspectorWaitingSheet by remember(pendingInterrupt?.eventId) { mutableStateOf(false) }
+        // Read-only waiting strip above the phase chips; dismiss never answers.
+        if (pendingInterrupt != null) {
+            EngineerWaitingStrip(
+                pending = pendingInterrupt,
+                isConnected = isInspectorConnected,
+                onAnswerClick = { showInspectorWaitingSheet = true },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+
         PhaseChipsRow(
             phases = phases,
             selectedPhaseId = selectedPhaseId,
@@ -164,6 +185,12 @@ fun InspectorScreen(
                 onPhaseSelected(it)
             }
         )
+        if (showInspectorWaitingSheet && pendingInterrupt != null) {
+            EngineerWaitingSheet(
+                pending = pendingInterrupt,
+                onDismiss = { showInspectorWaitingSheet = false }
+            )
+        }
 
         HorizontalPager(
             state = pagerState,

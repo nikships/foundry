@@ -787,6 +787,147 @@ class CompanionViewModelTest {
     }
 
     @Test
+    fun testStartOrchestratedRunAcceptsExactlyOnce() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val options = viewModel.uiState.value.orchestratorOptions!!
+
+        viewModel.generateOrchestratorPlan(
+            projectId = "proj_foundry_core",
+            prompt = "Accept, do not re-post",
+            model = options.model,
+            reasoningEffort = "high"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+        val planId = viewModel.uiState.value.orchestratorState?.planId!!
+        val runsBefore = viewModel.uiState.value.runs.size
+
+        var startedRunId: String? = null
+        viewModel.startOrchestratedRun("proj_foundry_core") { startedRunId = it }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(startedRunId)
+        // The run started via exactly-once accept, not a direct POST /v1/runs.
+        assertEquals(1, repository.acceptPlanCallCount)
+        assertEquals(planId, repository.lastAcceptPlanId)
+        assertNotNull(repository.lastAcceptPlanOverride)
+        assertEquals(runsBefore + 1, viewModel.uiState.value.runs.size)
+        assertFalse(viewModel.uiState.value.isAcceptingPlan)
+
+        // A repeat accept returns the same run and starts nothing.
+        var repeatedRunId: String? = null
+        viewModel.acceptOrchestratedPlan(planId) { repeatedRunId = it }
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(startedRunId, repeatedRunId)
+        assertEquals(runsBefore + 1, viewModel.uiState.value.runs.size)
+    }
+
+    @Test
+    fun testAcceptRefusalSurfacesValidationIssues() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val options = viewModel.uiState.value.orchestratorOptions!!
+
+        viewModel.generateOrchestratorPlan(
+            projectId = "proj_foundry_core",
+            prompt = "Plan then cancel then accept",
+            model = options.model,
+            reasoningEffort = "high"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+        val planId = viewModel.uiState.value.orchestratorState?.planId!!
+        viewModel.cancelOrchestratorPlan()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var accepted = false
+        viewModel.acceptOrchestratedPlan(planId) { accepted = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(accepted)
+        assertFalse(viewModel.uiState.value.isAcceptingPlan)
+        val issues = viewModel.uiState.value.validationIssues
+        assertTrue(issues.any { it.where == "orchestrator" && it.message.contains("not ready") })
+    }
+
+    @Test
+    fun testLoadOrchestratorProposals() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val options = viewModel.uiState.value.orchestratorOptions!!
+
+        viewModel.generateOrchestratorPlan(
+            projectId = "proj_foundry_core",
+            prompt = "Listable proposal",
+            model = options.model,
+            reasoningEffort = "high"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.loadOrchestratorProposals("proj_foundry_core")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isLoadingProposals)
+        assertEquals(1, state.orchestratorProposals.size)
+        assertEquals("ready", state.orchestratorProposals.single().status)
+    }
+
+    @Test
+    fun testPendingInterruptDerivedFromTraceRows() {
+        repository.appendEvent(
+            com.foundry.companion.data.model.EventRow(
+                rowid = 50,
+                changeId = 50,
+                eventId = "ev_interrupt_1",
+                runId = "run_260818_live99",
+                phaseId = "p_3",
+                type = "interrupt",
+                name = "engineer checkpoint",
+                payload = buildJsonObject { put("question", "May I rewrite the inspector?") },
+                startedAt = "23:31:00Z"
+            )
+        )
+
+        viewModel.loadTranscriptEvents("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val pending = viewModel.uiState.value.pendingInterrupt
+        assertNotNull(pending)
+        assertEquals("ev_interrupt_1", pending?.eventId)
+        assertEquals("May I rewrite the inspector?", pending?.question)
+        assertEquals("run_260818_live99", viewModel.uiState.value.pendingInterruptRunId)
+
+        // Switching runs must not leak the strip.
+        viewModel.loadRunDetail("run_260818_acc01")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNull(viewModel.uiState.value.pendingInterrupt)
+        assertNull(viewModel.uiState.value.pendingInterruptRunId)
+    }
+
+    @Test
+    fun testAutoAllowPolicyRowIsNotPendingInterrupt() {
+        repository.appendEvent(
+            com.foundry.companion.data.model.EventRow(
+                rowid = 51,
+                changeId = 51,
+                eventId = "ev_policy_1",
+                runId = "run_260818_live99",
+                phaseId = "p_3",
+                type = "interrupt",
+                name = "allow (policy)",
+                payload = buildJsonObject { put("auto", true) },
+                startedAt = "23:31:00Z"
+            )
+        )
+
+        viewModel.loadTranscriptEvents("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.pendingInterrupt)
+        assertNull(viewModel.uiState.value.pendingInterruptRunId)
+    }
+
+    @Test
     fun testProtocolMismatchSurfacesErrorAndStopsLoad() {
         val mismatchedRepo = FakeCompanionRepository(initialPaired = true)
         mismatchedRepo.overrideProtocolVersion = COMPANION_PROTOCOL_VERSION - 1
