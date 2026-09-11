@@ -278,6 +278,18 @@ function checkSteps(script) {
   for (const match of script.matchAll(/\bnpm\s+(?!run\b)([\w:.-]+)/g)) {
     if (NPM_BUILTINS.has(match[1])) steps.add(`npm ${match[1]}`);
   }
+
+  // The concurrent runner keeps the complete gate in one explicit, static
+  // list. Read it here so this documentation check keeps enforcing that every
+  // gate remains discoverable from the root guide.
+  if (script === 'node scripts/run-check.mjs') {
+    const runner = readFileSync(join(repoRoot, 'scripts/run-check.mjs'), 'utf8');
+    const checkList = runner.match(/const checks = \[([\s\S]*?)\];/);
+    if (checkList) {
+      for (const match of checkList[1].matchAll(/'([\w:.-]+)'/g)) steps.add(`npm run ${match[1]}`);
+    }
+  }
+
   return [...steps];
 }
 

@@ -20,11 +20,11 @@
     "dev:web": "vite --config vite.web.config.ts",
     "build:web": "vite build --config vite.web.config.ts",
     "preview:web": "vite preview --config vite.web.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit -p tsconfig.json --incremental --tsBuildInfoFile .cache/typecheck.tsbuildinfo",
+    "lint": "eslint . --max-warnings 0 --cache --cache-location .cache/eslint/",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --check . --cache --cache-location .cache/prettier/",
     "knip": "knip",
     "audit:deps": "node scripts/audit-deps.mjs",
     "test": "vitest run",
@@ -40,7 +40,7 @@
     "check:docs": "node scripts/check-docs-commands.mjs",
     "check:files": "node scripts/check-file-sizes.mjs",
     "check:duplicate": "jscpd apps/desktop/src --config .jscpd.json",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm run test:coverage && npm run build && npm run check:css && npm run check:docs && npm run check:files && npm run check:duplicate && npm run audit:deps"
+    "check": "node scripts/run-check.mjs"
   },
   "config": {
     "bridge": {
