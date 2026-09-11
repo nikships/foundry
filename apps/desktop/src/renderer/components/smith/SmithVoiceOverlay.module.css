@@ -1,0 +1,149 @@
+/**
+ * Smith's live voice overlay: the mic button docked in the titlebar band
+ * (beside the Smith launcher, same reserved strip — see SmithBubble.module.css)
+ * and the voice panel that opens above it on any screen.
+ *
+ * The launcher stays mounted on every screen, so voice keeps running while
+ * the operator navigates; only the panel is conditional.
+ */
+
+.anchor {
+  position: fixed;
+  top: 0;
+  right: calc(var(--s5) + 40px);
+  z-index: 70;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: var(--s2);
+  padding-top: calc((var(--titlebar-h) - 32px) / 2);
+  -webkit-app-region: no-drag;
+}
+
+.launcher {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition:
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.launcher:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.launcher[aria-expanded='true'] {
+  background: var(--bg-active);
+  border-color: var(--line);
+  color: var(--accent);
+}
+
+.launcherLive {
+  color: var(--accent);
+}
+
+/* Three slow breaths per second reads as "listening" without urgency. */
+.launcherLive svg {
+  animation: voice-breathe 3.3s var(--ease) infinite;
+}
+
+@keyframes voice-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.panel {
+  width: min(340px, calc(100vw - 2 * var(--s5)));
+  border-radius: var(--r-xl);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 0;
+}
+
+.pill {
+  font-size: var(--text-xs);
+  padding: 2px var(--s2);
+  border-radius: var(--r-full);
+  background: var(--bg-active);
+  color: var(--text-dim);
+}
+
+.pillLive {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.pillError {
+  background: color-mix(in srgb, var(--red) 18%, transparent);
+  color: var(--red);
+}
+
+.line {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  min-height: calc(1.45em * 2);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.lineSpeaking {
+  color: var(--text);
+}
+
+.lineLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin: 0 0 calc(var(--s1) / 2);
+}
+
+.actions {
+  display: flex;
+  gap: var(--s2);
+  justify-content: flex-end;
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.errorText {
+  color: var(--red);
+}

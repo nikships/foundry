@@ -1064,6 +1064,15 @@ export function createMockFoundryApi(): FoundryApi {
       proposalsList: async () => [],
       answerProposal: async () => ({ ok: false, error: 'proposal not found' }),
     },
+    geminiLive: {
+      state: async () => ({
+        keySet: false,
+        detail: 'Web preview uses a fixture Gemini Live state; voice needs the Electron app.',
+      }),
+      setApiKey: async () => unavailable(WEB_PREVIEW),
+      clearApiKey: async () => unavailable(WEB_PREVIEW),
+      mintToken: async () => ({ error: 'Voice mode requires the Electron app.' }),
+    },
     companion: {
       // The web preview has no network host to bind; the pane renders "off".
       state: async () => ({ ...COMPANION_OFF, detail: UNAVAILABLE }),

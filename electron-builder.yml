@@ -48,6 +48,13 @@ mac:
   # than relying on the walker to notice a file under Resources.
   binaries:
     - Contents/Resources/bridge/cli-proxy-api
+  # Smith voice mode captures the microphone; the entitlement admits it under
+  # the hardened runtime and the usage string is the prompt macOS shows.
+  entitlements: assets/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: >-
+      Smith voice mode uses the microphone to talk with you. Audio goes to the
+      Gemini Live API with a short-lived token; nothing is stored.
   target:
     - target: dmg
       arch:
