@@ -1,4 +1,8 @@
 import { existsSync } from 'node:fs';
+import type { SessionHistoryCursor } from '@shared/run-agent-state.js';
+import { readRunAgentState } from '../engine/agent-inspection.js';
+import { deliverPhaseMessage, phaseMessages } from '../engine/phase-messages.js';
+import { readSessionHistory } from '../pi/session-history.js';
 import { shell } from 'electron';
 import type {
   RestorableCheckpointList,
@@ -123,6 +127,34 @@ export function register(ctx: Ctx, handle: Handle): void {
   });
 
   handle(IPC.runsLiveTail, (phaseId: string) => ctx.registry.liveTail(phaseId));
+
+  handle(IPC.runsAgents, (projectId: string, runId: string) => {
+    const scoped = tracerOf(projectId);
+    return scoped ? readRunAgentState(scoped.tracer, runId) : null;
+  });
+  handle(
+    IPC.runsConversation,
+    (projectId: string, runId: string, phaseId: string, cursor?: SessionHistoryCursor) => {
+      const scoped = tracerOf(projectId);
+      return scoped ? readSessionHistory(scoped.tracer, runId, phaseId, cursor) : null;
+    },
+  );
+  handle(IPC.runsMessages, (projectId: string, runId: string) => {
+    const scoped = tracerOf(projectId);
+    return scoped ? phaseMessages(scoped.tracer, runId) : [];
+  });
+  handle(
+    IPC.runsMessagePhase,
+    (projectId: string, runId: string, phaseId: string, text: string) => {
+      const scoped = tracerOf(projectId);
+      if (!scoped) throw new Error('project not found');
+      return deliverPhaseMessage(scoped.tracer, runId, phaseId, text);
+    },
+  );
+  handle(IPC.runsInterruptPhase, (projectId: string, runId: string, phaseId: string) => {
+    const project = projectOf(projectId);
+    return project ? ctx.registry.interruptPhase(project, runId, phaseId) : false;
+  });
 
   handle(
     IPC.runsContextBreakdown,

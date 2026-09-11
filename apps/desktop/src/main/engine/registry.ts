@@ -135,6 +135,12 @@ export class RunRegistry {
     return (this.liveText.get(phaseId) ?? []).join('');
   }
 
+  async interruptPhase(project: ProjectDef, runId: string, phaseId: string): Promise<boolean> {
+    const phase = this.tracerFor(project).phase(phaseId);
+    if (phase?.runId !== runId || phase.status !== 'running') return false;
+    return (await this.live.get(runId)?.executor.interruptPhase(phaseId)) ?? false;
+  }
+
   /**
    * What is filling one agent's context. A breakdown can only be read off a
    * live session, so a finished run answers from the snapshot each turn left

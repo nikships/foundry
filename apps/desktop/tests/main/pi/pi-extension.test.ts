@@ -38,6 +38,7 @@ interface FakeApi {
   }) => Promise<{ block: true; reason: string } | undefined | void>;
   beforeAgentStart?: (event: { systemPrompt: string }) => { systemPrompt: string } | undefined;
   beforeProviderRequest?: (event: { payload: unknown }) => unknown;
+  context?: (event: { messages: unknown[] }) => { messages: unknown[] } | undefined;
   sessionBeforeCompact?: (event: {
     preparation: {
       firstKeptEntryId: string;
@@ -67,6 +68,7 @@ function fakeApi(): {
     },
     on: (event: string, handler: unknown) => {
       if (event === 'tool_call') state.toolCall = handler as FakeApi['toolCall'];
+      if (event === 'context') state.context = handler as FakeApi['context'];
       if (event === 'before_agent_start') {
         state.beforeAgentStart = handler as FakeApi['beforeAgentStart'];
       }
@@ -111,6 +113,7 @@ describe('what the extension registers', () => {
       'report_progress',
       'read_phase_context',
       'git_diff',
+      'acknowledge_direction',
     ]);
   });
 
@@ -152,7 +155,27 @@ describe('what the extension registers', () => {
       'report_progress',
       'read_phase_context',
       'git_diff',
+      'acknowledge_direction',
     ]);
+  });
+
+  it('injects direction at the next model call and invalidates a pre-direction verdict', async () => {
+    const { handle, state } = bind(allow);
+    const envelope = submitEnvelopeTool({ type: 'object' });
+    handle.useEnvelopeTool(envelope);
+    handle.useDirection(() => 'Re-evaluate the four operator rulings.');
+    await envelope.definition.execute('old', { approved: false }, undefined, undefined, {} as never);
+    expect(envelope.submitted()).toEqual({ approved: false });
+    expect(state.context?.({ messages: [] })?.messages).toEqual([
+      expect.objectContaining({ role: 'user', content: 'Re-evaluate the four operator rulings.' }),
+    ]);
+    expect(envelope.submitted()).toBeNull();
+    handle.useDirection(undefined);
+    await envelope.definition.execute('new', { approved: true }, undefined, undefined, {} as never);
+    expect(state.context?.({ messages: [] })).toBeUndefined();
+    expect(envelope.submitted()).toEqual({ approved: true });
+    handle.useDirection(undefined);
+    expect(envelope.submitted()).toBeNull();
   });
 });
 

@@ -3,6 +3,11 @@ import type { SmithActionRisk } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
 import { compactSmithRunEvents } from './event-page.js';
 import {
+  RUN_AGENT_OPERATIONS,
+  runAgentOperation,
+  type RunAgentOperation,
+} from './run-agent-tools.js';
+import {
   booleanField,
   errorMessage,
   field,
@@ -18,6 +23,7 @@ import {
 } from './tool-helpers.js';
 
 export const SMITH_RUN_OPERATIONS = [
+  ...RUN_AGENT_OPERATIONS,
   'list',
   'detail',
   'events',
@@ -50,7 +56,7 @@ type RunReadOperation =
 type LinearRunReadOperation = 'linear_issues' | 'linear_issue' | 'linear_workflow_states';
 type RunActionOperation = Exclude<
   RunOperation,
-  'list' | 'live_tail' | RunReadOperation | LinearRunReadOperation
+  'list' | 'live_tail' | RunReadOperation | LinearRunReadOperation | RunAgentOperation
 >;
 
 /** Project-scoped reads keyed by the id they take. */
@@ -96,7 +102,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_runs',
     label: 'Smith runs',
     description:
-      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt/artifacts(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_issue(issueId), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId). Prefer detail for a failure summary. events returns one small page, never the whole run; pass the returned cursor as afterChangeId to continue.',
+      'Inspect and operate Foundry runs. agents(projectId?,runId) lists phase identities and state; conversation(projectId?,runId,phaseId,cursor?) pages actual session history; messages(projectId?,runId) reads direction audit; message_phase(projectId?,runId,phaseId,text) proposes an exact queued note without resuming; interrupt_phase(projectId?,runId,phaseId) separately proposes interrupting a live turn. Resume remains a separate approval and re-evaluates the first failed phase in its existing worktree/conversation, without re-running successful earlier phases. Other operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt/artifacts(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_issue(issueId), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId). Prefer detail for failure summary. events returns one small page; pass cursor as afterChangeId to continue.',
     parameters: {
       type: 'object',
       properties: {
@@ -105,6 +111,16 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
         includeArchived: { type: 'boolean' },
         runId: { type: 'string' },
         phaseId: { type: 'string' },
+        text: { type: 'string', minLength: 1, maxLength: 12000 },
+        cursor: {
+          type: 'object',
+          properties: {
+            line: { type: 'integer', minimum: 1 },
+            offset: { type: 'integer', minimum: 0 },
+          },
+          required: ['line', 'offset'],
+          additionalProperties: false,
+        },
         afterChangeId: { type: 'number' },
         agent: { type: 'string' },
         pipelineId: { type: 'string' },
@@ -138,6 +154,10 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
       const scope = requireProjectId(field(params, 'projectId'), deps.projectId());
       if (!scope.ok) return json(scope);
       const projectId = scope.projectId;
+
+      if ((RUN_AGENT_OPERATIONS as readonly string[]).includes(op)) {
+        return runAgentOperation(deps, op as RunAgentOperation, projectId, params);
+      }
 
       if (op === 'list') {
         const includeArchived = booleanField(params, 'includeArchived') ?? false;

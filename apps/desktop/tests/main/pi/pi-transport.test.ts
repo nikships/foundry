@@ -462,6 +462,7 @@ describe('opening a session', () => {
       'read_phase_context',
       'git_diff',
       'submit_envelope',
+      'acknowledge_direction',
     ]);
   });
 
@@ -480,6 +481,7 @@ describe('opening a session', () => {
       'read_phase_context',
       'git_diff',
       'submit_envelope',
+      'acknowledge_direction',
     ]);
     for (const tool of ['edit', 'write', 'bash']) {
       expect(spy.creates[0]!.tools).not.toContain(tool);

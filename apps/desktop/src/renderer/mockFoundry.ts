@@ -689,6 +689,13 @@ export function createMockFoundryApi(): FoundryApi {
           'Runs cannot be started in web preview. Use the Electron app (npm run dev).',
         ),
       resume: async () => unavailable(),
+      agents: async () => null,
+      conversation: async () => null,
+      messages: async () => [],
+      messagePhase: async () => {
+        throw new Error('Phase messages require the Electron app.');
+      },
+      interruptPhase: async () => false,
       list: async () => [...MOCK_RUNS],
       detail: async (_projectId, runId): Promise<RunDetail> => {
         const run = MOCK_RUNS.find((r) => r.runId === runId) ?? null;

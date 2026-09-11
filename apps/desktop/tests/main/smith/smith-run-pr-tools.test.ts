@@ -31,6 +31,21 @@ async function approve(h: ReturnType<typeof setup>, params: Record<string, unkno
 }
 
 describe('Smith run and PR tools', () => {
+  it.each(['message_phase', 'interrupt_phase'])('requires separate approval for %s and never resumes implicitly', async (operation) => {
+    const h = setup('runs');
+    const pending = h.execute({ operation, runId: 'r', phaseId: 'phase', text: 'Exact operator ruling' });
+    await vi.waitFor(() => expect(h.queue.list()).toHaveLength(1));
+    expect(h.invoke).not.toHaveBeenCalled();
+    await h.queue.answer(h.queue.list()[0]!.id, { approved: false });
+    await pending;
+    expect(h.invoke).not.toHaveBeenCalled();
+    await approve(h, { operation, runId: 'r', phaseId: 'phase', text: 'Exact operator ruling' });
+    expect(h.invoke).toHaveBeenCalledTimes(1);
+    expect(h.invoke.mock.calls[0]).toEqual(operation === 'message_phase'
+      ? [IPC.runsMessagePhase, 'session', 'r', 'phase', 'Exact operator ruling']
+      : [IPC.runsInterruptPhase, 'session', 'r', 'phase']);
+  });
+
   it.each([
     ['runs', SMITH_RUN_OPERATIONS],
     ['prs', SMITH_PR_OPERATIONS],

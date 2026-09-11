@@ -199,6 +199,17 @@ export class PiTransport implements AgentTransport {
     // Between turns is the only safe moment to change the envelope tool: the
     // model is looking at whatever schema was live when the turn started.
     this.useEnvelopeSchema(opts.outputFormat?.schema ?? null);
+    this.extension.useDirection(() => {
+      const direction = opts.direction?.();
+      if (!direction) return null;
+      const details = { phaseId: this.opts.tools.phaseId() };
+      session.sessionManager.appendCustomMessageEntry('foundry-direction', direction, true, details);
+      session.agent.state.messages.push({
+        role: 'custom', customType: 'foundry-direction', content: direction,
+        display: true, details, timestamp: Date.now(),
+      });
+      return direction;
+    });
     this.extension.useSystemPrompt(opts.systemPrompt ?? null);
     this.events.startTurn();
 
