@@ -320,21 +320,24 @@ function synthesizedPromptIssues(ctx: CompositionContext): ValidationIssue[] {
       issues.push({
         level: 'error',
         where: `agents.${agent.name}.systemPrompt`,
-        message: 'a synthesized agent systemPrompt must state its purpose',
+        message:
+          'a synthesized agent systemPrompt must state its purpose — include the word "purpose" or repeat the purpose line verbatim',
       });
     }
     if (!mentionsWriteBoundary(agent, prompt)) {
       issues.push({
         level: 'error',
         where: `agents.${agent.name}.systemPrompt`,
-        message: 'a synthesized agent systemPrompt must state its write boundary',
+        message:
+          'a synthesized agent systemPrompt must state its write boundary — name the exact paths, "read-only", or "unrestricted"',
       });
     }
     if (!mentionsEnvelopeFields(agent, prompt)) {
       issues.push({
         level: 'error',
         where: `agents.${agent.name}.systemPrompt`,
-        message: 'a synthesized agent systemPrompt must state the envelope fields it fills',
+        message:
+          'a synthesized agent systemPrompt must state the envelope fields it fills — name at least two, such as "status" and "summary"',
       });
     }
     if (!agent.userPrompt.includes('{{request}}')) {
@@ -558,7 +561,7 @@ export const COMPOSITION_RULES: CompositionRule[] = [
   {
     id: 'synthesized-prompts',
     bullet:
-      "A synthesized agent's systemPrompt states its purpose, write boundary, and the envelope fields it must fill — not a one-word instruction. A judge-only reviewer (writes: []) mentions read-only or git_diff. userPrompt includes {{request}} so phase inputs land in context.",
+      'A synthesized agent\'s systemPrompt must itself contain the word "purpose" (or repeat its purpose line verbatim), state the write boundary (the exact paths, "read-only" for a judge, or "unrestricted"), and name at least two envelope fields it fills — not a one-word instruction. The constitution Foundry appends after submit does not count: the checks read only what you wrote. A judge-only reviewer (writes: []) mentions read-only or git_diff. userPrompt includes {{request}} so phase inputs land in context.',
     check: synthesizedPromptIssues,
   },
   {
