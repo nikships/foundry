@@ -19,7 +19,7 @@ More specific `AGENTS.md` files define local contracts. Read the closest one bef
 ## Non-negotiable boundaries
 
 - **Main owns privilege.** Renderer code never imports `fs`, `child_process`, `electron`, or `src/main`. Capabilities flow through `shared/ipc-contract.ts` → `main/ipc/` → `preload/bridge.ts` → `renderer/api.ts`. Never add a generic channel passthrough.
-- **Runs are isolated.** Each run uses `.foundry-worktrees/<runId>` on `foundry/<runId>`. Never modify or push engine-owned `.foundry-worktrees/` branches directly.
+- **One worktree per pipeline.** Each run uses `.foundry-worktrees/<runId>` on `foundry/<runId>`. Every phase of that run shares that one worktree; workers do not get their own. Never modify engine-owned `.foundry-worktrees/` directories by hand. The `open_pr` agent commits remaining work and pushes `foundry/<runId>`.
 - **Phases fail closed.** A phase starts failed and succeeds only after a clean exit, valid envelope, and passing gates. Write boundaries are enforced after the call by diffing git.
 - **Tracer is the only SQLite writer.** Polling uses `change_id` as the cursor and `rowid` as display order. Every insert and update gets a new `change_id`.
 - **`finish()` settles completion atomically.** Run status, operator-facing outcome, notification, and banner must not be updated independently.

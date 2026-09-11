@@ -67,6 +67,27 @@ export const agentSchema = z.object({
 const REMOVED_AGENT_FIELDS = ['tools', 'disabledTools'] as const;
 const TOOL_PROFILES = new Set(['full', 'read-only']);
 
+const SHIPPED_PR_WRITER = BUILTIN_AGENTS.find((agent) => agent.name === 'pr_writer');
+
+/**
+ * The shipped PR writer used to be read-only and draft-only. Refresh that
+ * exact older seed so existing installs pick up commit-and-push without
+ * clobbering a fork or a hand-edited writer.
+ */
+function refreshLegacyPrWriter(agent: AgentDef): AgentDef {
+  if (
+    !SHIPPED_PR_WRITER ||
+    agent.name !== 'pr_writer' ||
+    agent.builtin !== true ||
+    agent.toolProfile !== 'read-only' ||
+    !Array.isArray(agent.writes) ||
+    agent.writes.length !== 0
+  ) {
+    return agent;
+  }
+  return structuredClone(SHIPPED_PR_WRITER);
+}
+
 /**
  * Normalize-on-read for a stored agent: an older file may carry the two tool
  * lists nothing ever read, or a `toolProfile` from the wider enum that used to
@@ -124,7 +145,7 @@ export class RosterStore {
         // hides its own Delete button. The flag says where an agent came from,
         // so a name that was never shipped cannot legitimately carry it.
         const list = Array.isArray(raw) ? (raw as AgentDef[]).map(normalizeAgent) : [];
-        return seedBuiltins(list, BUILTIN_AGENTS, (agent) => agent.name);
+        return seedBuiltins(list, BUILTIN_AGENTS, (agent) => agent.name).map(refreshLegacyPrWriter);
       },
     );
   }

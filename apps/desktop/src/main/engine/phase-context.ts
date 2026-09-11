@@ -70,8 +70,8 @@ export interface RunContext {
   /** The trace phase id queued up front for this phase name. */
   phaseId(name: string): string;
   /**
-   * Push the run branch and open (or discover) the PR. Engine-owned: the
-   * agent only drafts title/body. Failure is the exact gh/git error.
+   * Open (or discover) the PR after the agent has committed and pushed.
+   * Engine-owned create/discover: failure is the exact gh/git error.
    */
   recordPr(input: { title: string; body: string }): Promise<PrAction>;
   /**

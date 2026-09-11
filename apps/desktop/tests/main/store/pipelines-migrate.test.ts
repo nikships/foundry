@@ -218,4 +218,62 @@ describe('loading a pipelines file', () => {
     writeStored([{ ...BUILTIN_PIPELINES[0]!, canvas: { nodes: { plan: { x: 20, y: 40 } } } }]);
     expect(new PipelineStore(dir).staleBuiltins()).not.toContain(BUILTIN_PIPELINES[0]!.id);
   });
+
+  it('refreshes a shipped chain that still has the old git_commit phases', () => {
+    const stale: PipelineDef = {
+      id: 'build-pr',
+      name: 'Plan → Build → Test → PR',
+      description: 'The previous shipped chain, with engine-owned commits.',
+      acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      builtin: true,
+      phases: [
+        { name: 'plan', kind: 'agent', agent: 'planner', description: 'Write the plan.' },
+        {
+          name: 'commit_plan',
+          kind: 'code',
+          description: 'Record the plan.',
+          command: { builtin: 'git_commit' },
+        },
+        { name: 'build', kind: 'agent', agent: 'builder', description: 'Implement the plan.' },
+        { name: 'test', kind: 'code', description: 'Prove the build.', command: { ref: 'test' } },
+        {
+          name: 'commit_build',
+          kind: 'code',
+          description: 'Record the build.',
+          command: { builtin: 'git_commit' },
+        },
+        { name: 'open_pr', kind: 'agent', agent: 'pr_writer', description: 'Open the PR.' },
+      ],
+    };
+    writeStored([stale]);
+    const store = new PipelineStore(dir);
+    expect(store.get('build-pr')?.phases.map((phase) => phase.name)).toEqual(
+      BUILTIN_PIPELINES.find((pipeline) => pipeline.id === 'build-pr')?.phases.map(
+        (phase) => phase.name,
+      ),
+    );
+    expect(store.get('build-pr')?.description).toBe(
+      BUILTIN_PIPELINES.find((pipeline) => pipeline.id === 'build-pr')?.description,
+    );
+  });
+
+  it('keeps a shipped chain the user extended with an extra phase', () => {
+    const shipped = BUILTIN_PIPELINES.find((pipeline) => pipeline.id === 'build-pr')!;
+    const edited: PipelineDef = {
+      ...shipped,
+      phases: [
+        ...shipped.phases,
+        {
+          name: 'extra',
+          kind: 'code',
+          description: 'A phase the user added.',
+          command: { builtin: 'noop' },
+        },
+      ],
+    };
+    writeStored([edited]);
+    expect(new PipelineStore(dir).get('build-pr')?.phases.map((phase) => phase.name)).toContain(
+      'extra',
+    );
+  });
 });

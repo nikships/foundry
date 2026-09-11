@@ -6,8 +6,8 @@
  *
  * The shipped chains also carry two structural promises that no single phase
  * can see: every phase that edits code is proven by the project's test command
- * before the commit that records it, and every chain ends in a pull request
- * the engine actually opened. Those are pinned per pipeline below.
+ * before open_pr commits it, and every chain ends in a pull request the
+ * engine actually opened. Those are pinned per pipeline below.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -48,7 +48,9 @@ const agentByName = (name: string) => BUILTIN_AGENTS.find((a) => a.name === name
 function codeEditingPhases(pipeline: PipelineDef): PhaseDef[] {
   return pipeline.phases.filter((phase) => {
     if (phase.kind !== 'agent') return false;
-    return agentByName(phase.agent!)?.writes === null;
+    const agent = agentByName(phase.agent!);
+    if (!agent || agent.envelope === 'pr') return false;
+    return agent.writes === null;
   });
 }
 
@@ -86,7 +88,7 @@ describe('shipped agents', () => {
    * tool list is the allowlist, so these agents have nothing that could write.
    */
   it('backs every "read-only" claim with the read-only tool profile', () => {
-    for (const name of ['refiner', 'scout', 'reviewer', 'pr_writer', 'issue_writer']) {
+    for (const name of ['refiner', 'scout', 'reviewer', 'issue_writer']) {
       const agent = agentByName(name)!;
       expect(agent.toolProfile, name).toBe('read-only');
       expect(agent.writes, name).toEqual([]);
@@ -94,7 +96,7 @@ describe('shipped agents', () => {
   });
 
   it('leaves the writing agents on the full surface, shell included', () => {
-    for (const name of ['planner', 'builder', 'finisher', 'documenter']) {
+    for (const name of ['planner', 'builder', 'finisher', 'documenter', 'pr_writer']) {
       expect(agentByName(name)?.toolProfile, name).toBeUndefined();
     }
   });
@@ -121,7 +123,7 @@ describe('shipped agents', () => {
     // Removing `bash` removed `git diff`, and the stat block `runners/agent.ts`
     // injects is a file list that cannot say what changed inside a file. The
     // tool is the replacement, so the prompt has to name it.
-    for (const name of ['reviewer', 'pr_writer']) {
+    for (const name of ['reviewer']) {
       const prompts = `${agentByName(name)!.systemPrompt}\n${agentByName(name)!.userPrompt}`;
       expect(prompts, name).toContain('`git_diff`');
       expect(prompts, name).toMatch(/no shell/i);
@@ -283,7 +285,7 @@ describe('shipped pipelines', () => {
       'sdlc-pr',
     ]);
     for (const pipeline of BUILTIN_PIPELINES) {
-      expect(pipeline.phases.length, `${pipeline.id} is multi-phase`).toBeGreaterThanOrEqual(4);
+      expect(pipeline.phases.length, `${pipeline.id} is multi-phase`).toBeGreaterThanOrEqual(3);
       expect(pipeline.phases.at(-1)?.name, `${pipeline.id} ends in open_pr`).toBe('open_pr');
     }
   });
@@ -293,7 +295,7 @@ describe('shipped pipelines', () => {
    * a pull request carrying implementation work or a spec. The PR phase is
    * pinned as the terminal phase above; this pins the artifact the PR carries:
    * either an unrestricted code-editing phase ran, or a planner phase wrote a
-   * spec and a commit phase recorded it before the PR opened.
+   * spec that open_pr will commit.
    */
   it('gives every chain a tangible artifact for its PR: code changes or a committed spec', () => {
     for (const pipeline of BUILTIN_PIPELINES) {
@@ -301,13 +303,10 @@ describe('shipped pipelines', () => {
       const specIndex = pipeline.phases.findIndex(
         (p) => p.kind === 'agent' && agentByName(p.agent!)?.writes?.includes('specs/'),
       );
-      const commitAfterSpec =
-        specIndex >= 0 &&
-        pipeline.phases
-          .slice(specIndex + 1)
-          .some((p) => p.kind === 'code' && p.command && 'builtin' in p.command);
+      const prAfterSpec =
+        specIndex >= 0 && pipeline.phases.slice(specIndex + 1).some((p) => p.name === 'open_pr');
       expect(
-        editsCode || commitAfterSpec,
+        editsCode || prAfterSpec,
         `${pipeline.id} produces implementation changes or a committed spec`,
       ).toBe(true);
     }
@@ -335,62 +334,46 @@ describe('shipped pipelines', () => {
   it('pins the phase order of each chain', () => {
     expect(byId('build-pr').phases.map((p) => p.name)).toEqual([
       'plan',
-      'commit_plan',
       'build',
       'test',
-      'commit_build',
       'open_pr',
     ]);
     expect(byId('fix-pr').phases.map((p) => p.name)).toEqual([
       'diagnose',
       'fix',
       'test',
-      'commit_fix',
       'open_pr',
     ]);
-    expect(byId('spec-pr').phases.map((p) => p.name)).toEqual([
-      'survey',
-      'spec',
-      'commit_spec',
-      'open_pr',
-    ]);
+    expect(byId('spec-pr').phases.map((p) => p.name)).toEqual(['survey', 'spec', 'open_pr']);
     expect(byId('triage-issue-pr').phases.map((p) => p.name)).toEqual([
       'diagnose',
       'file_issue',
       'spec',
-      'commit_spec',
       'open_pr',
     ]);
     expect(byId('ship-pr').phases.map((p) => p.name)).toEqual([
       'refine',
       'plan',
-      'commit_plan',
       'build',
       'test',
-      'commit_build',
       'production_check',
       'verify',
-      'commit_polish',
       'open_pr',
     ]);
     expect(byId('sdlc-pr').phases.map((p) => p.name)).toEqual([
       'refine',
       'plan',
-      'commit_plan',
       'build',
       'test',
-      'commit_build',
       'production_check',
       'verify',
-      'commit_polish',
       'review',
       'document',
-      'commit_docs',
       'open_pr',
     ]);
   });
 
-  it('never commits or opens a PR on unproven code: every code edit is followed by a test run before its commit', () => {
+  it('never records unproven code: every code edit is followed by a test run before open_pr commits', () => {
     for (const pipeline of BUILTIN_PIPELINES) {
       for (const phase of codeEditingPhases(pipeline)) {
         const index = pipeline.phases.findIndex((p) => p.name === phase.name);
@@ -398,17 +381,15 @@ describe('shipped pipelines', () => {
         const testIndex = after.findIndex(
           (p) => p.kind === 'code' && p.command && 'ref' in p.command && p.command.ref === 'test',
         );
-        const commitIndex = after.findIndex(
-          (p) => p.kind === 'code' && p.command && 'builtin' in p.command,
-        );
+        const prIndex = after.findIndex((p) => p.name === 'open_pr');
         expect(
           testIndex,
           `${pipeline.id}/${phase.name} is followed by a test phase`,
         ).toBeGreaterThanOrEqual(0);
         expect(
           testIndex,
-          `${pipeline.id}/${phase.name}: the test runs before the commit that records it`,
-        ).toBeLessThan(commitIndex === -1 ? Number.POSITIVE_INFINITY : commitIndex);
+          `${pipeline.id}/${phase.name}: the test runs before open_pr commits`,
+        ).toBeLessThan(prIndex === -1 ? Number.POSITIVE_INFINITY : prIndex);
       }
     }
   });
@@ -457,15 +438,15 @@ describe('shipped pipelines', () => {
     }
   });
 
-  it('re-proves the production-check fixes before committing them', () => {
+  it('re-proves the production-check fixes before open_pr commits them', () => {
     for (const id of ['ship-pr', 'sdlc-pr']) {
       const names = byId(id).phases.map((p) => p.name);
       const check = names.indexOf('production_check');
       const verify = names.indexOf('verify');
-      const polish = names.indexOf('commit_polish');
+      const openPr = names.indexOf('open_pr');
       expect(check, id).toBeGreaterThanOrEqual(0);
       expect(verify, id).toBe(check + 1);
-      expect(polish, id).toBe(verify + 1);
+      expect(openPr, id).toBeGreaterThan(verify);
       const verifyPhase = byId(id).phases[verify]!;
       expect(verifyPhase.feedbackTo).toBe('production_check');
     }
@@ -554,14 +535,17 @@ describe('shipped pipelines', () => {
     expect(writer?.systemPrompt).toContain('Title: imperative, ≤72 characters');
   });
 
-  it('ships a read-only pr_writer that drafts a pr envelope', () => {
+  it('ships a write-capable pr_writer that commits, pushes, and drafts a pr envelope', () => {
     const writer = agentByName('pr_writer');
     expect(writer).toBeDefined();
     expect(writer?.envelope).toBe('pr');
-    expect(writer?.writes).toEqual([]);
+    expect(writer?.writes).toBeNull();
+    expect(writer?.toolProfile).toBeUndefined();
     expect(writer?.builtin).toBe(true);
     expect(writer?.userPrompt).toContain('{{request}}');
-    expect(writer?.systemPrompt).toContain('Do not create, edit, or delete any file');
+    expect(writer?.systemPrompt).toContain('Commit every remaining change');
+    expect(writer?.systemPrompt).toContain('Push the current branch');
+    expect(writer?.systemPrompt).toContain('Do not create another worktree');
     expect(writer?.systemPrompt).toContain('no raw `git diff`');
     expect(writer?.systemPrompt).toContain('no invented issue numbers');
 

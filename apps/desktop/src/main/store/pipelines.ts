@@ -98,6 +98,61 @@ export const pipelineSchema = z.object({
  */
 const REMOVED_PHASE_FIELDS = ['toolProfile', 'tools', 'timeoutMs', 'question'] as const;
 
+/** Phase names the shipped chains used when commits were engine-owned code phases. */
+const LEGACY_COMMIT_PHASE_NAMES: Record<string, readonly string[]> = {
+  'build-pr': ['plan', 'commit_plan', 'build', 'test', 'commit_build', 'open_pr'],
+  'fix-pr': ['diagnose', 'fix', 'test', 'commit_fix', 'open_pr'],
+  'spec-pr': ['survey', 'spec', 'commit_spec', 'open_pr'],
+  'triage-issue-pr': ['diagnose', 'file_issue', 'spec', 'commit_spec', 'open_pr'],
+  'ship-pr': [
+    'refine',
+    'plan',
+    'commit_plan',
+    'build',
+    'test',
+    'commit_build',
+    'production_check',
+    'verify',
+    'commit_polish',
+    'open_pr',
+  ],
+  'sdlc-pr': [
+    'refine',
+    'plan',
+    'commit_plan',
+    'build',
+    'test',
+    'commit_build',
+    'production_check',
+    'verify',
+    'commit_polish',
+    'review',
+    'document',
+    'commit_docs',
+    'open_pr',
+  ],
+};
+
+function samePhaseNames(pipeline: PipelineDef, expected: readonly string[]): boolean {
+  if (pipeline.phases.length !== expected.length) return false;
+  return pipeline.phases.every((phase, index) => phase.name === expected[index]);
+}
+
+/**
+ * Refresh an unedited shipped chain that still has the old `git_commit`
+ * phases so `open_pr` becomes the commit-and-push owner. A user who added,
+ * removed, or renamed a phase keeps their copy.
+ */
+function refreshLegacyCommitPipeline(pipeline: PipelineDef): PipelineDef {
+  if (pipeline.builtin !== true) return pipeline;
+  const shipped = BUILTIN_PIPELINES.find((candidate) => candidate.id === pipeline.id);
+  const legacy = LEGACY_COMMIT_PHASE_NAMES[pipeline.id];
+  if (!shipped || !legacy || !samePhaseNames(pipeline, legacy)) return pipeline;
+  const next = structuredClone(shipped);
+  const canvas = stripCanvasNodes(pipeline.canvas, new Set(next.phases.map((phase) => phase.name)));
+  return canvas === next.canvas ? next : { ...next, canvas };
+}
+
 function normalizePipeline(pipeline: PipelineDef): PipelineDef {
   const phases = pipeline.phases ?? [];
   const nextPhases = phases
@@ -145,7 +200,9 @@ export class PipelineStore {
         // an ordinary deletable pipeline rather than one a restore of missing
         // shipped ids would fight over; its content is user state and stays.
         const list = Array.isArray(raw) ? (raw as PipelineDef[]).map(normalizePipeline) : [];
-        return seedBuiltins(list, BUILTIN_PIPELINES, (pipeline) => pipeline.id);
+        return seedBuiltins(list, BUILTIN_PIPELINES, (pipeline) => pipeline.id).map(
+          refreshLegacyCommitPipeline,
+        );
       },
     );
   }

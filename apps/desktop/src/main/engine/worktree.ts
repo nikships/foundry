@@ -1,7 +1,7 @@
 /**
- * Per-run git worktree: the isolation SSSF documents as "the obvious next
- * thing". A run works on its own branch in its own directory, so a failed run
- * leaves the repo exactly as it was and its work still reviewable.
+ * One git worktree per pipeline run. Every worker in that run shares it;
+ * phases do not get their own trees. A failed run leaves the repo exactly
+ * as it was and its work still reviewable.
  *
  * Kill or crash deliberately leaves the worktree in place; the orphan sweep
  * lists abandoned ones for Settings → Maintenance rather than deleting work

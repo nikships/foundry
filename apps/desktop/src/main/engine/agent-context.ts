@@ -81,7 +81,7 @@ export function agentSystemRole(input: {
     const location =
       input.cwd === input.projectPath
         ? `Shell commands run from the project checkout at ${input.cwd}; this run is not isolated.`
-        : `Shell commands run from the isolated run worktree at ${input.cwd}.`;
+        : `Shell commands run from this pipeline's worktree at ${input.cwd}. Every phase of the run shares it.`;
     const shell = [
       '# Worktree and shell',
       '',

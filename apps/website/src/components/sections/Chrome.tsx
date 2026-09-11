@@ -95,7 +95,7 @@ export function Hero() {
           <p className="mt-7 max-w-[50ch] text-[17px] leading-[1.65] text-text-dim">
             A native macOS app that runs your delivery lifecycle as data — phases, checks,
             boundaries, human checkpoints — with a different model on every seat, mixed freely
-            across providers, in an isolated git worktree that ends in a pull request.{' '}
+            across providers, in one shared git worktree that ends in a pull request.{' '}
             <strong className="font-medium text-text">Agent proposes. Code disposes.</strong>
           </p>
 

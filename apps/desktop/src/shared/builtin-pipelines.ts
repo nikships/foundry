@@ -6,8 +6,8 @@
  * rules by construction:
  *
  *   1. Nothing is recorded unproven. Every phase that edits code is followed by
- *      the project's test command before the commit that records it — including
- *      the production check, whose fixes land after `build` was already proven.
+ *      the project's test command before `open_pr` commits it — including the
+ *      production check, whose fixes are re-proven before that commit.
  *   2. A rejection halts. `disapproval_halts` requires a disapproving verdict
  *      to report `status: "fail"`, which aborts the phase, so disapproved work
  *      can never flow on into a commit or a pull request.
@@ -51,14 +51,6 @@ function planPhase(refined = false): PhaseDef {
   };
 }
 
-function commitPlanPhase(): PhaseDef {
-  return commitPhase(
-    'commit_plan',
-    'plan',
-    'Record the spec as its own commit so the plan has a history separate from the work.',
-  );
-}
-
 function refinedRequest(inputs: string[]): string[] {
   return ['envelope:refine.improved_request', ...inputs];
 }
@@ -99,28 +91,6 @@ function testPhase(feedbackTo: string, name = 'test'): PhaseDef {
   };
 }
 
-function commitPhase(
-  name: string,
-  from: string,
-  description: string,
-  field = 'commit_message',
-): PhaseDef {
-  return {
-    name,
-    kind: 'code',
-    description,
-    command: { builtin: 'git_commit', messageFrom: `envelope:${from}.${field}` },
-  };
-}
-
-function commitBuildPhase(): PhaseDef {
-  return commitPhase(
-    'commit_build',
-    'build',
-    'Commit the implementation once its tests are green.',
-  );
-}
-
 /**
  * The one phase allowed to both judge and fix: a gap it only reported would
  * leave the run rejected with the work still short of the bar.
@@ -137,15 +107,6 @@ function productionCheckPhase(): PhaseDef {
     gates: ['verdict_consistent', 'disapproval_halts'],
     prompt: { inputs: refinedRequest(['envelope:build', 'envelope:refine']) },
   };
-}
-
-function commitPolishPhase(): PhaseDef {
-  return commitPhase(
-    'commit_polish',
-    'production_check',
-    'Commit the production-check fixes separately from the implementation they polish.',
-    'summary',
-  );
 }
 
 /**
@@ -185,19 +146,11 @@ function documentPhase(): PhaseDef {
   };
 }
 
-function commitDocsPhase(): PhaseDef {
-  return commitPhase(
-    'commit_docs',
-    'document',
-    'Commit the documentation separately so docs churn stays out of the code diff.',
-    'summary',
-  );
-}
-
 /**
- * Drafts the PR envelope, then the engine — not the agent — pushes
- * `foundry/<runId>` and runs `gh pr create`. A missing PR number or URL fails
- * the phase, and the executor hard-rejects a run whose PR phase aborted, so
+ * The PR agent commits remaining work on the shared pipeline worktree, pushes
+ * the run branch, and drafts the PR envelope. The engine then creates or
+ * discovers the GitHub pull request. A missing PR number or URL fails the
+ * phase, and the executor hard-rejects a run whose PR phase aborted, so
  * "accepted" always means "the pull request exists".
  */
 function prPhase(inputs: string[], refined = false): PhaseDef {
@@ -206,7 +159,7 @@ function prPhase(inputs: string[], refined = false): PhaseDef {
     kind: 'agent',
     agent: 'pr_writer',
     description:
-      'Open a pull request with a human-readable title and body, following the repo PR template when present.',
+      'Commit remaining work, push the branch, and open a pull request with a human-readable title and body.',
     prompt: { inputs: refined ? refinedRequest(inputs) : ['request', ...inputs] },
   };
 }
@@ -252,18 +205,15 @@ function specPhase(inputs: string[], description: string): PhaseDef {
   };
 }
 
-/** Refine → plan → build → test → commit → ship bar → re-test → commit. */
+/** Refine → plan → build → test → ship bar → re-test. */
 function shipPhases(): PhaseDef[] {
   return [
     refinePhase(),
     planPhase(true),
-    commitPlanPhase(),
     buildPhase(true),
     testPhase('build'),
-    commitBuildPhase(),
     productionCheckPhase(),
     testPhase('production_check', 'verify'),
-    commitPolishPhase(),
   ];
 }
 
@@ -277,10 +227,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
     builtin: true,
     phases: [
       planPhase(),
-      commitPlanPhase(),
       buildPhase(),
       testPhase('build'),
-      commitBuildPhase(),
       prPhase(['envelope:plan', 'envelope:build']),
     ],
   },
@@ -305,7 +253,6 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         prompt: { inputs: ['request', 'envelope:diagnose'] },
       },
       testPhase('fix'),
-      commitPhase('commit_fix', 'fix', 'Commit the fix once its tests are green.'),
       prPhase(['envelope:diagnose', 'envelope:fix']),
     ],
   },
@@ -324,11 +271,6 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
       specPhase(
         ['request', 'envelope:survey'],
         'Write the implementable spec under specs/, grounded in what the survey actually found.',
-      ),
-      commitPhase(
-        'commit_spec',
-        'spec',
-        'Record the spec as the single commit the pull request will carry.',
       ),
       prPhase(['envelope:survey', 'envelope:spec']),
     ],
@@ -350,11 +292,6 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         ['request', 'envelope:diagnose'],
         'Write the implementable fix spec under specs/, grounded in the diagnosed evidence.',
       ),
-      commitPhase(
-        'commit_spec',
-        'spec',
-        'Record the fix spec as the single commit the pull request will carry.',
-      ),
       prPhase(['envelope:diagnose', 'envelope:file_issue', 'envelope:spec']),
     ],
   },
@@ -374,14 +311,13 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
     id: 'sdlc-pr',
     name: 'Full SDLC → PR',
     description:
-      'Refine, plan, build, test, polish, re-test, review, and document — committing at each proven boundary — then open the pull request.',
+      'Refine, plan, build, test, polish, re-test, review, and document, then commit, push, and open the pull request.',
     acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
     phases: [
       ...shipPhases(),
       reviewPhase(),
       documentPhase(),
-      commitDocsPhase(),
       prPhase(
         [
           'envelope:plan',
