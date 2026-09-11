@@ -1,10 +1,17 @@
+import { AlertTriangle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { EnvelopeRow, EventRow, GateResultRow, PhaseRow } from '@shared/types.js';
 import { modelLabel } from '@shared/model-label.js';
 import { api } from '../../api.js';
 import { useApp } from '../../stores/app.js';
 import { clockTime, duration, tokens } from '../../utils/format.js';
-import { isAutoAllowPolicy, modelFor, phaseDuration, usageFor } from '../../utils/derive.js';
+import {
+  isAutoAllowPolicy,
+  modelFallbackFor,
+  modelFor,
+  phaseDuration,
+  usageFor,
+} from '../../utils/derive.js';
 import StatusBadge from '../common/StatusBadge.js';
 import AgentAvatar from '../media/AgentAvatar.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
@@ -108,6 +115,7 @@ export default function PhaseDrawer({
 
   const usage = useMemo(() => usageFor(events), [events]);
   const model = useMemo(() => modelFor(events), [events]);
+  const fallback = useMemo(() => modelFallbackFor(events), [events]);
   const elapsed = useMemo(() => phaseDuration(phase, now), [phase, now]);
   const timelineEvents = useMemo(
     () => events.filter((event) => !isAutoAllowPolicy(event)),
@@ -204,7 +212,20 @@ export default function PhaseDrawer({
           <p className={`faint ${styles.sub} mono`}>
             {phase.kind}
             {phase.owner ? ` · ${phase.owner}` : ''}
-            {model ? ` · ${modelLabel(model)}` : ''} · {duration(elapsed)}
+            {fallback ? (
+              <>
+                {' · '}
+                <span className={styles.subFallback} title={fallback.message}>
+                  <AlertTriangle size={11} aria-hidden="true" className={styles.subFallbackIcon} />
+                  {modelLabel(fallback.fallbackModel)}
+                </span>
+              </>
+            ) : model ? (
+              ` · ${modelLabel(model)}`
+            ) : (
+              ''
+            )}{' '}
+            · {duration(elapsed)}
             {usage.reported ? ` · ${tokens(usage.totalTokens)} tok` : ''}
           </p>
         </div>

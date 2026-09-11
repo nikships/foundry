@@ -130,8 +130,9 @@ export class AgentPhaseRunner implements PhaseRunner {
       payload: {
         // The session's values, not the roster's: `inherit` has already been
         // resolved against the run default, so the event stream names the
-        // model that actually serves the turn.
-        model: session.model,
+        // model that actually serves the turn. After a mid-turn failover
+        // that is the replacement model, not the roster value.
+        model: session.activeModel,
         reasoningEffort: session.reasoningEffort,
         writes: boundary.describeBoundary(agent.writes),
         mode: session.currentMode,
