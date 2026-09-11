@@ -39,7 +39,7 @@ jobs:
         with:
           fetch-depth: 1
       - name: Run Droid Exec
-        uses: Factory-AI/droid-action@main
+        uses: Factory-AI/droid-action@v7
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           droid_args: '--skip-permissions-unsafe -m glm-5.3-flash'
