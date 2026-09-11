@@ -683,7 +683,7 @@ describe('agent phases', () => {
     expect(system).toContain('# Repository context');
     expect(system).toContain('## Stack\nTypeScript');
     expect(system).toContain(
-      `isolated run worktree at ${h.tracer.run(outcome.runId)!.worktreePath}`,
+      `this pipeline's worktree at ${h.tracer.run(outcome.runId)!.worktreePath}`,
     );
     expect(system).toContain('Setup ran printf setup-complete — exit 0.');
   });
@@ -4152,8 +4152,8 @@ describe('a session that will not start (VAL-PROD-012)', () => {
 });
 
 /**
- * FOU-17 — the PR phase is an ordinary agent phase whose envelope the engine
- * acts on: it pushes `foundry/<runId>` and runs `gh pr create`, then records
+ * FOU-17 — the PR phase is an ordinary agent phase: the writer commits and
+ * pushes, then the engine runs `gh pr create` from the envelope and records
  * the number and URL on the run. FOU-15 governs the failures: every one is a
  * hard fail carrying the exact error, and none of them invents a PR.
  */

@@ -8,6 +8,12 @@
  * Foundry's support dir, and reports ready only after the port accepts a
  * connection.
  *
+ * Once `ensure()` has been asked to keep the Bridge up, the manager supervises
+ * it for the rest of the app lifetime: an unexpected exit or a dead listen
+ * socket schedules a respawn with backoff, and a watchdog probes the port so a
+ * silent hang does not leave agents on a dead proxy. `shutdown()` is the only
+ * path that stops that supervision — a quit must still leave no orphan.
+ *
  * Concurrent `ensure()` calls share one in-flight attempt, spawn and health are
  * injected seams so a test drives the real object, and failure returns
  * `{ok:false, reason}` rather than throwing — a Bridge that will not start must
@@ -34,6 +40,18 @@ export const DEFAULT_BRIDGE_PORT = 37_717;
 
 /** How long ensure() waits for the child to accept TCP after spawn. */
 export const BRIDGE_HEALTH_TIMEOUT_MS = 15_000;
+
+/** First delay before an unexpected-exit respawn. Doubles up to the max. */
+export const BRIDGE_RESPAWN_BASE_MS = 500;
+
+/** Cap on respawn backoff so a flapping child is still recovered promptly. */
+export const BRIDGE_RESPAWN_MAX_MS = 30_000;
+
+/** How often a supervised Bridge is probed while the app wants it up. */
+export const BRIDGE_WATCHDOG_MS = 5_000;
+
+/** Retained stderr from the child, for the exit warning. */
+const STDERR_TAIL_CHARS = 4_000;
 
 /**
  * The `name` every Bridge `processes` row carries.
@@ -76,6 +94,12 @@ export interface BridgeProcessInfo {
   command: string;
 }
 
+export interface BridgeExitInfo {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  stderr: string;
+}
+
 export interface BridgeManagerOptions {
   /** Foundry's Application Support directory; config and auth live under it. */
   supportDir: string;
@@ -89,6 +113,12 @@ export interface BridgeManagerOptions {
   isPortOpen?: (port: number) => Promise<boolean>;
   healthTimeoutMs?: number;
   healthPollMs?: number;
+  /** Test seam: first respawn delay after an unexpected exit. */
+  respawnBaseMs?: number;
+  /** Test seam: respawn backoff ceiling. */
+  respawnMaxMs?: number;
+  /** Test seam: watchdog interval while supervised. */
+  watchdogMs?: number;
   debug?: boolean;
   /** Invoked once when the child is first recorded (wire to tracer.recordProcess). */
   onProcess?: (info: BridgeProcessInfo) => void;
@@ -98,6 +128,14 @@ export interface BridgeManagerOptions {
    * per reported child, and none for a child that was never reported.
    */
   onProcessEnd?: () => void;
+  /**
+   * Invoked whenever a child becomes healthy — the first start and every
+   * supervised respawn. The service regenerates models.json here so a port
+   * change after scan-up cannot leave the picker pointing at a dead endpoint.
+   */
+  onBecameReady?: (info: BridgeProcessInfo) => void;
+  /** Invoked when a supervised child exits without `shutdown()` / `killChild`. */
+  onUnexpectedExit?: (info: BridgeExitInfo) => void;
   /** Observability for tests asserting what argv the Bridge is started with. */
   onSpawnAttempt?: (argv: string[]) => void;
 }
@@ -110,6 +148,15 @@ export class BridgeManager {
   private recordedPid: number | null = null;
   private ensuring: Promise<BridgeEnsureResult> | null = null;
   private lastFailure: { reason: BridgeUnavailableReason; detail: string } | null = null;
+  /**
+   * Set by `ensure()` and cleared only by `shutdown()`. While true, unexpected
+   * exits and a failed listen probe schedule a respawn rather than staying down.
+   */
+  private wanted = false;
+  private respawnAttempt = 0;
+  private respawnTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private stderrTail = '';
 
   constructor(private readonly opts: BridgeManagerOptions) {}
 
@@ -162,29 +209,37 @@ export class BridgeManager {
   }
 
   /**
-   * Start the Bridge. App launch is the first caller; later calls are retries
-   * or idempotent readiness checks. Concurrent callers share one in-flight
-   * attempt, so two paths cannot produce two children. Never throws.
+   * Start the Bridge and keep it up for the rest of the app lifetime.
+   * Concurrent callers share one in-flight attempt, so two paths cannot
+   * produce two children. Never throws.
    */
   ensure(): Promise<BridgeEnsureResult> {
+    this.wanted = true;
+    this.armWatchdog();
     if (this.running && this.activePort && this.child?.pid) {
       return Promise.resolve(this.ready(this.activePort, this.child.pid));
     }
     if (this.ensuring) return this.ensuring;
+    this.clearRespawnTimer();
     this.ensuring = this.start().finally(() => {
       this.ensuring = null;
     });
     return this.ensuring;
   }
 
-  /** SIGTERM, then SIGKILL if it will not go. Idempotent. */
+  /** Stop supervision, then SIGTERM / SIGKILL. Idempotent. */
   async shutdown(): Promise<void> {
+    this.wanted = false;
+    this.clearRespawnTimer();
+    this.clearWatchdog();
     await this.killChild();
     this.argv = [];
   }
 
   private async start(): Promise<BridgeEnsureResult> {
-    // Drop a half-open previous attempt before retrying.
+    // Drop a half-open previous attempt before retrying. killChild nulls
+    // `this.child` first so the previous exit handler does not schedule a
+    // respawn for an intentional stop.
     await this.killChild();
 
     const binary = this.binary();
@@ -215,6 +270,10 @@ export class BridgeManager {
       const spawnFn = this.opts.spawn ?? spawn;
       child = spawnFn(binary, args, {
         env: spawnEnv(),
+        // Pipes stay attached so an unexpected exit can be diagnosed from the
+        // child's own stderr. The Bridge stays in Foundry's process group
+        // (`detached: false`) so a quit reaps it rather than leaving a proxy
+        // that still holds subscription credentials on a loopback port.
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
       });
@@ -223,6 +282,8 @@ export class BridgeManager {
     }
 
     this.child = child;
+    this.stderrTail = '';
+    this.attachStderr(child);
     const spawnError = await waitForSpawnError(child);
     if (spawnError) {
       this.child = null;
@@ -249,21 +310,102 @@ export class BridgeManager {
 
     this.activePort = port;
     this.lastFailure = null;
+    this.respawnAttempt = 0;
+    // Every healthy child gets its own row and exit handler. A respawn must not
+    // skip recording because the previous close raced the new pid.
+    if (this.recordedPid !== null && this.recordedPid !== child.pid) {
+      this.closeRecordedRow();
+    }
     if (this.recordedPid !== child.pid) {
       this.recordedPid = child.pid;
       this.opts.onProcess?.({ pid: child.pid, port, command: this.argv.join(' ') });
-      // A Bridge that dies on its own leaves an open row pointing at a dead
-      // pid, and pids recycle: the next `ensure()` would scan up onto a second
-      // port while the trace still claimed the first.
-      child.once('exit', () => {
-        if (this.child === child) {
-          this.child = null;
-          this.activePort = null;
-        }
-        if (this.recordedPid === child.pid) this.closeRecordedRow();
-      });
     }
+    child.once('exit', (code, signal) => this.handleChildExit(child, code, signal));
+    this.opts.onBecameReady?.({ pid: child.pid, port, command: this.argv.join(' ') });
     return this.ready(port, child.pid);
+  }
+
+  private handleChildExit(
+    child: ChildProcess,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): void {
+    // Intentional stops null `this.child` before signalling, so the exit of a
+    // killed child is not treated as a crash that needs a respawn.
+    const unexpected = this.child === child;
+    if (unexpected) {
+      this.child = null;
+      this.activePort = null;
+    }
+    if (this.recordedPid === child.pid) this.closeRecordedRow();
+    if (!unexpected || !this.wanted) return;
+
+    const info: BridgeExitInfo = { code, signal, stderr: this.stderrTail.trim() };
+    this.opts.onUnexpectedExit?.(info);
+    console.warn(
+      `[bridge] exited unexpectedly (code=${code ?? 'none'} signal=${signal ?? 'none'})` +
+        (info.stderr ? `; stderr: ${truncate(info.stderr, 500)}` : ''),
+    );
+    this.scheduleRespawn();
+  }
+
+  private attachStderr(child: ChildProcess): void {
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      this.stderrTail = `${this.stderrTail}${text}`.slice(-STDERR_TAIL_CHARS);
+    });
+    // Avoid buffering forever if nobody reads stdout.
+    child.stdout?.resume();
+  }
+
+  private scheduleRespawn(): void {
+    if (!this.wanted || this.respawnTimer || this.ensuring) return;
+    const base = this.opts.respawnBaseMs ?? BRIDGE_RESPAWN_BASE_MS;
+    const max = this.opts.respawnMaxMs ?? BRIDGE_RESPAWN_MAX_MS;
+    const delay = Math.min(base * 2 ** this.respawnAttempt, max);
+    this.respawnAttempt += 1;
+    this.respawnTimer = setTimeout(() => {
+      this.respawnTimer = null;
+      if (!this.wanted) return;
+      void this.ensure().then((result) => {
+        if (!result.ok) this.scheduleRespawn();
+      });
+    }, delay);
+  }
+
+  private armWatchdog(): void {
+    if (this.watchdogTimer) return;
+    const interval = this.opts.watchdogMs ?? BRIDGE_WATCHDOG_MS;
+    this.watchdogTimer = setInterval(() => {
+      void this.watch();
+    }, interval);
+  }
+
+  private async watch(): Promise<void> {
+    if (!this.wanted || this.ensuring || this.respawnTimer) return;
+    if (this.running && this.activePort !== null) {
+      const probe = this.opts.isPortOpen ?? isPortOpen;
+      if (await probe(this.activePort)) return;
+      console.warn(
+        `[bridge] watchdog: ${BRIDGE_HOST}:${this.activePort} is not accepting connections; restarting`,
+      );
+    } else if (this.running) {
+      return;
+    }
+    // Wanted but not serving: recover without waiting for the next agent turn.
+    void this.ensure();
+  }
+
+  private clearRespawnTimer(): void {
+    if (!this.respawnTimer) return;
+    clearTimeout(this.respawnTimer);
+    this.respawnTimer = null;
+  }
+
+  private clearWatchdog(): void {
+    if (!this.watchdogTimer) return;
+    clearInterval(this.watchdogTimer);
+    this.watchdogTimer = null;
   }
 
   private ready(port: number, pid: number): BridgeEnsureResult {
@@ -383,4 +525,9 @@ function waitForSpawnError(child: ChildProcess): Promise<string | null> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}…`;
 }

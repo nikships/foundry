@@ -50,6 +50,7 @@ describe('orchestrator composition rules', () => {
       'feedback-to',
       'flake-rerun',
       'acceptance',
+      'pr-commit',
       'prefer-roster',
       'synthesized-agent',
       'synthesized-prompts',

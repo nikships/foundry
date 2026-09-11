@@ -168,6 +168,50 @@ describe('pipeline references', () => {
   });
 });
 
+describe('loading a roster written before pr_writer committed and pushed', () => {
+  it('refreshes the shipped read-only pr_writer into the commit-and-push writer', () => {
+    const older = BUILTIN_AGENTS.map((agent) =>
+      agent.name === 'pr_writer'
+        ? {
+            ...agent,
+            purpose: 'Draft a concise PR title and body. Change no files.',
+            writes: [] as string[],
+            toolProfile: 'read-only' as const,
+            systemPrompt: 'You are read-only. Do not create, edit, or delete any file.',
+            userPrompt: 'Draft a PR for {{request}}. Do not modify files.',
+          }
+        : agent,
+    );
+    new JsonStore<AgentDef[]>(join(dir, 'roster.json'), () => []).write(older);
+
+    const writer = new RosterStore(dir).get('pr_writer');
+    expect(writer?.writes).toBeNull();
+    expect(writer?.toolProfile).toBeUndefined();
+    expect(writer?.systemPrompt).toContain('Push the current branch');
+    expect(writer?.purpose).toContain('Commit remaining work');
+  });
+
+  it('does not overwrite a forked pr_writer', () => {
+    const forked: AgentDef = {
+      ...BUILTIN_AGENTS.find((agent) => agent.name === 'pr_writer')!,
+      name: 'pr_writer',
+      builtin: false,
+      purpose: 'My own PR writer.',
+      writes: [],
+      toolProfile: 'read-only',
+    };
+    new JsonStore<AgentDef[]>(join(dir, 'roster.json'), () => []).write([
+      ...BUILTIN_AGENTS.filter((agent) => agent.name !== 'pr_writer'),
+      forked,
+    ]);
+
+    const writer = new RosterStore(dir).get('pr_writer');
+    expect(writer?.builtin).toBe(false);
+    expect(writer?.purpose).toBe('My own PR writer.');
+    expect(writer?.writes).toEqual([]);
+  });
+});
+
 describe('loading a roster written before pr_writer shipped', () => {
   it('restores the missing builtin without clobbering the rest of the file', () => {
     const older = BUILTIN_AGENTS.filter((a) => a.name !== 'pr_writer');
@@ -178,7 +222,7 @@ describe('loading a roster written before pr_writer shipped', () => {
     const writer = reloaded.get('pr_writer');
     expect(writer?.builtin).toBe(true);
     expect(writer?.envelope).toBe('pr');
-    expect(writer?.writes).toEqual([]);
+    expect(writer?.writes).toBeNull();
     expect(reloaded.get('planner')?.builtin).toBe(true);
   });
 });

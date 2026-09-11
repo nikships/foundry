@@ -937,9 +937,10 @@ export class Executor {
   }
 
   /**
-   * Push `foundry/<runId>` from the project checkout (worktrees share that
-   * git dir) and create or discover the branch PR. No fallbacks: missing
-   * branch, remote, gh, or a refused push/create is the exact error.
+   * Create or discover the branch PR after the agent has committed remaining
+   * work and pushed. The engine still pushes as a safety net (worktrees share
+   * the project git dir). No fallbacks: missing branch, remote, gh, or a
+   * refused push/create is the exact error.
    */
   private async recordPr(input: { title: string; body: string }): Promise<PrAction> {
     const branch = this.handle?.branch ?? null;

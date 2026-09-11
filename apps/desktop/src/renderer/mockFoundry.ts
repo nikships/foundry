@@ -143,10 +143,9 @@ const MOCK_RUNS: RunRow[] = [
     totalTokens: 41280,
     phaseSummary: [
       { name: 'plan', status: 'success', kind: 'agent' },
-      { name: 'commit_plan', status: 'success', kind: 'code' },
       { name: 'build', status: 'success', kind: 'agent' },
       { name: 'test', status: 'success', kind: 'code' },
-      { name: 'commit_build', status: 'success', kind: 'code' },
+      { name: 'open_pr', status: 'success', kind: 'agent' },
     ],
   },
   {

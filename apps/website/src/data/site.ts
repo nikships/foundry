@@ -70,7 +70,7 @@ export const PROBLEM_POINTS: Point[] = [
 export const SAFE_POINTS: Point[] = [
   {
     title: 'Your checkout stays clean',
-    body: 'Every run is an isolated worktree on its own branch. Nothing lands on main until you merge it.',
+    body: 'Every run uses one worktree on its own branch, shared by every worker in that pipeline. Nothing lands on main until you merge it.',
   },
   {
     title: 'Agents stay in their lane',

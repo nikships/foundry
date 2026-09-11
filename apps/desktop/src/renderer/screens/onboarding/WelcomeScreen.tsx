@@ -130,7 +130,7 @@ export default function WelcomeScreen(): React.JSX.Element {
 
           <p className={styles.lead}>
             Describe a change. A crew of specialized agents carries it through an editable pipeline
-            in an <strong>isolated worktree</strong>. You watch every phase and{' '}
+            in <strong>one shared worktree</strong>. You watch every phase and{' '}
             <strong>decide what ships</strong>.
           </p>
 

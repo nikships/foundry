@@ -240,6 +240,10 @@ export class PlanSession {
   ): Promise<OneShotResult | null> {
     // The Orchestrator reads the operator's own checkout, where nothing
     // would revert a write, so the session has no tool that could make one.
+    // It still carries the operator's installed research tools (e.g.
+    // Tavily) when enabled, filtered to the read-only subset a `read`
+    // session gets, same as a reviewer phase would — the one-shot resolves
+    // those unconditionally now, same as every other AI turn in Foundry.
     return this.panel.ask({
       oneShot: this.deps.oneShot,
       cwd: this.deps.projectPath,

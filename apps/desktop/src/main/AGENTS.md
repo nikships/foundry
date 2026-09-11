@@ -7,7 +7,7 @@ The Electron main process owns Git, disk, child processes, CLIs, SQLite, applica
 - `main.ts` resolves the GUI environment before spawning, preserves the single-instance lock, sweeps orphaned runs, and registers IPC.
 - The first window opens before slow Bridge and Companion restoration. Keep those off the first-paint path.
 - Long work returns a handle and pushes progress; never await an agent turn inside a click handler.
-- A run’s file I/O belongs in its engine-owned worktree.
+- A run’s file I/O belongs in its one engine-owned worktree. Every phase of that run shares it.
 - `finish()` alone settles run status, outcome, notification, and banner.
 - `Tracer` alone writes SQLite.
 - New capabilities follow shared contract → domain router → preload wrapper → renderer API. No generic IPC dispatch.

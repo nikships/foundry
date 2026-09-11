@@ -447,8 +447,8 @@ const ENVELOPE_CONSTITUTIONS: Record<string, string> = {
   ].join('\n'),
   pr: [
     '## Envelope constitution (pr)',
-    'You are read-only. Call git_diff for the patch; change no files.',
-    'Fill title and body. Follow a repository PR template when one exists.',
+    "Commit remaining work on this pipeline's shared worktree and push the run branch.",
+    'Do not create another worktree. Fill title and body. Follow a repository PR template when one exists.',
   ].join('\n'),
   issue: [
     '## Envelope constitution (issue)',
@@ -535,6 +535,12 @@ export const COMPOSITION_RULES: CompositionRule[] = [
     id: 'acceptance',
     bullet:
       'Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.',
+    check: () => [],
+  },
+  {
+    id: 'pr-commit',
+    bullet:
+      'The open_pr agent commits remaining work on the shared pipeline worktree and pushes the run branch. Do not insert git_commit code phases for that recording; proof still runs before open_pr so nothing is recorded unproven. Every worker in the run uses that one worktree — do not give a phase its own isolated worktree.',
     check: () => [],
   },
   {

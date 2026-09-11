@@ -270,6 +270,75 @@ describe('BridgeManager', () => {
     expect(manager.status().running).toBe(false);
   }, 20_000);
 
+  it('respawns after an unexpected exit and records a fresh process row', async () => {
+    const recorded: number[] = [];
+    const ready: number[] = [];
+    const exits: { code: number | null; signal: NodeJS.Signals | null }[] = [];
+    const manager = track(
+      new BridgeManager({
+        supportDir: supportDir(),
+        binaryPath: '/scripted/cli-proxy-api',
+        spawn: scriptedBridgeSpawn(),
+        onProcess: (info) => recorded.push(info.pid),
+        onBecameReady: (info) => ready.push(info.pid),
+        onUnexpectedExit: (info) => exits.push({ code: info.code, signal: info.signal }),
+        healthTimeoutMs: 10_000,
+        respawnBaseMs: 50,
+        respawnMaxMs: 200,
+        watchdogMs: 60_000,
+      }),
+    );
+
+    const first = await manager.ensure();
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    process.kill(first.pid, 'SIGKILL');
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (ready.length >= 2 && manager.running && manager.port !== null) break;
+      await sleep(50);
+    }
+
+    expect(manager.running).toBe(true);
+    expect(manager.port).not.toBeNull();
+    expect(manager.pid).not.toBe(first.pid);
+    expect(isAlive(first.pid)).toBe(false);
+    expect(exits.length).toBeGreaterThanOrEqual(1);
+    expect(recorded.length).toBeGreaterThanOrEqual(2);
+    expect(ready.length).toBeGreaterThanOrEqual(2);
+    expect(recorded.at(-1)).toBe(manager.pid);
+  }, 20_000);
+
+  it('does not respawn after shutdown even if the child dies first', async () => {
+    let spawns = 0;
+    const scripted = scriptedBridgeSpawn();
+    const manager = track(
+      new BridgeManager({
+        supportDir: supportDir(),
+        binaryPath: '/scripted/cli-proxy-api',
+        spawn: (command, args, options) => {
+          spawns += 1;
+          return scripted(command, args, options);
+        },
+        healthTimeoutMs: 10_000,
+        respawnBaseMs: 50,
+        respawnMaxMs: 100,
+        watchdogMs: 60_000,
+      }),
+    );
+
+    const first = await manager.ensure();
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(spawns).toBe(1);
+
+    await manager.shutdown();
+    await sleep(400);
+    expect(spawns).toBe(1);
+    expect(manager.status().running).toBe(false);
+  }, 20_000);
+
   it('names its process row so the relaunch sweep can identify an orphan', () => {
     expect(BRIDGE_PROCESS_NAME).toBe('bridge');
   });

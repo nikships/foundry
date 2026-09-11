@@ -18,7 +18,8 @@ describe('run-agent system context', () => {
     expect(role).toContain('# Builder');
     expect(role).toContain('# Repository context');
     expect(role).toContain('## Stack\nTypeScript');
-    expect(role).toContain('isolated run worktree at /repo/.foundry-worktrees/run_1');
+    expect(role).toContain("this pipeline's worktree at /repo/.foundry-worktrees/run_1");
+    expect(role).toContain('Every phase of the run shares it');
     expect(role).toContain('Setup ran npm ci — exit 0.');
     expect(role).not.toContain(LEGACY_CLAIM);
   });

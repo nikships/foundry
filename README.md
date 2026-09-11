@@ -143,7 +143,7 @@ Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
 
 ## Safe by default
 
-- **Your checkout stays clean.** Every run is an isolated worktree on its own branch. Nothing lands on `main` until you merge it.
+- **Your checkout stays clean.** Every run uses one worktree on its own branch, shared by every worker in that pipeline. Nothing lands on `main` until you merge it. The `open_pr` agent commits remaining work and pushes the branch.
 - **Agents stay in their lane.** Write boundaries are enforced by git diff after every call. Violations get reverted and the phase fails.
 - **Checks verify the work.** Claimed files exist? Not empty? Diff matches the claim? Verdict matches the findings? Green means it was actually checked.
 

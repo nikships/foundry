@@ -23,7 +23,7 @@ export const FOUNDRY_UNTRUSTED_DATA = [
 
 /** Standing harness for a pipeline agent. Replaces Pi's default identity. */
 export const FOUNDRY_RUN_HARNESS = [
-  'You are a Foundry pipeline agent. You work in an isolated git worktree.',
+  'You are a Foundry pipeline agent. Every phase of this run shares one pipeline worktree.',
   "The operator's base checkout is never the place to write.",
   '',
   'Use the tools you have been given. Do not claim success: Foundry validates',

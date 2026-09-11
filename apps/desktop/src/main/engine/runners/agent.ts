@@ -454,10 +454,11 @@ export class AgentPhaseRunner implements PhaseRunner {
   }
 
   /**
-   * After a valid `pr` envelope, the engine — not the agent — pushes the run
-   * branch and creates or discovers the PR. After a valid `issue` envelope it
-   * files the GitHub issue the same way. Envelope success is not enough:
-   * FOU-15 requires the artifact's number/URL or the exact failure.
+   * After a valid `pr` envelope, the engine creates or discovers the GitHub
+   * PR (and pushes if the agent has not already). The agent is responsible
+   * for committing remaining work and pushing the run branch. After a valid
+   * `issue` envelope the engine files the GitHub issue. Envelope success is
+   * not enough: FOU-15 requires the artifact's number/URL or the exact failure.
    */
   private async recordPrIfNeeded(
     phase: PhaseDef,
