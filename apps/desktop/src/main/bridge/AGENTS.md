@@ -9,7 +9,7 @@ The Bridge runs a vendored CLIProxyAPI child that exposes an operator’s provid
 - `providers.ts` is the provider/login/API-kind table.
 - `catalog.ts` filters the vendored model catalog by authenticated providers.
 - `model-denylist.ts` contains exact model IDs the operator does not want offered.
-- `manager.ts` owns child startup, health, and termination.
+- `manager.ts` owns child startup, health, supervised respawn, and termination.
 - `auth.ts` owns login files and the auth-directory watcher.
 - `models.ts` merges Bridge providers into pi’s `models.json`.
 - `service.ts` coordinates lifecycle, regeneration, and runtime refresh.
@@ -26,6 +26,8 @@ The Bridge runs a vendored CLIProxyAPI child that exposes an operator’s provid
 - Only authenticated providers enter the generated catalog.
 - Every `ensure()` records the child in the app-scoped trace with null `run_id`, regardless of caller.
 - Close a process row only after `terminate()` confirms the PID is gone.
+- **Supervise while the app wants the Bridge.** After the first `ensure()`, unexpected exits and a dead listen socket schedule a respawn with backoff; a watchdog probes the port. `shutdown()` alone clears that supervision. The child stays in Foundry's process group (`detached: false`) with Foundry-owned config/auth under Application Support — never `~/.cli-proxy-api` — so a quit reaps it and nothing else shares its state.
+- A supervised respawn regenerates `models.json` through `onBecameReady`, because scan-up may pick a new port.
 - Bridge models have zero per-token cost because they use existing subscriptions.
 - The model denylist is exact, lowercase, and deny-by-default only for listed IDs. Do not convert it to an allowlist or prefix matching.
 - Reject models declaring image output, including mixed text/image models. Keep entries with unspecified modalities.

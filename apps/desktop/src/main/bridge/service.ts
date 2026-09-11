@@ -127,6 +127,7 @@ export class BridgeService {
   private regenerating: Promise<void> = Promise.resolve();
 
   constructor(private readonly opts: BridgeServiceOptions) {
+    const managerOverrides = opts.manager ?? {};
     this.manager = new BridgeManager({
       supportDir: opts.supportDir,
       ...(opts.port !== undefined ? { port: opts.port } : {}),
@@ -135,7 +136,21 @@ export class BridgeService {
       // which one got there first is a row that is usually missing.
       onProcess: (info) => this.recordProcess(info.pid, info.command),
       onProcessEnd: () => this.closeProcessRow(),
-      ...opts.manager,
+      ...managerOverrides,
+      // Keep Foundry callbacks after overrides so a test seam cannot drop the
+      // catalog refresh that a supervised respawn needs when the port moves.
+      onBecameReady: (info) => {
+        managerOverrides.onBecameReady?.(info);
+        this.startWatching();
+        void this.regenerate();
+      },
+      onUnexpectedExit: (info) => {
+        managerOverrides.onUnexpectedExit?.(info);
+        console.warn(
+          `[bridge] supervised child died; respawning` +
+            (info.stderr ? ` (${info.stderr.split('\n').filter(Boolean).at(-1)})` : ''),
+        );
+      },
     });
   }
 
