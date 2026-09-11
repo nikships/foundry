@@ -166,6 +166,10 @@ export class EventFolder {
     return this.lastUsage;
   }
 
+  resetUsage(): void {
+    this.lastUsage = null;
+  }
+
   private now(): number {
     return this.ctx.now?.() ?? Date.now();
   }

@@ -140,6 +140,7 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
   let api: ExtensionAPI | null = null;
   let pending: SubmissionTool | null = null;
   let readDirection: (() => string | null) | undefined;
+  let directions: string[] = [];
   const compaction = compactionSlot();
   const base = makePolicyExtension(opts.decide, (pi) => {
     api = pi;
@@ -149,12 +150,32 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
     pi.registerTool(acknowledgeDirectionTool(opts.tools));
     pi.on('context', (event) => {
       const direction = readDirection?.();
-      if (!direction) return;
-      pending?.clear();
+      if (direction) {
+        pending?.clear();
+        directions.push(direction);
+      }
+      // Pi's in-flight context is separate from agent.state.messages. Replay
+      // injections until a refreshed context includes their persisted entries.
+      const missing = directions.filter(
+        (content) =>
+          !event.messages.some(
+            (message) =>
+              message.role === 'custom' &&
+              message.customType === 'foundry-direction' &&
+              message.content === content,
+          ),
+      );
+      if (!missing.length) return;
       return {
         messages: [
           ...event.messages,
-          { role: 'user' as const, content: direction, timestamp: Date.now() },
+          ...missing.map((content) => ({
+            role: 'custom' as const,
+            customType: 'foundry-direction',
+            content,
+            display: true,
+            timestamp: Date.now(),
+          })),
         ],
       };
     });
@@ -166,6 +187,7 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
     factory: base.factory,
     useDirection(read) {
       readDirection = read;
+      directions = [];
       pending?.clear();
     },
     useEnvelopeTool(tool) {

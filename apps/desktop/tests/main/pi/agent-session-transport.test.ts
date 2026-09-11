@@ -19,6 +19,11 @@ import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/d
 import { Tracer } from '../../../src/main/trace/tracer.js';
 import type { AgentDef } from '../../../src/shared/types.js';
 import { ScriptedAgent } from '../../helpers/scripted-transport.js';
+import {
+  acknowledgePhaseMessage,
+  deliverPhaseMessage,
+  pendingPhaseMessages,
+} from '../../../src/main/engine/phase-messages.js';
 
 const agent: AgentDef = {
   name: 'scout',
@@ -103,6 +108,114 @@ describe('AgentSession has one transport', () => {
     expect(session.currentMode).toBe('pi');
     expect(tracer.run(runId)!.mode).toBe('pi');
     expect(tracer.agentSessions(runId)[0]!.mode).toBe('pi');
+    expect(tracer.phaseSessionEvents(runId, phaseId).at(-1)?.payload).toEqual({
+      model: 'scripted',
+      agentSessionId: session.sessionId,
+    });
+    await session.close();
+  });
+
+  it('keeps each phase identity when the same session runs a later phase', async () => {
+    beginRun();
+    const later = tracer.openPhase({
+      runId,
+      seq: 1,
+      name: 'build',
+      kind: 'agent',
+      owner: agent.name,
+      description: 'build',
+    });
+    const scripted = new ScriptedAgent(['plan', 'build']);
+    const session = sessionOn(scripted);
+    await session.send('plan', { phaseId });
+    await session.send('build', { phaseId: later });
+    expect(tracer.phaseSessionEvents(runId, phaseId)).toHaveLength(1);
+    expect(tracer.phaseSessionEvents(runId, later)).toHaveLength(1);
+    expect(tracer.phaseSessionEvents(runId, later)[0]?.payload.agentSessionId).toBe(
+      session.sessionId,
+    );
+    await session.close();
+  });
+
+  it('revisits a late direction and accumulates usage for the final verdict', async () => {
+    beginRun();
+    const scripted = new ScriptedAgent(['old verdict', 'revised verdict']);
+    let turns = 0;
+    const session = makeSession((req) => {
+      const transport = scripted.transport(req);
+      const send = transport.send.bind(transport);
+      transport.send = async (text, opts) => {
+        if (turns++ === 0) {
+          expect(opts?.direction?.()).toBeNull();
+          const result = await send(text, opts);
+          deliverPhaseMessage(tracer, runId, phaseId, 'Check rollback.');
+          return result;
+        }
+        expect(opts?.direction?.()).toContain('Check rollback.');
+        expect(opts?.direction?.()).toBeNull();
+        const note = pendingPhaseMessages(tracer, runId, phaseId)[0]!;
+        acknowledgePhaseMessage(tracer, runId, phaseId, {
+          messageId: note.messageId,
+          status: 'acted_on',
+          reason: 'Rollback verified.',
+        });
+        return send(text, opts);
+      };
+      return transport;
+    });
+    const outcome = await session.send('go', { phaseId });
+    expect(outcome.text).toBe('revised verdict');
+    expect(outcome.usage.inputTokens).toBe(200);
+    expect(pendingPhaseMessages(tracer, runId, phaseId)).toEqual([]);
+    await session.close();
+  });
+
+  it('fails closed when supplied direction remains unacknowledged', async () => {
+    beginRun();
+    deliverPhaseMessage(tracer, runId, phaseId, 'Check rollback.');
+    const scripted = new ScriptedAgent(['ignored']);
+    const session = makeSession((req) => {
+      const transport = scripted.transport(req);
+      const send = transport.send.bind(transport);
+      transport.send = (text, opts) => {
+        expect(opts?.direction?.()).toContain('Check rollback.');
+        return send(text, opts);
+      };
+      return transport;
+    });
+    await expect(session.send('go', { phaseId })).rejects.toThrow('did not acknowledge');
+    expect(scripted.turnRequests).toHaveLength(1);
+    expect(pendingPhaseMessages(tracer, runId, phaseId)[0]?.status).toBe('read');
+    await session.close();
+  });
+
+  it('does not count previous usage again when the direction follow-up is interrupted', async () => {
+    beginRun();
+    const scripted = new ScriptedAgent(['old verdict']);
+    let turns = 0;
+    const session = makeSession((req) => {
+      const transport = scripted.transport(req);
+      const send = transport.send.bind(transport);
+      transport.send = async (text, opts) => {
+        if (turns++ === 0) {
+          const result = await send(text, opts);
+          deliverPhaseMessage(tracer, runId, phaseId, 'Check rollback.');
+          return result;
+        }
+        return {
+          text: '',
+          usage: null,
+          reason: 'aborted',
+          interrupted: true,
+          structuredOutput: null,
+        };
+      };
+      return transport;
+    });
+    const outcome = await session.send('go', { phaseId });
+    expect(outcome.interrupted).toBe(true);
+    expect(turns).toBe(2);
+    expect(outcome.usage.inputTokens).toBe(100);
     await session.close();
   });
 

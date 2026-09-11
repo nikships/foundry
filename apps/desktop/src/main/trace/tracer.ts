@@ -769,6 +769,14 @@ export class Tracer {
     ).map(mapEvent);
   }
 
+  phaseSessionEvents(runId: string, phaseId: string): EventRow[] {
+    return this.many<RawEvent>(
+      "SELECT rowid, * FROM events WHERE run_id = ? AND phase_id = ? AND name = 'phase session' ORDER BY rowid",
+      runId,
+      phaseId,
+    ).map(mapEvent);
+  }
+
   /** Highest proposal attempt already spent, so a resume cannot reset the run budget. */
   replanAttempts(runId: string): number {
     const rows = this.many<{ payload_json: string }>(

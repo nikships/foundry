@@ -142,4 +142,71 @@ describe('run agent inspection', () => {
       ),
     ).toBeNull();
   });
+
+  it('keeps historical phase identities when a reused agent opens a new session', () => {
+    const { tracer, runId } = harness();
+    const first = tracer.openPhase({
+      runId,
+      seq: 0,
+      name: 'plan',
+      kind: 'agent',
+      owner: 'builder',
+      description: '',
+    });
+    tracer.event({
+      runId,
+      phaseId: first,
+      type: 'log',
+      name: 'phase session',
+      payload: { model: 'provider/planner', agentSessionId: 'plan-session' },
+    });
+    tracer.event({
+      runId,
+      phaseId: first,
+      type: 'tool_call',
+      name: 'unfinished at crash',
+      payload: { tool: 'bash' },
+    });
+    tracer.closePhase(first, 'fail', 'interrupted');
+    const second = tracer.openPhase({
+      runId,
+      seq: 1,
+      name: 'build',
+      kind: 'agent',
+      owner: 'builder',
+      description: '',
+    });
+    tracer.event({
+      runId,
+      phaseId: second,
+      type: 'log',
+      name: 'phase session',
+      payload: { model: 'provider/builder', agentSessionId: 'build-session' },
+    });
+    tracer.upsertAgentSession({
+      runId,
+      agent: 'builder',
+      model: 'provider/builder',
+      reasoningEffort: 'medium',
+      agentSessionId: 'build-session',
+      mode: 'pi',
+      color: '#fff',
+    });
+    tracer.queuePhase({
+      runId,
+      seq: 2,
+      name: 'future',
+      kind: 'agent',
+      owner: 'builder',
+      description: '',
+    });
+    const phases = readRunAgentState(tracer, runId)!.phases;
+    expect(phases[0]).toMatchObject({
+      model: 'provider/planner',
+      agentSessionId: 'plan-session',
+      activeToolCalls: [],
+    });
+    expect(phases[1]).toMatchObject({ model: 'provider/builder', agentSessionId: 'build-session' });
+    expect(phases[2]).toMatchObject({ agentSessionId: null, activeToolCalls: [] });
+  });
 });

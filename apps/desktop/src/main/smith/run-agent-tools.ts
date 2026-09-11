@@ -21,7 +21,13 @@ const inputSchema = z.object({
   runId: z.string().min(1),
   phaseId: z.string().min(1).optional(),
   text: z.string().trim().min(1).max(12_000).optional(),
-  cursor: z.object({ line: z.number().int().min(1), offset: z.number().int().min(0) }).optional(),
+  cursor: z
+    .object({
+      line: z.number().int().min(1),
+      offset: z.number().int().min(0),
+      agentSessionId: z.string().min(1).optional(),
+    })
+    .optional(),
 });
 
 export async function runAgentOperation(

@@ -57,6 +57,8 @@ export interface RunAgentStateResult {
 export interface SessionHistoryCursor {
   line: number;
   offset: number;
+  /** Pins continuation to the same conversation across phase retries. */
+  agentSessionId?: string;
 }
 
 export interface SessionHistoryChunk {

@@ -159,15 +159,46 @@ describe('what the extension registers', () => {
     ]);
   });
 
+  it('does not invalidate a revised verdict when replaying already supplied direction', async () => {
+    const { handle, state } = bind(allow);
+    const envelope = submitEnvelopeTool({ type: 'object' });
+    handle.useEnvelopeTool(envelope);
+    let supplied = false;
+    handle.useDirection(() => {
+      if (supplied) return null;
+      supplied = true;
+      return 'Check rollback.';
+    });
+    state.context?.({ messages: [] });
+    await envelope.definition.execute(
+      'revised',
+      { approved: true },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(state.context?.({ messages: [] })?.messages).toHaveLength(1);
+    expect(envelope.submitted()).toEqual({ approved: true });
+  });
+
   it('injects direction at the next model call and invalidates a pre-direction verdict', async () => {
     const { handle, state } = bind(allow);
     const envelope = submitEnvelopeTool({ type: 'object' });
     handle.useEnvelopeTool(envelope);
     handle.useDirection(() => 'Re-evaluate the four operator rulings.');
-    await envelope.definition.execute('old', { approved: false }, undefined, undefined, {} as never);
+    await envelope.definition.execute(
+      'old',
+      { approved: false },
+      undefined,
+      undefined,
+      {} as never,
+    );
     expect(envelope.submitted()).toEqual({ approved: false });
     expect(state.context?.({ messages: [] })?.messages).toEqual([
-      expect.objectContaining({ role: 'user', content: 'Re-evaluate the four operator rulings.' }),
+      expect.objectContaining({
+        role: 'custom',
+        content: 'Re-evaluate the four operator rulings.',
+      }),
     ]);
     expect(envelope.submitted()).toBeNull();
     handle.useDirection(undefined);

@@ -117,6 +117,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
           properties: {
             line: { type: 'integer', minimum: 1 },
             offset: { type: 'integer', minimum: 0 },
+            agentSessionId: { type: 'string', minLength: 1 },
           },
           required: ['line', 'offset'],
           additionalProperties: false,

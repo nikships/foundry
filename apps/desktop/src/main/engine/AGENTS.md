@@ -29,7 +29,7 @@ New phase kinds or gates require shared types, registry/schema/check wiring, run
 - **Rewind is coordinated.** `PhaseRewinder` rewinds transport before the phase prompt and restores the worktree to the phase-start snapshot. On failure, correction falls back to append-only behavior.
 - **Commands are frozen.** A `{ref}` command changes only when a fresh sniff proves run-scoped drift. Persist drift to project settings only after successful landing.
 - **Settlement goes through `settle.ts`.** `recordLanding` alone marks a run merged; preserve branch-point, worktree-clear, drift, and notification ordering.
-- **Cancellation outranks acceptance.** Once killed, stop recovery and settle killed.
+- **Cancellation outranks acceptance.** Once killed, stop recovery and settle killed. An operator interrupt of a live agent turn settles the run rejected without replan or acceptance; a simultaneous kill still settles killed.
 - **Setup runs at the worktree root before phases.** A non-zero setup exit fails the run before phase 1 (scaffold excepted). Do not re-run setup on continue when the worktree still exists. Keep failed worktrees for inspection. Scaffold projects may skip a missing referenced code command.
 - After `git worktree add`, if `.gitmodules` exists, initialize submodules inside the run worktree (`git submodule update --init --recursive`). Fail closed if init fails. Never write the operator's primary checkout. All phases of a run share that one worktree; workers do not get their own.
 - **`open_pr` records the branch.** The PR agent commits remaining work and pushes `foundry/<runId>`. The engine then creates or discovers the GitHub pull request.

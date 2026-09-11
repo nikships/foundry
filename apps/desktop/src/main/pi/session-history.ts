@@ -31,8 +31,7 @@ export async function readSessionHistory(
 ): Promise<SessionHistoryPage | null> {
   const phase = tracer.phase(phaseId);
   if (!phase || phase.runId !== runId) return null;
-  const persisted = tracer.agentSessions(runId).find((row) => row.agent === phase.owner);
-  const sessionId = persisted?.agentSessionId ?? null;
+  const sessionId = resolveSessionId(tracer, phase, cursor);
   if (!sessionId) return { runId, phaseId, agentSessionId: null, chunks: [], nextCursor: null };
 
   const path = await findSessionFile(join(tracer.runDir(runId), 'sessions'), sessionId);
@@ -44,37 +43,68 @@ export async function readSessionHistory(
   let lineNumber = 0;
   const chunks: SessionHistoryChunk[] = [];
   let nextCursor: SessionHistoryCursor | null = null;
+  const input = createReadStream(path, { encoding: 'utf8' });
   const lines = createInterface({
-    input: createReadStream(path, { encoding: 'utf8' }),
+    input,
     crlfDelay: Infinity,
   });
-  for await (const line of lines) {
-    lineNumber += 1;
-    if (lineNumber < startLine || !line.trim()) continue;
-    if (lineNumber > startLine) offset = 0;
-    let entry: JsonRecord;
-    try {
-      entry = JSON.parse(line) as JsonRecord;
-    } catch {
-      continue;
+  try {
+    for await (const line of lines) {
+      lineNumber += 1;
+      if (lineNumber < startLine || !line.trim()) continue;
+      if (lineNumber > startLine) offset = 0;
+      let entry: JsonRecord;
+      try {
+        entry = JSON.parse(line) as JsonRecord;
+      } catch {
+        continue;
+      }
+      if (!isRecord(entry) || entry.type === 'session') continue;
+      const json = JSON.stringify(entry);
+      if (offset >= json.length) continue;
+      const take = Math.min(json.length - offset, budget - used);
+      chunks.push(chunkFor(entry, lineNumber, json, offset, take));
+      used += take;
+      if (offset + take < json.length) {
+        nextCursor = pinCursor(lineNumber, offset + take, sessionId);
+        break;
+      }
+      if (used >= budget) {
+        nextCursor = pinCursor(lineNumber + 1, 0, sessionId);
+        break;
+      }
     }
-    if (entry.type === 'session') continue;
-    const json = JSON.stringify(entry);
-    if (offset >= json.length) continue;
-    const take = Math.min(json.length - offset, budget - used);
-    chunks.push(chunkFor(entry, lineNumber, json, offset, take));
-    used += take;
-    if (offset + take < json.length) {
-      nextCursor = { line: lineNumber, offset: offset + take };
-      break;
-    }
-    if (used >= budget) {
-      nextCursor = { line: lineNumber + 1, offset: 0 };
-      break;
-    }
+  } finally {
+    lines.close();
+    input.destroy();
   }
-  lines.close();
   return { runId, phaseId, agentSessionId: sessionId, chunks, nextCursor };
+}
+
+/**
+ * Prefer the caller's pin, then the phase's recorded conversation, then the
+ * live roster row. A reused agent overwrites that roster row; the pin and the
+ * phase-session event are what keep paging on the conversation already open.
+ */
+function resolveSessionId(
+  tracer: Tracer,
+  phase: { runId: string; phaseId: string; owner: string },
+  cursor: SessionHistoryCursor,
+): string | null {
+  const pinned = cursor.agentSessionId?.trim();
+  if (pinned) return pinned;
+  const recorded = tracer
+    .phaseSessionEvents(phase.runId, phase.phaseId)
+    .findLast((event) => typeof event.payload.agentSessionId === 'string')?.payload.agentSessionId;
+  if (typeof recorded === 'string' && recorded.length > 0) return recorded;
+  return (
+    tracer.agentSessions(phase.runId).find((row) => row.agent === phase.owner)?.agentSessionId ??
+    null
+  );
+}
+
+function pinCursor(line: number, offset: number, sessionId: string): SessionHistoryCursor {
+  return { line, offset, agentSessionId: sessionId };
 }
 
 function chunkFor(

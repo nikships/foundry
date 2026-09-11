@@ -1,5 +1,5 @@
 import type { RunAgentPhaseState, RunAgentStateResult } from '@shared/run-agent-state.js';
-import type { EventRow } from '@shared/types.js';
+import type { AgentSessionRow, EventRow, PhaseCheckpointRow } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 
 function allEvents(tracer: Tracer, runId: string): EventRow[] {
@@ -18,7 +18,10 @@ export function readRunAgentState(tracer: Tracer, runId: string): RunAgentStateR
 
   const phases: RunAgentPhaseState[] = tracer.phases(runId).map((phase) => {
     const phaseEvents = events.filter((event) => event.phaseId === phase.phaseId);
-    const session = sessions.find((candidate) => candidate.agent === phase.owner);
+    const session =
+      phase.kind === 'agent' && phase.status !== 'queued'
+        ? sessions.find((candidate) => candidate.agent === phase.owner)
+        : undefined;
     const phaseCheckpoints = checkpoints.filter((item) => item.phaseId === phase.phaseId);
     const errorEvent = [...phaseEvents].reverse().find((event) => event.type === 'error');
     const eventMessage = errorEvent?.payload.message;
@@ -29,14 +32,15 @@ export function readRunAgentState(tracer: Tracer, runId: string): RunAgentStateR
       phaseStatus: phase.status,
       runStatus: run.status,
       agent: phase.kind === 'agent' ? phase.owner || null : null,
-      model:
-        session?.model ?? [...phaseCheckpoints].reverse().find((item) => item.model)?.model ?? null,
-      agentSessionId:
-        session?.agentSessionId ??
-        [...phaseCheckpoints].reverse().find((item) => item.agentSessionId)?.agentSessionId ??
-        null,
+      ...phaseIdentity(phaseEvents, session, phaseCheckpoints),
       activeToolCalls: phaseEvents
-        .filter((event) => event.type === 'tool_call' && event.endedAt === null)
+        .filter(
+          (event) =>
+            run.status === 'running' &&
+            phase.status === 'running' &&
+            event.type === 'tool_call' &&
+            event.endedAt === null,
+        )
         .map((event) => ({
           eventId: event.eventId,
           name: event.name,
@@ -59,6 +63,26 @@ export function readRunAgentState(tracer: Tracer, runId: string): RunAgentStateR
     };
   });
   return { runId, runStatus: run.status, phases };
+}
+
+function phaseIdentity(
+  events: EventRow[],
+  session: AgentSessionRow | undefined,
+  checkpoints: PhaseCheckpointRow[],
+): Pick<RunAgentPhaseState, 'model' | 'agentSessionId'> {
+  const identity = events.findLast((event) => event.name === 'phase session')?.payload;
+  return {
+    model:
+      typeof identity?.model === 'string'
+        ? identity.model
+        : (session?.model ?? checkpoints.findLast((item) => item.model)?.model ?? null),
+    agentSessionId:
+      typeof identity?.agentSessionId === 'string'
+        ? identity.agentSessionId
+        : (session?.agentSessionId ??
+          checkpoints.findLast((item) => item.agentSessionId)?.agentSessionId ??
+          null),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

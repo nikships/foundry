@@ -203,10 +203,19 @@ export class PiTransport implements AgentTransport {
       const direction = opts.direction?.();
       if (!direction) return null;
       const details = { phaseId: this.opts.tools.phaseId() };
-      session.sessionManager.appendCustomMessageEntry('foundry-direction', direction, true, details);
+      session.sessionManager.appendCustomMessageEntry(
+        'foundry-direction',
+        direction,
+        true,
+        details,
+      );
       session.agent.state.messages.push({
-        role: 'custom', customType: 'foundry-direction', content: direction,
-        display: true, details, timestamp: Date.now(),
+        role: 'custom',
+        customType: 'foundry-direction',
+        content: direction,
+        display: true,
+        details,
+        timestamp: Date.now(),
       });
       return direction;
     });

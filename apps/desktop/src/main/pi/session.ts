@@ -255,6 +255,28 @@ export class AgentSession {
       mode: this.mode,
       color: this.agent.color,
     });
+    this.recordPhaseSession();
+  }
+
+  /**
+   * One row per phase conversation identity. The agent-session table is keyed
+   * by roster name, so a later phase that reuses the agent overwrites it.
+   * Smith pages history from this event, not from that live pointer.
+   */
+  private recordPhaseSession(): void {
+    const phaseId = this.currentPhaseId;
+    const agentSessionId = this.agentSessionId;
+    if (!phaseId || !agentSessionId) return;
+    const model = this.activeModel;
+    const previous = this.deps.tracer.phaseSessionEvents(this.deps.runId, phaseId).at(-1)?.payload;
+    if (previous?.agentSessionId === agentSessionId && previous.model === model) return;
+    this.deps.tracer.event({
+      runId: this.deps.runId,
+      phaseId,
+      type: 'log',
+      name: 'phase session',
+      payload: { model, agentSessionId },
+    });
   }
 
   /**
@@ -298,6 +320,7 @@ export class AgentSession {
     this.currentPhaseId = ctx.phaseId;
     this.turnInterrupted = false;
     await this.ensureStarted();
+    this.recordPhaseSession();
 
     const folder = new EventFolder({
       tracer: this.deps.tracer,
@@ -326,7 +349,13 @@ export class AgentSession {
           ctx,
         );
         const nextUsage = toUsageBreakdown(result.usage ?? folder.usage);
-        for (const key of ['inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'thinkingTokens'] as const) {
+        for (const key of [
+          'inputTokens',
+          'outputTokens',
+          'cacheCreationTokens',
+          'cacheReadTokens',
+          'thinkingTokens',
+        ] as const) {
           usage[key] += nextUsage[key];
         }
         usage.reported ||= nextUsage.reported;
@@ -337,9 +366,14 @@ export class AgentSession {
         throw new RunKilledError();
       }
       folder.closeDangling('turn ended before this call reported a result');
-      if (!result.interrupted && !this.turnInterrupted &&
-        pendingPhaseMessages(this.deps.tracer, this.deps.runId, ctx.phaseId).length) {
-        throw new Error('The agent did not acknowledge all phase direction. Resume to address the outstanding notes.');
+      if (
+        !result.interrupted &&
+        !this.turnInterrupted &&
+        pendingPhaseMessages(this.deps.tracer, this.deps.runId, ctx.phaseId).length
+      ) {
+        throw new Error(
+          'The agent did not acknowledge all phase direction. Resume to address the outstanding notes.',
+        );
       }
       return {
         text: result.text,
@@ -367,6 +401,7 @@ export class AgentSession {
   ): Promise<TurnResult> {
     const transport = this.transport;
     if (!transport) throw new Error('agent session is not open');
+    folder.resetUsage();
     const supplied = new Set<string>();
     try {
       return await transport.send(prompt, {

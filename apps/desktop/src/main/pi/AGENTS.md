@@ -32,7 +32,7 @@ Do not import pi’s transitive packages directly. Derive needed types from `pi-
 - **Every tool call receives a verdict.** Unknown tools fail closed. Engine post-call diffing remains the final write-boundary enforcement.
 - Bind policy extensions before the first prompt.
 - A structured one-shot result is only a candidate; caller-owned schema and domain validation remain authoritative.
-- Agent turns have no Foundry timeout. They end on provider completion/failure or explicit cancellation.
+- Agent turns have no Foundry timeout. They end on provider completion/failure or explicit cancellation. Operator direction is a persisted `foundry-direction` custom message, replayed until Pi's in-flight context includes it. Each phase records a `phase session` identity so Smith can page that conversation after the agent is reused.
 - Swap envelope tool definitions between turns rather than mutating schemas; pi caches validators by schema identity.
 - Compaction and rewind reuse the same session. Pi rewinds conversation only; the engine restores files.
 - Resolve run worktree paths fail-closed. Never fall back to `process.cwd()`.

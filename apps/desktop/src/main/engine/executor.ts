@@ -517,6 +517,11 @@ export class Executor {
       await this.checkpointPhaseStart(phase);
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
+        if (this.cancelled) return this.settleKilled();
+        if (jump.interrupted) {
+          await this.closeSessions();
+          return this.finish('rejected', jump.detail);
+        }
         if (await this.tryReplan(index, phase, jump.detail)) {
           // The failed definition was removed from the active pipeline. The
           // first replacement occupies the same logical index.

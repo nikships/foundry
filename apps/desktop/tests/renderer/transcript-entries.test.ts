@@ -247,4 +247,8 @@ describe('the entry switch', () => {
       else expect(html, type).not.toBe('');
     }
   });
+
+  it('hides phase-session identity logs, which exist for Smith paging not the timeline', () => {
+    expect(render({ ...event('log'), name: 'phase session' })).toBe('');
+  });
 });

@@ -55,6 +55,8 @@ const spy = {
   settings: [] as Record<string, unknown>[],
   sessionManagers: [] as SessionManagerCall[],
   registeredTools: [] as string[],
+  context: undefined as
+    ((event: { messages: unknown[] }) => { messages: unknown[] } | undefined) | undefined,
   order: [] as string[],
   session: null as ScriptedPiSession | null,
   models: [] as PiModelStub[],
@@ -121,6 +123,10 @@ class ScriptedPiSession {
   private subscriber: ((event: unknown) => void) | null = null;
 
   sessionManager = {
+    appendCustomMessageEntry: (customType: string, content: string) => {
+      this.customMessages.push(content);
+      return customType;
+    },
     entries: [] as { id: string; type: string; parentId?: string; message?: { role: string } }[],
     branched: [] as string[],
     resets: 0,
@@ -270,7 +276,9 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
       for (const entry of opts.extensionFactories ?? []) {
         (entry as unknown as { factory: (api: unknown) => void }).factory({
           registerTool: (tool: { name: string }) => spy.registeredTools.push(tool.name),
-          on: () => {},
+          on: (event: string, handler: typeof spy.context) => {
+            if (event === 'context') spy.context = handler;
+          },
         });
       }
     }
@@ -376,6 +384,7 @@ beforeEach(() => {
   spy.settings = [];
   spy.sessionManagers = [];
   spy.registeredTools = [];
+  spy.context = undefined;
   spy.order = [];
   spy.fallbackMessage = undefined;
   spy.loadedPackageTools = [];
@@ -390,6 +399,33 @@ beforeEach(() => {
     },
     { provider: 'openai', id: 'gpt-5', name: 'GPT-5', contextWindow: 400_000, reasoning: true },
   ];
+});
+
+describe('direction context', () => {
+  it('retains direction across provider calls without duplicating persisted context', async () => {
+    const h = harness();
+    await h.transport.start();
+    const direction = vi.fn().mockReturnValueOnce('Check the rollback path.').mockReturnValue(null);
+    h.session.turn = (session) => {
+      // Pi transforms copies of its loop context, separate from agent.state.messages.
+      const loopMessages = [{ role: 'user', content: 'build' }];
+      expect(spy.context?.({ messages: structuredClone(loopMessages) })?.messages).toEqual([
+        ...loopMessages,
+        expect.objectContaining({ content: 'Check the rollback path.' }),
+      ]);
+      expect(spy.context?.({ messages: structuredClone(loopMessages) })?.messages).toEqual([
+        ...loopMessages,
+        expect.objectContaining({ content: 'Check the rollback path.' }),
+      ]);
+      const restored = structuredClone(session.agent.state.messages);
+      const next = spy.context?.({ messages: restored })?.messages ?? restored;
+      expect(next).toHaveLength(1);
+      expect(session.customMessages).toEqual(['Check the rollback path.']);
+      session.say('done');
+    };
+    await h.transport.send('build', { direction });
+    await h.transport.close();
+  });
 });
 
 describe('opening a session', () => {
