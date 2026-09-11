@@ -76,10 +76,12 @@ Vitest accepts a file or name filter, for example:
 ```bash
 npx vitest run apps/desktop/tests/main/engine/executor.test.ts
 npx vitest run -t "<name>"
-npx vitest run --coverage --maxWorkers=2
+npx vitest run --coverage
 ```
 
-Default parallelism can be killed locally, so cap broad runs with `--maxWorkers=2`.
+Vitest uses its adaptive default worker count. Do not add a fixed worker cap: it
+needlessly underuses higher-core development Macs and can oversubscribe smaller
+CI runners.
 
 ## Code conventions
 
