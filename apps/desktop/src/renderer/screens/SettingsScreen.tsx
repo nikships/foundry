@@ -290,6 +290,10 @@ export default function SettingsScreen({
   const [providerBusy, setProviderBusy] = useState<string | null>(null);
   const [providerNotes, setProviderNotes] = useState<Record<string, string>>({});
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+  /** Which direct-key rows show their entry form. Collapsed by default so the
+   * pane reads as a status list; the `key set` pill stays visible in the
+   * header and never collapses. */
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
   const [linearConnection, setLinearConnection] = useState<LinearConnectionState | null>(null);
   const [linearKeyDraft, setLinearKeyDraft] = useState('');
   const [linearBusy, setLinearBusy] = useState(false);
@@ -678,6 +682,17 @@ export default function SettingsScreen({
       await runProviderAction(`key:${providerId}`, () => api.bridge.clearApiKey(providerId));
     },
   );
+
+  /** Open a key row's entry form (focusing its input) or collapse it again. */
+  const toggleKeyRow = (providerId: string): void => {
+    const opening = !expandedKeys[providerId];
+    setExpandedKeys((prev) => ({ ...prev, [providerId]: !prev[providerId] }));
+    if (opening) {
+      requestAnimationFrame(() => {
+        document.getElementById(`provider-key-input-${providerId}`)?.focus();
+      });
+    }
+  };
 
   const runLinearAction = async (
     action: () => Promise<{ ok: boolean; detail: string }>,
@@ -1503,13 +1518,20 @@ export default function SettingsScreen({
                             const busyKey = `key:${row.id}`;
                             const stored = storedKeys.some((key) => key.providerId === row.id);
                             const draft = keyDrafts[row.id] ?? '';
+                            const open = !!expandedKeys[row.id];
                             return (
                               <div
                                 key={row.id}
                                 className={styles.providerCard}
                                 data-testid={`provider-key-${row.id}`}
                               >
-                                <div className={styles.providerHead}>
+                                <button
+                                  type="button"
+                                  className={styles.providerHeadButton}
+                                  aria-expanded={open}
+                                  aria-controls={`provider-key-form-${row.id}`}
+                                  onClick={() => toggleKeyRow(row.id)}
+                                >
                                   <ProviderIcon provider={row.icon} size={18} />
                                   <h3>{row.label}</h3>
                                   <span
@@ -1517,60 +1539,73 @@ export default function SettingsScreen({
                                   >
                                     {stored ? 'key set' : 'no key'}
                                   </span>
-                                </div>
-                                <Field
-                                  label="API key"
-                                  htmlFor={`provider-key-input-${row.id}`}
-                                  hint={
-                                    stored
-                                      ? 'A key is stored. Typing a new one replaces it; the stored value is never shown.'
-                                      : 'Stored by pi on this Mac. Foundry keeps no copy.'
-                                  }
-                                >
-                                  <TextInput
-                                    id={`provider-key-input-${row.id}`}
-                                    aria-label={`${row.label} API key`}
-                                    type="password"
-                                    autoComplete="off"
-                                    spellCheck={false}
-                                    mono
-                                    value={draft}
-                                    placeholder={stored ? '••••••••' : 'paste a key'}
-                                    onChange={(e) =>
-                                      setKeyDrafts((drafts) => ({
-                                        ...drafts,
-                                        [row.id]: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </Field>
-                                <div className={styles.settingsBtnrow}>
-                                  <Button
-                                    size="sm"
-                                    variant="primary"
-                                    disabled={!!providerBusy || !draft.trim()}
-                                    onClick={() => void saveProviderKey(row.id)}
+                                  <span
+                                    className={`${styles.providerChevron} ${open ? styles.open : ''}`}
+                                    aria-hidden
                                   >
-                                    {providerBusy === busyKey
-                                      ? 'Saving…'
-                                      : stored
-                                        ? 'Replace'
-                                        : 'Save'}
-                                  </Button>
-                                  {stored && (
-                                    <Button
-                                      size="sm"
-                                      variant="danger"
-                                      disabled={!!providerBusy}
-                                      onClick={() => void clearProviderKey(row.id, row.label)}
+                                    ▾
+                                  </span>
+                                </button>
+                                <div
+                                  id={`provider-key-form-${row.id}`}
+                                  className={`${styles.keyCollapse} ${open ? styles.open : ''}`}
+                                >
+                                  <div className={styles.keyCollapseInner}>
+                                    <Field
+                                      label="API key"
+                                      htmlFor={`provider-key-input-${row.id}`}
+                                      hint={
+                                        stored
+                                          ? 'A key is stored. Typing a new one replaces it; the stored value is never shown.'
+                                          : 'Stored by pi on this Mac. Foundry keeps no copy.'
+                                      }
                                     >
-                                      Clear
-                                    </Button>
-                                  )}
+                                      <TextInput
+                                        id={`provider-key-input-${row.id}`}
+                                        aria-label={`${row.label} API key`}
+                                        type="password"
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                        mono
+                                        value={draft}
+                                        placeholder={stored ? '••••••••' : 'paste a key'}
+                                        onChange={(e) =>
+                                          setKeyDrafts((drafts) => ({
+                                            ...drafts,
+                                            [row.id]: e.target.value,
+                                          }))
+                                        }
+                                      />
+                                    </Field>
+                                    <div className={styles.settingsBtnrow}>
+                                      <Button
+                                        size="sm"
+                                        variant="primary"
+                                        disabled={!!providerBusy || !draft.trim()}
+                                        onClick={() => void saveProviderKey(row.id)}
+                                      >
+                                        {providerBusy === busyKey
+                                          ? 'Saving…'
+                                          : stored
+                                            ? 'Replace'
+                                            : 'Save'}
+                                      </Button>
+                                      {stored && (
+                                        <Button
+                                          size="sm"
+                                          variant="danger"
+                                          disabled={!!providerBusy}
+                                          onClick={() => void clearProviderKey(row.id, row.label)}
+                                        >
+                                          Clear
+                                        </Button>
+                                      )}
+                                    </div>
+                                    {providerNotes[busyKey] && (
+                                      <p className={styles.hint}>{providerNotes[busyKey]}</p>
+                                    )}
+                                  </div>
                                 </div>
-                                {providerNotes[busyKey] && (
-                                  <p className={styles.hint}>{providerNotes[busyKey]}</p>
-                                )}
                               </div>
                             );
                           })}
