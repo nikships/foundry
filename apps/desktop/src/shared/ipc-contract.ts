@@ -45,6 +45,7 @@ import type {
   PanelEntry,
   PanelStateCore,
   PlanImageAttachment,
+  ProposalSnapshot,
   UpdateStatus,
   ValidationIssue,
 } from './types.js';
@@ -241,6 +242,13 @@ export interface OrchestratorState extends PanelStateCore {
   /** Bumps every time an accepted plan lands, so overrides can reset. */
   revision: number;
 }
+
+/**
+ * Exactly-once accept outcome. `ok:true` carries the one run id; `ok:false`
+ * carries the rails/issues that refused the plan and started nothing.
+ */
+export type OrchestratorAcceptResult =
+  { ok: true; runId: string } | { ok: false; issues: ValidationIssue[] };
 
 export interface SetupState extends PanelStateCore {
   setupId: string;
@@ -768,6 +776,32 @@ export interface FoundryApi {
      */
     message(planId: string, text: string): Promise<string | null>;
     cancel(planId: string): Promise<boolean>;
+    /**
+     * Durable proposal reads. The DB is the source of truth, so a reload or
+     * reconnect re-reads these and then subscribes to `proposals-changed` +
+     * `orchestrator-progress` for live updates. No hook state required.
+     *
+     * Optional during the service→UI handoff so the current renderer (which
+     * the service slice must not edit) keeps compiling; the renderer build
+     * adopts these and makes them required.
+     */
+    list?(projectId: string): Promise<ProposalSnapshot[]>;
+    get?(planId: string): Promise<ProposalSnapshot | null>;
+    /**
+     * Exactly-once run creation for a proposal. The accepted proposal becomes
+     * the persisted run plan with the exact snapshot retained. Concurrent
+     * accepts of one `planId` share one run; a repeat returns the same run.
+     * `plan` carries operator overrides (re-cast model/effort); main
+     * re-validates via `checkPlanRails` inside `startRun` and persists the
+     * exact received value as `acceptedPlan`.
+     */
+    accept?(planId: string, plan?: GeneratedRunPlan): Promise<OrchestratorAcceptResult>;
+    /**
+     * Discard a proposal. If `generating`, cancels first, then tombstones.
+     * `accepted` rows refuse (`false`); discard is otherwise idempotent.
+     * Optional during the service→UI handoff; see `list`.
+     */
+    discard?(planId: string): Promise<boolean>;
   };
   prs: {
     /** Cheap enough to gate the UI on: gh presence, auth, and remote resolve. */
@@ -865,6 +899,10 @@ export interface FoundryApi {
       // Planning is not a run: no trace rows, no change_id cursor to walk, so
       // the Orchestrator's progress is pushed the way detection's is.
       | 'orchestrator-progress'
+      // Durable proposal list invalidation: a `list()` re-read picks up the
+      // row the progress payload describes. Pushed alongside
+      // `orchestrator-progress` on every proposal transition.
+      | 'proposals-changed'
       | 'smith-proposals-changed'
       | 'smith-progress'
       // A login completes in a browser, minutes after the call that started it
@@ -989,6 +1027,10 @@ export const IPC = {
   orchestratorPlan: 'orchestrator:plan',
   orchestratorMessage: 'orchestrator:message',
   orchestratorCancel: 'orchestrator:cancel',
+  orchestratorList: 'orchestrator:list',
+  orchestratorGet: 'orchestrator:get',
+  orchestratorAccept: 'orchestrator:accept',
+  orchestratorDiscard: 'orchestrator:discard',
   prsStatus: 'prs:status',
   prsList: 'prs:list',
   prsCreate: 'prs:create',
@@ -1028,6 +1070,7 @@ export const IPC = {
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
   eventOrchestratorProgress: 'event:orchestrator-progress',
+  eventProposalsChanged: 'event:proposals-changed',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
   eventSmithProgress: 'event:smith-progress',
   eventBridgeChanged: 'event:bridge-changed',

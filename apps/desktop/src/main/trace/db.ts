@@ -124,6 +124,28 @@ CREATE TABLE IF NOT EXISTS phase_checkpoints (
   change_id        INTEGER NOT NULL,
   created_at       TEXT
 );
+-- Durable orchestrator proposals, one row per startPlan call, written before
+-- any run exists. The DB is the history; the in-memory session registry is
+-- only the live-turn cache. Additive only; existing rows are user data.
+CREATE TABLE IF NOT EXISTS proposals (
+  plan_id              TEXT PRIMARY KEY,
+  project_id           TEXT NOT NULL,
+  prompt               TEXT NOT NULL,
+  model                TEXT NOT NULL,
+  reasoning_effort     TEXT NOT NULL,
+  status               TEXT NOT NULL DEFAULT 'generating',
+  detail               TEXT NOT NULL DEFAULT '',
+  entries_json         TEXT NOT NULL DEFAULT '[]',
+  plan_json            TEXT,
+  raw_reply            TEXT NOT NULL DEFAULT '',
+  messages_json        TEXT NOT NULL DEFAULT '[]',
+  revision             INTEGER NOT NULL DEFAULT 0,
+  accepted_run_id      TEXT,
+  accepted_plan_json   TEXT,
+  created_at           INTEGER NOT NULL,
+  updated_at           INTEGER NOT NULL,
+  ended_at             INTEGER
+);
 CREATE TABLE IF NOT EXISTS processes (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id     TEXT REFERENCES runs(run_id),
@@ -144,6 +166,8 @@ CREATE INDEX IF NOT EXISTS idx_gates_phase ON gate_results(phase_id);
 CREATE INDEX IF NOT EXISTS idx_checkpoints_run ON phase_checkpoints(run_id, change_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_checkpoints_generation
   ON phase_checkpoints(phase_id, generation);
+CREATE INDEX IF NOT EXISTS idx_proposals_project_updated
+  ON proposals(project_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_processes_open ON processes(ended_at) WHERE ended_at IS NULL;
 `;

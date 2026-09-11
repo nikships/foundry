@@ -13,6 +13,7 @@ import { AGENT_MARKS_DIR } from './store/agent-marks.js';
 import type {
   AgentDef,
   AppTheme,
+  GeneratedRunPlan,
   ModelInfo,
   PipelineDef,
   ReadinessState,
@@ -22,6 +23,7 @@ import { themeBackgroundColor } from '@shared/themes.js';
 import {
   IPC,
   type DetectionState,
+  type OrchestratorAcceptResult,
   type OrchestratorState,
   type SetupState,
 } from '@shared/ipc-contract.js';
@@ -34,7 +36,8 @@ import { RunRegistry } from './engine/registry.js';
 import { createDetections, type DetectStart } from './engine/detect-session.js';
 import { createSetups, type SetupStart } from './engine/setup-session.js';
 import { createPlans, type PlanStart } from './orchestrator/plan-session.js';
-import { runDetail } from './engine/operations.js';
+import { ProposalStore, proposalToLiveState } from './orchestrator/proposals.js';
+import { runDetail, startRun } from './engine/operations.js';
 import { ReadinessSessions } from './readiness/sessions.js';
 import type { PanelRegistry } from './session/index.js';
 import { lazyOneShots } from './pi/lazy-oneshot.js';
@@ -62,7 +65,6 @@ import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
 import { linearCredentials } from './linear/credentials.js';
 import { LinearService } from './linear/service.js';
 import { tavilyCredentials, TavilyService } from './tavily/service.js';
-import { startPlan } from './orchestrator/start.js';
 import { enabledModelIds, enabledModels } from './pi/enabled-models.js';
 import { ghStatus } from './system/gh.js';
 
@@ -84,6 +86,12 @@ export class AppContext {
   readonly detections: PanelRegistry<DetectStart, DetectionState>;
   readonly setups: PanelRegistry<SetupStart, SetupState>;
   readonly plans: PanelRegistry<PlanStart, OrchestratorState>;
+  /**
+   * Durable proposal records. The live `plans` registry is only the turn
+   * cache; this store is the history that survives navigation, reconnect,
+   * and restart. Renderer reads via `orchestrator:list/get/accept/discard`.
+   */
+  readonly proposals: ProposalStore;
   readonly readiness: ReadinessSessions;
   readonly updater: UpdaterService;
   readonly smith: SmithService;
@@ -149,9 +157,11 @@ export class AppContext {
     this.setups = createSetups(this.oneShot, (state) =>
       this.broadcast(IPC.eventSetupProgress, state),
     );
-    this.plans = createPlans(this.oneShot, (state) =>
-      this.broadcast(IPC.eventOrchestratorProgress, state),
-    );
+    // Proposals own the push fan-out: `onProgress` persists the durable row
+    // and broadcasts both `orchestrator-progress` (live turn) and
+    // `proposals-changed` (list invalidation). The closure runs async after
+    // construction, so referencing `this.proposals` here is safe.
+    this.plans = createPlans(this.oneShot, (state) => this.proposals.onProgress(state));
     const smithReadinessObservers = new Map<string, (state: ReadinessState) => void>();
     this.readiness = new ReadinessSessions(this.oneShot, (state) => {
       smithReadinessObservers.get(state.projectId)?.(state);
@@ -178,6 +188,17 @@ export class AppContext {
               runId,
             })
           : null,
+    });
+
+    this.proposals = new ProposalStore({
+      tracerFor: (projectId) => {
+        const project = this.projects.get(projectId);
+        return project ? this.registry.tracerFor(project) : null;
+      },
+      projectIds: () => this.projects.list().map((project) => project.id),
+      plans: this.plans,
+      broadcast: (channel, payload) => this.broadcast(channel, payload),
+      startRun: (plan) => this.startProposalRun(plan),
     });
 
     // Constructed here; main restores it only when the operator previously
@@ -212,8 +233,7 @@ export class AppContext {
           };
         },
         start: (input) =>
-          startPlan(
-            this.plans,
+          this.proposals.start(
             this.projects.get(input.projectId),
             {
               prompt: input.prompt,
@@ -229,8 +249,10 @@ export class AppContext {
               ghAvailable: (path) => ghStatus(path).then((status) => status.available),
             },
           ),
-        state: (planId) => this.plans.get(planId),
-        cancel: (planId) => this.plans.cancel(planId),
+        state: (planId) => this.proposalLiveState(planId),
+        cancel: (planId) => this.proposals.cancel(planId),
+        list: (projectId) => this.proposals.list(projectId),
+        accept: (planId, plan) => this.proposals.accept(planId, plan),
       },
       linear: {
         state: () => this.linear.state(),
@@ -374,6 +396,63 @@ export class AppContext {
         return chat;
       },
     });
+  }
+
+  /**
+   * Live-first proposal read for companion polling: the in-memory turn when
+   * present, otherwise the durable row projected onto the live shape. Keeps
+   * `start/state/cancel` working while the phone also sees late completion.
+   */
+  private proposalLiveState(planId: string): OrchestratorState | null {
+    const live = this.plans.get(planId);
+    if (live) return live;
+    const durable = this.proposals.get(planId);
+    return durable ? proposalToLiveState(durable) : null;
+  }
+
+  /**
+   * Exactly-once accept seam: proposal accepts must go through
+   * `orchestrator:accept` (this path), not `runs:start` directly, so the
+   * durable `accepted_run_id` idempotency key covers restarts. Manual and
+   * Linear-pipeline paths keep using `runs:start`.
+   */
+  private async startProposalRun(plan: GeneratedRunPlan): Promise<OrchestratorAcceptResult> {
+    const outcome = await startRun(
+      {
+        projectById: (id) => this.projects.get(id),
+        pipelineFor: (projectId, pipelineId) =>
+          this.pipelines.get(pipelineId, this.pipelineScope(projectId)),
+        rosterFor: (projectId) => this.rosterFor(projectId),
+        envelopeDefs: () => this.envelopes.list(),
+        settings: () => this.settings.get(),
+        saveProject: (next) => {
+          const result = this.projects.save(next);
+          if (!result.ok) return next;
+          this.broadcast(IPC.eventSettingsChanged);
+          return this.projects.get(next.id) ?? next;
+        },
+        enabledModelIds: () => enabledModelIds(this.supportDir, this.settings.get().hiddenModelIds),
+        oneShot: this.oneShot,
+        registry: this.registry,
+      },
+      {
+        projectId: plan.projectId,
+        pipelineId: plan.pipeline.id,
+        request: plan.refinedRequest,
+        plan,
+      },
+    );
+    if (outcome.ok && outcome.runId) return { ok: true, runId: outcome.runId };
+    return { ok: false, issues: outcome.issues };
+  }
+
+  /**
+   * Boot restore for durable proposals. Called from startup after projects
+   * load so `generating` rows become `failed/interrupted` while
+   * ready/failed/cancelled/accepted rows are left untouched.
+   */
+  restoreProposals(projectIds?: string[]): void {
+    this.proposals.restoreOnBoot(projectIds ?? this.projects.list().map((p) => p.id));
   }
 
   private onRunFinished(run: RunRow): void {

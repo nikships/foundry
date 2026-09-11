@@ -5,8 +5,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { RunRow } from '@shared/types.js';
-import { selectActivityRuns } from '@renderer/view-models/activity-runs.js';
+import type { ProposalSnapshot, RunRow } from '@shared/types.js';
+import {
+  selectActivityItems,
+  selectActivityRuns,
+  type ActivityItem,
+} from '@renderer/view-models/activity-runs.js';
 
 function run(over: Partial<RunRow> = {}): RunRow {
   return {
@@ -181,5 +185,139 @@ describe('selectActivityRuns', () => {
       }),
     );
     expect(selectActivityRuns(rows, 'proj_a', 2).map((r) => r.runId)).toEqual(['done-3', 'done-2']);
+  });
+});
+
+function proposal(over: Partial<ProposalSnapshot> = {}): ProposalSnapshot {
+  return {
+    planId: 'plan_1',
+    projectId: 'proj_a',
+    prompt: 'do the thing',
+    model: 'fixture/model',
+    reasoningEffort: 'medium',
+    status: 'generating',
+    detail: 'planning',
+    entries: [],
+    plan: null,
+    rawReply: '',
+    messages: [],
+    revision: 0,
+    acceptedRunId: null,
+    acceptedPlan: null,
+    createdAt: 1_000,
+    updatedAt: 1_000,
+    ...over,
+  };
+}
+
+function itemKey(item: ActivityItem): string {
+  return item.kind === 'run' ? `run:${item.run.runId}` : `proposal:${item.proposal.planId}`;
+}
+
+describe('selectActivityItems', () => {
+  it('returns [] for an empty project selection', () => {
+    expect(
+      selectActivityItems(
+        [run({ runId: 'live', status: 'running', endedAt: null })],
+        [proposal({ planId: 'plan_x' })],
+        '',
+      ),
+    ).toEqual([]);
+  });
+
+  it('shows generating, ready, and failed proposals before any run exists', () => {
+    const items = selectActivityItems(
+      [],
+      [
+        proposal({ planId: 'plan_gen', status: 'generating', createdAt: 300, updatedAt: 300 }),
+        proposal({ planId: 'plan_ready', status: 'ready', createdAt: 100, updatedAt: 200 }),
+        proposal({ planId: 'plan_failed', status: 'failed', createdAt: 200, updatedAt: 250 }),
+      ],
+      'proj_a',
+    );
+    expect(items.map(itemKey)).toEqual([
+      'proposal:plan_gen',
+      'proposal:plan_failed',
+      'proposal:plan_ready',
+    ]);
+  });
+
+  it('orders generating proposals, live runs, settled proposals, then finished runs', () => {
+    const items = selectActivityItems(
+      [
+        run({
+          runId: 'done',
+          status: 'accepted',
+          startedAt: '2026-01-01T20:00:00.000Z',
+          endedAt: '2026-01-01T20:10:00.000Z',
+        }),
+        run({
+          runId: 'live',
+          status: 'running',
+          startedAt: '2026-01-01T19:00:00.000Z',
+          endedAt: null,
+        }),
+      ],
+      [
+        proposal({ planId: 'gen_new', status: 'generating', createdAt: 500, updatedAt: 500 }),
+        proposal({ planId: 'gen_old', status: 'generating', createdAt: 400, updatedAt: 400 }),
+        proposal({ planId: 'ready', status: 'ready', createdAt: 100, updatedAt: 300 }),
+        proposal({ planId: 'failed', status: 'failed', createdAt: 200, updatedAt: 350 }),
+      ],
+      'proj_a',
+    );
+    expect(items.map(itemKey)).toEqual([
+      'proposal:gen_new',
+      'proposal:gen_old',
+      'run:live',
+      'proposal:failed',
+      'proposal:ready',
+      'run:done',
+    ]);
+  });
+
+  it('puts ready before failed at equal timestamps and excludes other projects', () => {
+    const items = selectActivityItems(
+      [run({ runId: 'b-live', projectId: 'proj_b', status: 'running', endedAt: null })],
+      [
+        proposal({ planId: 'a_ready', status: 'ready', updatedAt: 900, createdAt: 100 }),
+        proposal({ planId: 'a_failed', status: 'failed', updatedAt: 900, createdAt: 200 }),
+        proposal({ planId: 'b_gen', projectId: 'proj_b', status: 'generating' }),
+      ],
+      'proj_a',
+    );
+    expect(items.map(itemKey)).toEqual(['proposal:a_ready', 'proposal:a_failed']);
+  });
+
+  it('hides cancelled, accepted, and discarded proposals from the sidebar', () => {
+    const items = selectActivityItems(
+      [],
+      [
+        proposal({ planId: 'c', status: 'cancelled' }),
+        proposal({ planId: 'a', status: 'accepted' }),
+        proposal({ planId: 'd', status: 'discarded' }),
+        proposal({ planId: 'g', status: 'generating' }),
+      ],
+      'proj_a',
+    );
+    expect(items.map(itemKey)).toEqual(['proposal:g']);
+  });
+
+  it('caps finished runs while keeping every live run and proposal', () => {
+    const finished = Array.from({ length: 7 }, (_, i) =>
+      run({
+        runId: `done-${i}`,
+        status: 'accepted',
+        startedAt: `2026-01-01T0${i}:00:00.000Z`,
+        endedAt: `2026-01-01T0${i}:10:00.000Z`,
+      }),
+    );
+    const items = selectActivityItems(
+      finished,
+      [proposal({ planId: 'gen', status: 'generating' })],
+      'proj_a',
+      2,
+    );
+    expect(items.map(itemKey)).toEqual(['proposal:gen', 'run:done-6', 'run:done-5']);
   });
 });

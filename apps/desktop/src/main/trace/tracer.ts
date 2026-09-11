@@ -29,6 +29,7 @@ import type {
   GateCheck,
   GateResultRow,
   GeneratedRunPlan,
+  PanelEntry,
   PhaseCheckpointFile,
   PhaseCheckpointPayload,
   PhaseCheckpointRow,
@@ -37,6 +38,9 @@ import type {
   PhaseRow,
   PhaseStatus,
   PipelineDef,
+  ProposalSnapshot,
+  ProposalStatus,
+  ReasoningEffort,
   RunMode,
   RunRow,
   RunSource,
@@ -334,6 +338,130 @@ export class Tracer {
     return this.many<{ run_id: string }>("SELECT run_id FROM runs WHERE status = 'running'").map(
       (r) => r.run_id,
     );
+  }
+
+  // ── proposals (durable orchestrator records, sole-writer: this class) ────
+
+  /**
+   * One durable row per `startPlan` call, written before any run exists.
+   * Only this class prepares against `proposals`; the store takes a
+   * `tracerFor(projectId)` accessor and never opens a second handle.
+   */
+  createProposal(input: {
+    planId: string;
+    projectId: string;
+    prompt: string;
+    model: string;
+    reasoningEffort: ReasoningEffort;
+    createdAt: number;
+  }): void {
+    this.exec(
+      `INSERT INTO proposals (plan_id, project_id, prompt, model, reasoning_effort,
+         status, detail, entries_json, plan_json, raw_reply, messages_json,
+         revision, accepted_run_id, accepted_plan_json, created_at, updated_at, ended_at)
+       VALUES (?,?,?,?,?,'generating','', '[]', NULL, '', '[]', 0, NULL, NULL, ?, ?, NULL)`,
+      input.planId,
+      input.projectId,
+      input.prompt,
+      input.model,
+      input.reasoningEffort,
+      input.createdAt,
+      input.createdAt,
+    );
+  }
+
+  /**
+   * Patch fields use column JSON where noted. `undefined` leaves a column
+   * alone; `null` writes SQL NULL (for `planJson`, `acceptedRunId`,
+   * `acceptedPlanJson`, `endedAt`).
+   */
+  updateProposal(
+    planId: string,
+    patch: Partial<{
+      status: ProposalStatus;
+      detail: string;
+      entriesJson: string;
+      planJson: string | null;
+      rawReply: string;
+      messagesJson: string;
+      revision: number;
+      acceptedRunId: string | null;
+      acceptedPlanJson: string | null;
+      updatedAt: number;
+      endedAt: number | null;
+    }>,
+  ): void {
+    const assignments: string[] = [];
+    const args: SqlValue[] = [];
+    if (patch.status !== undefined) {
+      assignments.push('status = ?');
+      args.push(patch.status);
+    }
+    if (patch.detail !== undefined) {
+      assignments.push('detail = ?');
+      args.push(patch.detail);
+    }
+    if (patch.entriesJson !== undefined) {
+      assignments.push('entries_json = ?');
+      args.push(patch.entriesJson);
+    }
+    if (patch.planJson !== undefined) {
+      assignments.push('plan_json = ?');
+      args.push(patch.planJson);
+    }
+    if (patch.rawReply !== undefined) {
+      assignments.push('raw_reply = ?');
+      args.push(patch.rawReply);
+    }
+    if (patch.messagesJson !== undefined) {
+      assignments.push('messages_json = ?');
+      args.push(patch.messagesJson);
+    }
+    if (patch.revision !== undefined) {
+      assignments.push('revision = ?');
+      args.push(patch.revision);
+    }
+    if (patch.acceptedRunId !== undefined) {
+      assignments.push('accepted_run_id = ?');
+      args.push(patch.acceptedRunId);
+    }
+    if (patch.acceptedPlanJson !== undefined) {
+      assignments.push('accepted_plan_json = ?');
+      args.push(patch.acceptedPlanJson);
+    }
+    if (patch.updatedAt !== undefined) {
+      assignments.push('updated_at = ?');
+      args.push(patch.updatedAt);
+    }
+    if (patch.endedAt !== undefined) {
+      assignments.push('ended_at = ?');
+      args.push(patch.endedAt);
+    }
+    if (!assignments.length) return;
+    this.exec(`UPDATE proposals SET ${assignments.join(', ')} WHERE plan_id = ?`, ...args, planId);
+  }
+
+  proposal(planId: string): ProposalSnapshot | null {
+    const row = this.one<RawProposal>('SELECT * FROM proposals WHERE plan_id = ?', planId);
+    return row ? mapProposal(row) : null;
+  }
+
+  /**
+   * Newest-first by `updated_at`. `discarded` tombstones are hidden unless
+   * the caller opts in; the sidebar further filters to
+   * generating/ready/failed.
+   */
+  proposalsByProject(projectId: string, opts?: { includeDiscarded?: boolean }): ProposalSnapshot[] {
+    const rows = opts?.includeDiscarded
+      ? this.many<RawProposal>(
+          'SELECT * FROM proposals WHERE project_id = ? ORDER BY updated_at DESC, rowid DESC',
+          projectId,
+        )
+      : this.many<RawProposal>(
+          "SELECT * FROM proposals WHERE project_id = ? AND status != 'discarded' ORDER BY updated_at DESC, rowid DESC",
+          projectId,
+        );
+    return rows.map(mapProposal);
   }
 
   // ── phases ────────────────────────────────────────────────────────────────
@@ -1279,6 +1407,26 @@ interface RawProcess {
   command: string;
 }
 
+interface RawProposal {
+  plan_id: string;
+  project_id: string;
+  prompt: string;
+  model: string;
+  reasoning_effort: string;
+  status: string;
+  detail: string;
+  entries_json: string;
+  plan_json: string | null;
+  raw_reply: string;
+  messages_json: string;
+  revision: number;
+  accepted_run_id: string | null;
+  accepted_plan_json: string | null;
+  created_at: number;
+  updated_at: number;
+  ended_at: number | null;
+}
+
 interface RawCheckpoint {
   checkpoint_id: string;
   run_id: string;
@@ -1327,6 +1475,38 @@ function mapCheckpoint(r: RawCheckpoint, payloadPresent: boolean): PhaseCheckpoi
     changeId: r.change_id,
     createdAt: r.created_at,
   };
+}
+
+function mapProposal(r: RawProposal): ProposalSnapshot {
+  return {
+    planId: r.plan_id,
+    projectId: r.project_id,
+    prompt: r.prompt ?? '',
+    model: r.model ?? '',
+    reasoningEffort: (r.reasoning_effort as ReasoningEffort) ?? 'medium',
+    status: r.status as ProposalStatus,
+    detail: r.detail ?? '',
+    entries: safeJsonArray<PanelEntry>(r.entries_json),
+    plan: safeProposalPlan(r.plan_json),
+    rawReply: r.raw_reply ?? '',
+    messages: safeJsonArray<ProposalSnapshot['messages'][number]>(r.messages_json),
+    revision: r.revision ?? 0,
+    acceptedRunId: r.accepted_run_id ?? null,
+    acceptedPlan: safeProposalPlan(r.accepted_plan_json),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    ...(r.ended_at !== null && r.ended_at !== undefined ? { endedAt: r.ended_at } : {}),
+  };
+}
+
+/** A stored plan that no longer parses degrades to null, like `runPlan`. */
+function safeProposalPlan(text: string | null): GeneratedRunPlan | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as GeneratedRunPlan;
+  } catch {
+    return null;
+  }
 }
 
 function safeJson(text: string | null): Record<string, unknown> {

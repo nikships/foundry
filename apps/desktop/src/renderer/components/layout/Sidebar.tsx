@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NAV_ITEMS, SMITH_NAV_ITEM, type NavView, type View } from '../../utils/navigation.js';
 import { useApp } from '../../stores/app.js';
-import { useActivityRuns } from '../../stores/run.js';
+import { useActivityItems, useActivityRuns } from '../../stores/run.js';
+import SidebarProposals from './SidebarProposals.js';
 import { since, statusColor, statusWord } from '../../utils/format.js';
 import { safeGetItem, safeSetItem } from '../../utils/local-store.js';
 import {
@@ -112,6 +113,7 @@ export default function Sidebar({
   onNewProject,
   onOpenSettings,
   onOpenInspector,
+  onOpenProposal,
   onOpenSmith,
   inspectorRunId = '',
 }: {
@@ -124,6 +126,8 @@ export default function Sidebar({
   onOpenSettings: (pane: string) => void;
   /** Pin the Inspector to a run from the selected project. */
   onOpenInspector?: (runId: string) => void;
+  /** Opens a durable proposal in the Runs view (scrolls to its card, never the Inspector). */
+  onOpenProposal?: (planId: string) => void;
   /** Opens the Smith chat screen. Not a numbered nav item, so it takes its own handler. */
   onOpenSmith?: () => void;
   /** The run the Inspector is pinned to, so its activity row reads as selected. */
@@ -131,6 +135,9 @@ export default function Sidebar({
 }): React.JSX.Element {
   const { projects, project, projectId, selectProject } = useApp();
   const { runs: pipelineRuns } = useActivityRuns(projectId);
+  // Ordered Activity (proposals interleaved with runs, project-scoped).
+  // pipelineRuns above preserves the runs-only contract; items drive order.
+  const { items: activityItems } = useActivityItems(projectId);
 
   const [collapsed, setCollapsed] = useState<boolean>(
     () => safeGetItem(SIDEBAR_COLLAPSED_KEY) === '1',
@@ -246,11 +253,21 @@ export default function Sidebar({
           )}
         </button>
       </nav>
-      {!collapsed && pipelineRuns.length > 0 && (
+      {((!collapsed && pipelineRuns.length > 0) || (!collapsed && activityItems.length > 0)) && (
         <div className={styles.runsSection}>
           <label className="faint">Activity</label>
           <div className={styles.runsList}>
-            {pipelineRuns.map((run) => {
+            {activityItems.map((item) => {
+              if (item.kind === 'proposal') {
+                return (
+                  <SidebarProposals
+                    key={item.proposal.planId}
+                    proposals={[item.proposal]}
+                    onOpenProposal={onOpenProposal}
+                  />
+                );
+              }
+              const run = item.run;
               const running = run.status === 'running';
               const pinned = view === 'inspector' && inspectorRunId === run.runId;
               return (

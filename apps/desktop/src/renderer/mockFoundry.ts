@@ -22,6 +22,7 @@ import type {
   BaseSyncStatus,
   GeneratedRunPlan,
   LinearIssueSnapshot,
+  ProposalSnapshot,
 } from '@shared/types.js';
 import type {
   EventPage,
@@ -334,6 +335,8 @@ export function createMockFoundryApi(): FoundryApi {
     { messages: PlanChatMessage[]; emit: (status: 'running' | 'done', detail: string) => void }
   >();
   let orchestratorSequence = 0;
+  let mockRunSequence = 0;
+  const mockProposals = new Map<string, ProposalSnapshot>();
 
   function on(channel: string, handler: (data?: unknown) => void): () => void {
     const set = listeners.get(channel) ?? new Set();
@@ -775,11 +778,55 @@ export function createMockFoundryApi(): FoundryApi {
         };
         const startedAt = Date.now();
         const messages: PlanChatMessage[] = [];
+        // Durable mirror of the main ProposalStore: one independent row per
+        // call, never cancelling siblings. Concurrent plan() calls coexist.
+        const snapshot: ProposalSnapshot = {
+          planId,
+          projectId,
+          prompt,
+          model,
+          reasoningEffort,
+          status: 'generating',
+          detail: 'Opening the planning session…',
+          entries: [],
+          plan: null,
+          rawReply: '',
+          messages: [],
+          revision: 0,
+          acceptedRunId: null,
+          acceptedPlan: null,
+          createdAt: startedAt,
+          updatedAt: startedAt,
+        };
+        mockProposals.set(planId, snapshot);
+        const touch = (patch: Partial<ProposalSnapshot>): void => {
+          const current = mockProposals.get(planId);
+          if (!current) return;
+          // Frozen rows never flip back: a late completion after cancel or
+          // discard is dropped, mirroring the main store.
+          if (current.status === 'cancelled' || current.status === 'discarded') return;
+          if (current.status === 'accepted') return;
+          mockProposals.set(planId, { ...current, ...patch, updatedAt: Date.now() });
+          notify('proposals-changed', { projectId });
+        };
         // Revision only advances when a plan lands, mirroring the real session
         // so the hook's override reset never fires on a mere chat exchange.
         let revision = 0;
         const emit = (status: 'running' | 'done', detail: string): void => {
           if (status === 'done' && revision === 0) revision = 1;
+          const transcript = messages.map((message) => ({ ...message }));
+          if (status === 'done') {
+            touch({
+              status: 'ready',
+              detail,
+              plan,
+              revision,
+              messages: transcript,
+              endedAt: Date.now(),
+            });
+          } else {
+            touch({ status: 'generating', detail, revision, messages: transcript });
+          }
           notify('orchestrator-progress', {
             planId,
             projectId,
@@ -803,6 +850,7 @@ export function createMockFoundryApi(): FoundryApi {
         ];
         orchestratorTimers.set(planId, timers);
         orchestratorChats.set(planId, { messages, emit });
+        notify('proposals-changed', { projectId });
         return { planId };
       },
       message: async (planId, text) => {
@@ -823,10 +871,85 @@ export function createMockFoundryApi(): FoundryApi {
       },
       cancel: async (planId) => {
         orchestratorChats.delete(planId);
+        const stored = mockProposals.get(planId);
+        if (stored && stored.status === 'generating') {
+          mockProposals.set(planId, {
+            ...stored,
+            status: 'cancelled',
+            detail: 'cancelled',
+            updatedAt: Date.now(),
+            endedAt: Date.now(),
+          });
+          notify('proposals-changed', { projectId: stored.projectId });
+        }
         const timers = orchestratorTimers.get(planId);
-        if (!timers) return false;
+        if (!timers) return Boolean(stored);
         timers.forEach((timer) => window.clearTimeout(timer));
         orchestratorTimers.delete(planId);
+        return true;
+      },
+      list: async (projectId) =>
+        [...mockProposals.values()]
+          .filter((p) => p.projectId === projectId && p.status !== 'discarded')
+          .sort((a, b) => b.createdAt - a.createdAt || b.planId.localeCompare(a.planId))
+          .map((p) => ({ ...p })),
+      get: async (planId) => {
+        const found = mockProposals.get(planId);
+        return found ? { ...found } : null;
+      },
+      accept: async (planId, plan) => {
+        const stored = mockProposals.get(planId);
+        if (!stored) {
+          return {
+            ok: false,
+            issues: [{ level: 'error', where: 'plan', message: 'proposal not found' }],
+          };
+        }
+        // Exactly-once: a repeat returns the same run without starting again.
+        if (stored.acceptedRunId) return { ok: true, runId: stored.acceptedRunId };
+        if (stored.status === 'discarded') {
+          return {
+            ok: false,
+            issues: [{ level: 'error', where: 'plan', message: 'proposal discarded' }],
+          };
+        }
+        if (stored.status !== 'ready' || (!stored.plan && !plan)) {
+          return {
+            ok: false,
+            issues: [{ level: 'error', where: 'plan', message: 'proposal is not ready to start' }],
+          };
+        }
+        const effective = plan ?? stored.plan!;
+        const runId = `run_web_${++mockRunSequence}`;
+        mockProposals.set(planId, {
+          ...stored,
+          status: 'accepted',
+          acceptedRunId: runId,
+          acceptedPlan: effective,
+          plan: stored.plan ?? effective,
+          updatedAt: Date.now(),
+          endedAt: Date.now(),
+        });
+        notify('proposals-changed', { projectId: stored.projectId });
+        notify('runs-changed');
+        return { ok: true, runId };
+      },
+      discard: async (planId) => {
+        const stored = mockProposals.get(planId);
+        if (!stored || stored.status === 'accepted') return false;
+        if (stored.status === 'discarded') return true;
+        if (stored.status === 'generating') {
+          orchestratorChats.delete(planId);
+          orchestratorTimers.get(planId)?.forEach((timer) => window.clearTimeout(timer));
+          orchestratorTimers.delete(planId);
+        }
+        mockProposals.set(planId, {
+          ...stored,
+          status: 'discarded',
+          updatedAt: Date.now(),
+          endedAt: Date.now(),
+        });
+        notify('proposals-changed', { projectId: stored.projectId });
         return true;
       },
     },

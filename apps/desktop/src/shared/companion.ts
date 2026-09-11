@@ -8,11 +8,13 @@
  */
 
 import type {
+  GeneratedRunPlan,
   GhStatus,
   LinearIssueSnapshot,
   LinearStatusMapping,
   LinearWorkflowState,
   ModelInfo,
+  ProposalSnapshot,
   ReasoningEffort,
   RestorableCheckpointList,
   RestoreResult,
@@ -27,6 +29,7 @@ import type {
   EventPage,
   LinearConnectionState,
   LinearStartRunInput,
+  OrchestratorAcceptResult,
   OrchestratorState,
   PrAction,
   RunDetail,
@@ -164,6 +167,11 @@ export interface CompanionOrchestratorStartRequest {
 /** Planning starts asynchronously; the phone polls the returned id. */
 export type CompanionOrchestratorStartResult = { planId: string } | { error: string };
 
+/** Body of `POST /v1/orchestrator/plans/:planId/accept`. `plan` is optional. */
+export interface CompanionOrchestratorAcceptRequest {
+  plan?: GeneratedRunPlan;
+}
+
 /** Linear connection plus the lifecycle mapping currently saved on the Mac. */
 export interface CompanionLinearState extends LinearConnectionState {
   statusMapping: LinearStatusMapping;
@@ -256,6 +264,13 @@ export interface CompanionRoutes {
   };
   'GET /v1/orchestrator/plans/:planId': { response: OrchestratorState };
   'POST /v1/orchestrator/plans/:planId/cancel': { response: { ok: boolean } };
+  /** Durable proposal list for a project; same rows the Activity sidebar reads. */
+  'GET /v1/orchestrator/plans': { response: ProposalSnapshot[] };
+  /** Exactly-once accept; the accepted snapshot becomes the run plan. */
+  'POST /v1/orchestrator/plans/:planId/accept': {
+    request: CompanionOrchestratorAcceptRequest;
+    response: OrchestratorAcceptResult;
+  };
   'GET /v1/linear': { response: CompanionLinearState };
   'GET /v1/linear/issues': { response: LinearIssueSnapshot[] };
   'GET /v1/linear/issues/:issueId': { response: LinearIssueSnapshot };

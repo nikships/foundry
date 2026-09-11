@@ -60,8 +60,15 @@ describe('the IPC surface', () => {
     expect(registered.filter((channel) => channel === IPC.settingsGet)).toHaveLength(1);
   });
 
-  it('registers 142 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(142);
+  it('registers 146 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(146);
+  });
+
+  it('registers the durable proposal channels the Activity sidebar restores from', () => {
+    expect(registered).toContain(IPC.orchestratorList);
+    expect(registered).toContain(IPC.orchestratorGet);
+    expect(registered).toContain(IPC.orchestratorAccept);
+    expect(registered).toContain(IPC.orchestratorDiscard);
   });
 
   it('registers the Tavily opt-in extension and credential boundary', () => {
