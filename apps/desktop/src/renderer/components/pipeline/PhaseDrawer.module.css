@@ -51,6 +51,16 @@
   color: var(--text-faint);
   margin-top: 2px;
 }
+.subFallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--red);
+}
+.subFallbackIcon {
+  flex: none;
+  color: var(--red);
+}
 .attempts {
   background: color-mix(in srgb, var(--amber) 14%, transparent);
   color: var(--amber);

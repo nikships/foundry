@@ -7,13 +7,14 @@
  * stale view.
  */
 
+import { AlertTriangle } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentSessionRow, EnvelopeRow, EventRow, PhaseRow } from '@shared/types.js';
 import { modelLabel } from '@shared/model-label.js';
 import AgentAvatar from '../media/AgentAvatar.js';
 import StatusBadge from '../common/StatusBadge.js';
 import { duration, tokens } from '../../utils/format.js';
-import { isAutoAllowPolicy, phaseDuration } from '../../utils/derive.js';
+import { isAutoAllowPolicy, modelFallbackFor, phaseDuration } from '../../utils/derive.js';
 import { TranscriptEntry, transcriptStyles } from './entries.js';
 import styles from './TranscriptLane.module.css';
 
@@ -93,7 +94,9 @@ export default function TranscriptLane({
 
   const session = sessions.find((s) => s.agent === phase.owner);
   const transport = session?.mode ?? 'pi';
-  const model = modelLabel(session?.model);
+  const fallback = modelFallbackFor(events);
+  const model = fallback ? modelLabel(fallback.fallbackModel) : modelLabel(session?.model);
+  const modelTitle = fallback ? fallback.message : model;
   const elapsed = phaseDuration(phase, now);
 
   const onScroll = (): void => {
@@ -134,9 +137,19 @@ export default function TranscriptLane({
           <span className={styles.laneAgent}>
             <span className={styles.laneOwner}>{phase.owner ?? 'code'}</span>
             <span className={styles.laneCli}>{transport}</span>
-            <span className={styles.laneModel} title={model}>
-              {model}
-            </span>
+            {fallback ? (
+              <span
+                className={`${styles.laneModel} ${styles.laneModelFallback}`}
+                title={modelTitle}
+              >
+                <AlertTriangle size={11} aria-hidden="true" className={styles.laneFallbackIcon} />
+                {model}
+              </span>
+            ) : (
+              <span className={styles.laneModel} title={model}>
+                {model}
+              </span>
+            )}
           </span>
         </div>
         <div className={styles.laneStats}>

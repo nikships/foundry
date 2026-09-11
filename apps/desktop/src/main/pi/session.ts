@@ -10,6 +10,7 @@
  * A session belongs to one agent and starts lazily on that agent's first phase.
  */
 
+import { parseModelFallbackWarning } from '@shared/model-fallback.js';
 import type { AgentDef, ContextBreakdown, ReasoningEffort, UsageBreakdown } from '@shared/types.js';
 import type { CompactionFacts } from '../engine/compaction.js';
 import type { Tracer } from '../trace/tracer.js';
@@ -116,6 +117,7 @@ export class AgentSession {
   private currentPhaseId: string | null = null;
   private killed = false;
   private announcedOpen = false;
+  private fallbackModel: string | null = null;
 
   constructor(
     private readonly agent: AgentDef,
@@ -129,12 +131,23 @@ export class AgentSession {
   }
 
   /**
-   * The model this session actually asks for — the executor resolves the
+   * The model this session was asked for — the executor resolves the
    * roster's `inherit` against the install default before constructing the
    * session, so the trace can record what ran rather than the roster token.
+   * Stays on the roster value so a mid-turn failover does not look like a
+   * re-cast that needs a new session; {@link activeModel} names what runs.
    */
   get model(): string {
     return this.agent.model;
+  }
+
+  /**
+   * What the session actually runs on. A mid-turn failover moves the live
+   * turn onto its replacement, so later records name the fallback rather
+   * than the roster value the turn started on.
+   */
+  get activeModel(): string {
+    return this.fallbackModel ?? this.agent.model;
   }
 
   /** Resolved alongside {@link model}; never the roster's unresolved value. */
@@ -170,7 +183,7 @@ export class AgentSession {
       runId: this.deps.runId,
       onPermission: (ask) => this.decide(ask),
       onEvent: (event) => this.currentFolder?.absorb(event),
-      onModelWarning: (message) => this.agentLog('log', 'model', { message }),
+      onModelWarning: (message) => this.noteModelWarning(message),
       phaseId: () => this.currentPhaseId,
     });
 
@@ -205,11 +218,32 @@ export class AgentSession {
     });
   }
 
+  /**
+   * A model warning is a trace row first. When it announces a mid-turn
+   * failover, the replacement model is also what the session now runs on, so
+   * the persisted row moves with it and the payload keeps the failed and
+   * replacement ids beside the emitted sentence.
+   */
+  private noteModelWarning(message: string): void {
+    const fallback = parseModelFallbackWarning(message);
+    if (!fallback) {
+      this.agentLog('log', 'model', { message });
+      return;
+    }
+    this.fallbackModel = fallback.fallbackModel;
+    this.agentLog('log', 'model', {
+      message,
+      failedModel: fallback.failedModel,
+      fallbackModel: fallback.fallbackModel,
+    });
+    this.persistSession();
+  }
+
   private persistSession(): void {
     this.deps.tracer.upsertAgentSession({
       runId: this.deps.runId,
       agent: this.agent.name,
-      model: this.agent.model,
+      model: this.activeModel,
       reasoningEffort: this.agent.reasoningEffort,
       agentSessionId: this.agentSessionId,
       mode: this.mode,
