@@ -28,8 +28,9 @@ import {
   type PromptOptions,
 } from '@earendil-works/pi-coding-agent';
 import { join } from 'node:path';
-import { modelKey, pickModel, thinkingLevelFor, type PiModel } from './model.js';
+import { modelKey, pickModel, thinkingLevelFor } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
+import type { EnabledModelsSource } from './enabled-models.js';
 import {
   foundryResourceLoader,
   foundrySettings,
@@ -58,9 +59,13 @@ import type { PermissionAsk, PermissionDecision } from './transport.js';
 export interface PiOneShotOptions extends OneShotOptions {
   /** Foundry's Application Support directory; pi state lives under it. */
   supportDir: string;
-  /** Models the operator hid in Settings. Failover skips them. */
-  hiddenModelIds?: () => readonly string[];
-  /** Settings `defaultModel`. First failover hop prefers this id when reachable. */
+  /**
+   * What this install may run on or fail over onto, in pi's shape. The
+   * composition root filters the catalog — a model the operator hid in
+   * Settings is already gone — and this session never sees one to skip.
+   */
+  enabledModels: EnabledModelsSource;
+  /** Settings `defaultModel`. First failover hop prefers this id when enabled. */
   defaultModel?: () => string;
 }
 
@@ -71,7 +76,6 @@ class PiOneShot implements OneShotSession {
   private readonly outputTool: SubmissionTool | null;
   private readonly extension: ReturnType<typeof policyOnlyExtension>;
   private aborted = false;
-  private available: readonly PiModel[] = [];
   /** Package tools this turn actually admitted, read back for the policy. */
   private loadedPackageTools: string[] = [];
 
@@ -111,12 +115,13 @@ class PiOneShot implements OneShotSession {
       const last = await promptUntilIdle(
         session,
         prompt,
-        () =>
+        async () =>
           continueWithModelFailover({
             session,
             events: this.events,
-            availableModels: this.available,
-            hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+            // Live per turn: a model hidden between turns is gone from the
+            // catalog failover appoints from.
+            availableModels: await this.opts.enabledModels(),
             preferredModelId: this.opts.defaultModel?.(),
             requireImageInput: hasImages,
             onWarning: (warning) => this.opts.onWarning?.(warning),
@@ -145,8 +150,7 @@ class PiOneShot implements OneShotSession {
 
   private async open(): Promise<PiAgentSession> {
     const runtime = await modelRuntime(this.opts.supportDir);
-    const available = await runtime.getAvailable();
-    this.available = available;
+    const available = await this.opts.enabledModels();
     const picked = pickModel(available, this.opts.model);
     if (picked.warning) this.opts.onWarning?.(picked.warning);
 
@@ -245,8 +249,8 @@ function toPiImages(images: readonly OneShotImage[]): NonNullable<PromptOptions[
 /** The production factory, bound to the directory Foundry keeps pi state in. */
 export function piOneShots(
   supportDir: string,
-  hiddenModelIds?: () => readonly string[],
+  enabledModels: EnabledModelsSource,
   defaultModel?: () => string,
 ): OneShotFactory {
-  return (opts) => new PiOneShot({ ...opts, supportDir, hiddenModelIds, defaultModel });
+  return (opts) => new PiOneShot({ ...opts, supportDir, enabledModels, defaultModel });
 }

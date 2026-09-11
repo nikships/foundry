@@ -24,6 +24,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import type { OutputFormat, TransportEvent } from '../../../src/main/pi/transport.js';
+import type { EnabledModelsSource } from '../../../src/main/pi/enabled-models.js';
 
 interface CreateCall {
   cwd: string;
@@ -293,7 +294,7 @@ interface Harness {
 function harness(
   opts: {
     model?: string;
-    hiddenModelIds?: () => readonly string[];
+    enabledModels?: () => Promise<readonly PiModelStub[]>;
     defaultModel?: () => string;
   } = {},
 ): Harness {
@@ -303,7 +304,11 @@ function harness(
   const warnings: string[] = [];
   const scripted = new ScriptedPiSession();
   spy.session = scripted;
-  const factory = piOneShots(supportDir, opts.hiddenModelIds, opts.defaultModel);
+  const factory = piOneShots(
+    supportDir,
+    (opts.enabledModels ?? (async () => spy.models)) as EnabledModelsSource,
+    opts.defaultModel,
+  );
   return {
     session: scripted,
     scripted,
@@ -673,7 +678,7 @@ describe('running one turn', () => {
     expect(h.warnings.at(-1)).toContain('continuing this turn on openai/gpt-5');
   });
 
-  it('skips a hidden fallback and continues on the next visible model', async () => {
+  it('skips a model missing from the enabled catalog and continues on the next enabled model', async () => {
     spy.models.push(
       {
         provider: 'openai',
@@ -690,7 +695,9 @@ describe('running one turn', () => {
         input: ['text', 'image'],
       },
     );
-    const h = harness({ hiddenModelIds: () => ['openai/gpt-5'] });
+    // Hidden after the one-shot's catalog was read: gpt-5 is gone from the
+    // enabled catalog, while the session's own registry still cycles it.
+    const h = harness({ enabledModels: async () => spy.models.filter((m) => m.id !== 'gpt-5') });
     let attempt = 0;
     h.session.turn = (s) => {
       if (attempt++ === 0) {

@@ -20,6 +20,7 @@ import { tempDir } from '../../helpers/tmp.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
 import { Tracer } from '../../../src/main/trace/tracer.js';
 import type { FoundryToolContext, TransportEvent } from '../../../src/main/pi/transport.js';
+import type { EnabledModelsSource } from '../../../src/main/pi/enabled-models.js';
 
 /** What `createAgentSession` was handed. Asserted on; never acted upon. */
 interface CreateCall {
@@ -350,7 +351,7 @@ function harness(
     model?: string;
     reasoningEffort?: string;
     toolProfile?: 'full' | 'read-only';
-    hiddenModelIds?: () => readonly string[];
+    enabledModels?: () => Promise<readonly PiModelStub[]>;
     defaultModel?: () => string;
   } = {},
 ): Harness {
@@ -369,7 +370,7 @@ function harness(
     supportDir,
     sessionDir: join(supportDir, 'runs', 'run_tx', 'sessions'),
     tools: toolContext(),
-    hiddenModelIds: opts.hiddenModelIds,
+    enabledModels: (opts.enabledModels ?? (async () => spy.models)) as EnabledModelsSource,
     defaultModel: opts.defaultModel,
     onPermission: () => ({ outcome: 'allow' }),
     onEvent: (e) => events.push(e),
@@ -972,14 +973,16 @@ describe('running a turn', () => {
     ]);
   });
 
-  it('skips hidden models when failing over', async () => {
+  it('fails over only to models in the enabled catalog', async () => {
     spy.models.push({
       provider: 'google',
       id: 'gemini-2.5-pro',
       name: 'Gemini 2.5 Pro',
       contextWindow: 1_000_000,
     });
-    const h = harness({ hiddenModelIds: () => ['openai/gpt-5'] });
+    // Hidden after the session opened: the enabled catalog has already dropped
+    // gpt-5, while the session's own registry still cycles it.
+    const h = harness({ enabledModels: async () => spy.models.filter((m) => m.id !== 'gpt-5') });
     await h.transport.start();
     let attempt = 0;
     h.session.turn = (s) => {
@@ -1000,10 +1003,10 @@ describe('running a turn', () => {
         s.say('', { stopReason: 'error', errorMessage: 'request timed out' });
         return;
       }
-      s.say('finished on the visible fallback');
+      s.say('finished on the enabled fallback');
     };
 
-    expect((await h.transport.send('keep going')).text).toBe('finished on the visible fallback');
+    expect((await h.transport.send('keep going')).text).toBe('finished on the enabled fallback');
     expect(h.session.customMessages).toHaveLength(1);
     expect(h.transport.activeModel).toBe('google/gemini-2.5-pro');
     expect(h.warnings).toEqual([
@@ -1011,8 +1014,8 @@ describe('running a turn', () => {
     ]);
   });
 
-  it('returns the terminal error when every remaining model is hidden', async () => {
-    const h = harness({ hiddenModelIds: () => ['openai/gpt-5'] });
+  it('returns the terminal error when no enabled model remains to fail over onto', async () => {
+    const h = harness({ enabledModels: async () => spy.models.filter((m) => m.id !== 'gpt-5') });
     await h.transport.start();
     h.session.turn = (s) => {
       s.emit({

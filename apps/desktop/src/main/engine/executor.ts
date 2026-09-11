@@ -33,6 +33,7 @@ import type { Tracer } from '../trace/tracer.js';
 import { AgentSession, KILLED_DETAIL, type Mode, type TransportRequest } from '../pi/session.js';
 import { lazyTransport } from '../pi/lazy-transport.js';
 import type { AgentTransport } from '../pi/transport.js';
+import type { EnabledModelsSource } from '../pi/enabled-models.js';
 import { decideAcceptance } from './acceptance.js';
 import { acknowledgePhaseMessage } from './phase-messages.js';
 import { capturePhaseStart } from './checkpoint.js';
@@ -92,10 +93,13 @@ export interface ExecutorDeps {
   /** Foundry's Application Support directory; the agent runtime's state lives under it. */
   supportDir: string;
   /**
-   * Models the operator hid in Settings. Failover skips them. Read live so a
-   * hide mid-run applies to the next exhausted retry, not only to a new run.
+   * What this install may run on or fail over onto, in pi's shape — the
+   * reachable catalog with the models the operator hid already removed, read
+   * live so a Settings change applies mid-run. Wired by the composition root,
+   * which is the only place that knows the hidden list; a transport without a
+   * source fails its open rather than running on the raw catalog.
    */
-  hiddenModelIds?: () => readonly string[];
+  enabledModels?: EnabledModelsSource;
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -1207,7 +1211,11 @@ export class Executor {
         ...(req.agent.toolProfile ? { toolProfile: req.agent.toolProfile } : {}),
         supportDir: this.deps.supportDir,
         sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
-        hiddenModelIds: this.deps.hiddenModelIds,
+        // The composition root wires the enabled catalog; a missing source
+        // fails the transport open instead of quietly running on the raw one.
+        enabledModels:
+          this.deps.enabledModels ??
+          (() => Promise.reject(new Error('no enabled-model source was wired into this run'))),
         defaultModel: () => this.deps.defaultModel ?? '',
         onPermission: req.onPermission,
         onEvent: req.onEvent,

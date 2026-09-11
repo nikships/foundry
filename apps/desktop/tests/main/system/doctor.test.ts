@@ -135,16 +135,17 @@ describe('the Bridge check', () => {
 });
 
 describe('the usable-models check', () => {
-  it('is the only blocking provider check, and only when the catalog is empty', async () => {
+  it('is the only blocking provider check, and only when the enabled catalog is empty', async () => {
     const checks = await checkProviders(deps({ agentModels: () => Promise.resolve([]) }));
     expect(checks.filter((c) => c.blocking).map((c) => c.id)).toEqual(['agent-models']);
     const models = find(checks, 'agent-models')!;
     expect(models.ok).toBe(false);
-    expect(models.detail).toContain('no model has a working credential');
+    expect(models.detail).toContain('no usable model');
+    expect(models.detail).toContain('reset hidden models');
     expect(models.fix).toEqual({ kind: 'open-settings', value: 'providers' });
   });
 
-  it('passes and names one model when the catalog has any', async () => {
+  it('passes and names one model when the enabled catalog has any', async () => {
     const checks = await checkProviders(
       deps({
         agentModels: () => Promise.resolve([model('anthropic/a', 'Model A'), model('openai/b')]),
@@ -155,38 +156,6 @@ describe('the usable-models check', () => {
     expect(models.blocking).toBe(false);
     expect(models.detail).toContain('2 models');
     expect(models.detail).toContain('Model A');
-  });
-
-  it('stays ok: true and does not name a hidden model when all models are hidden', async () => {
-    const checks = await checkProviders(
-      deps({
-        agentModels: () =>
-          Promise.resolve([model('anthropic/a', 'Model A'), model('openai/b', 'Model B')]),
-        hiddenModelIds: () => ['anthropic/a', 'openai/b'],
-      }),
-    );
-    const models = find(checks, 'agent-models')!;
-    expect(models.ok).toBe(true);
-    expect(models.blocking).toBe(false);
-    expect(models.detail).toBe('2 models available');
-    expect(models.detail).not.toContain('Model A');
-    expect(models.detail).not.toContain('Model B');
-  });
-
-  it('names the first visible model when some are hidden', async () => {
-    const checks = await checkProviders(
-      deps({
-        agentModels: () =>
-          Promise.resolve([model('anthropic/a', 'Model A'), model('openai/b', 'Model B')]),
-        hiddenModelIds: () => ['anthropic/a'],
-      }),
-    );
-    const models = find(checks, 'agent-models')!;
-    expect(models.ok).toBe(true);
-    expect(models.blocking).toBe(false);
-    expect(models.detail).toContain('2 models');
-    expect(models.detail).toContain('Model B');
-    expect(models.detail).not.toContain('Model A');
   });
 
   // A catalog that throws is indistinguishable from an empty one for the

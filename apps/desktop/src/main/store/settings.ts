@@ -124,7 +124,21 @@ export function migrate(raw: unknown): AppSettings {
     ? [...new Set(merged.hiddenModelIds.filter(isNonEmptyString))]
     : [];
   merged.linearStatusMapping = linearStatusMapping(merged.linearStatusMapping);
-  return merged;
+  return withoutHiddenPins(merged);
+}
+
+/**
+ * A hidden model is deleted from every surface, so no pin may keep standing on
+ * one: a default that names a hidden model is reset to `inherit` rather than
+ * pointing at something the rest of the app cannot see. Applies to writes and
+ * to reads alike — a hand-edited file cannot smuggle the contradiction in.
+ */
+function withoutHiddenPins(settings: AppSettings): AppSettings {
+  const hidden = new Set(settings.hiddenModelIds);
+  for (const key of ['defaultModel', 'healingModel', 'smithModel', 'helperModel'] as const) {
+    if (hidden.has(settings[key])) settings[key] = 'inherit';
+  }
+  return settings;
 }
 
 function linearStatusMapping(
@@ -185,7 +199,7 @@ export class SettingsStore {
   patch(
     patch: Partial<AppSettings>,
   ): { ok: true; settings: AppSettings } | { ok: false; issues: string[] } {
-    const merged = { ...this.get(), ...patch };
+    const merged = withoutHiddenPins({ ...this.get(), ...patch });
     const parsed = appSettingsSchema.safeParse(merged);
     if (!parsed.success) {
       return {

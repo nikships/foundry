@@ -41,7 +41,7 @@ Do not import pi’s transitive packages directly. Derive needed types from `pi-
 - Persistent direct API keys use the catalog login path. In-memory overrides must not be described as durable.
 - A provider absent from pi's table is registered on the runtime before it is handed out, never written into `models.json`, which the operator and the Bridge own. Registration carries no credential, so such a provider stays out of `getAvailable()` until a key is stored. Its models are pinned in `shared/direct-providers.ts` because the vendor endpoint reports ids alone.
 - Meta Spark rejects images inside `function_call_output`. Lift them onto a following user message in `before_provider_request` (`spark-payload.ts`) so a `read` of a PNG does not 400. Other models keep Pi's native encoding.
-- Model fallback records the model that actually ran and skips operator-hidden failover targets. Any provider error is retried five times on the current model; the first hop prefers Settings `defaultModel`, then the rest of the catalog.
+- Model fallback records the model that actually ran and appoints only enabled models. Hidden models never reach a session: the composition roots hand every transport the enabled catalog (`enabled-models.ts` is the only reader of the hidden list outside Settings), and failover names nothing outside the catalog it is given. Any provider error is retried five times on the current model; the first hop prefers Settings `defaultModel`, then the rest of the enabled catalog.
 - Callers verify claims independently: repair checks Git and command detection executes proposed commands.
 
 ## Tests

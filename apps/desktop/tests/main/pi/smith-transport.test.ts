@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import type { ToolDefinition } from '../../../src/main/pi/tool-definition.js';
+import type { EnabledModelsSource } from '../../../src/main/pi/enabled-models.js';
 import type { ReasoningEffort } from '../../../src/shared/types.js';
 
 interface CreateCall {
@@ -41,6 +42,16 @@ interface SessionManagerCall {
   args: string[];
 }
 
+interface PiModelStub {
+  provider: string;
+  id: string;
+  name: string;
+  contextWindow: number;
+  reasoning?: boolean;
+  /** pi's own map; a null entry is a level this model does not have. */
+  thinkingLevelMap?: Record<string, unknown>;
+}
+
 const spy = {
   creates: [] as CreateCall[],
   loaders: [] as LoaderCall[],
@@ -48,15 +59,7 @@ const spy = {
   registeredTools: [] as string[],
   listed: [] as { id: string; path: string }[],
   session: null as ScriptedPiSession | null,
-  models: [] as {
-    provider: string;
-    id: string;
-    name: string;
-    contextWindow: number;
-    reasoning?: boolean;
-    /** pi's own map; a null entry is a level this model does not have. */
-    thinkingLevelMap?: Record<string, unknown>;
-  }[],
+  models: [] as PiModelStub[],
 };
 
 class ScriptedPiSession {
@@ -205,6 +208,7 @@ function harness(
     model?: string;
     customTools?: ToolDefinition[];
     reasoningEffort?: ReasoningEffort;
+    enabledModels?: () => Promise<readonly PiModelStub[]>;
   } = {},
 ) {
   const supportDir = tempDir('smith-tx-support-');
@@ -222,6 +226,7 @@ function harness(
     customTools: opts.customTools ?? [entityTool],
     onPermission: () => ({ outcome: 'allow' }),
     onModelWarning: (w) => warnings.push(w),
+    enabledModels: (opts.enabledModels ?? (async () => spy.models)) as EnabledModelsSource,
   });
   return { transport, session, warnings, supportDir, cwd };
 }

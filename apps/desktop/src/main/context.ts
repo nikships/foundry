@@ -65,7 +65,7 @@ import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
 import { linearCredentials } from './linear/credentials.js';
 import { LinearService } from './linear/service.js';
 import { tavilyCredentials, TavilyService } from './tavily/service.js';
-import { enabledModelIds, enabledModels } from './pi/enabled-models.js';
+import { enabledModelIds, enabledModels, enabledPiModels } from './pi/enabled-models.js';
 import { ghStatus } from './system/gh.js';
 
 export interface Scope {
@@ -151,7 +151,9 @@ export class AppContext {
       const { piOneShots } = await import('./pi/pi-oneshot.js');
       return piOneShots(
         supportDir,
-        () => this.settings.get().hiddenModelIds,
+        // The one place the hidden list is read for sessions: it filters the
+        // catalog, and every consumer below receives only enabled models.
+        () => enabledPiModels(supportDir, this.settings.get().hiddenModelIds),
         () => this.settings.get().defaultModel,
       );
     });
@@ -393,7 +395,8 @@ export class AppContext {
                 onPermission: request.onPermission,
                 onEvent: request.onEvent,
                 onModelWarning: request.onModelWarning,
-                hiddenModelIds: () => this.settings.get().hiddenModelIds,
+                enabledModels: () =>
+                  enabledPiModels(supportDir, this.settings.get().hiddenModelIds),
                 defaultModel: () => this.settings.get().defaultModel,
               });
             }),
@@ -468,14 +471,7 @@ export class AppContext {
   }
 
   private async availableModels(): Promise<ModelInfo[]> {
-    try {
-      const { availableModels } = await import('./pi/catalog.js');
-      const { withoutHiddenModels } = await import('@shared/model-visibility.js');
-      const models = await availableModels(this.supportDir);
-      return withoutHiddenModels(models, this.settings.get().hiddenModelIds);
-    } catch {
-      return [];
-    }
+    return enabledModels(this.supportDir, this.settings.get().hiddenModelIds);
   }
 
   window(): BrowserWindow | null {
