@@ -21,6 +21,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { foundryCompactionSummary } from '../engine/compaction.js';
 import type { CompactionFacts } from '../engine/compaction.js';
+import { installSparkPayloadRewrite } from './spark-payload.js';
 import {
   gitDiffTool,
   readPhaseContextTool,
@@ -94,6 +95,7 @@ function makePolicyExtension(
     factory: (pi) => {
       bind?.(pi);
       installPolicy(pi, decide);
+      installSparkPayloadRewrite(pi);
       system.apply(pi);
     },
     useSystemPrompt(text) {

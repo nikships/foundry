@@ -101,7 +101,9 @@ function sparkModel(id: string, name: string, cost: ModelCost): DirectModelDef {
     reasoning: true,
     thinkingLevelMap: SPARK_THINKING,
     // Video, audio, and PDF inputs are accepted by the API and absent here
-    // because pi's model shape has no way to declare them.
+    // because pi's model shape has no way to declare them. Images are accepted
+    // on user turns only; tool-result images are lifted in spark-payload.ts
+    // because the API 400s on `function_call_output` image parts.
     input: ['text', 'image'],
     cost,
     contextWindow: SPARK_CONTEXT_WINDOW,

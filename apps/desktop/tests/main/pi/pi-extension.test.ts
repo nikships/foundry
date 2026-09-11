@@ -25,6 +25,7 @@ import type {
   PermissionDecision,
 } from '../../../src/main/pi/transport.js';
 import { jsonSchemaFor } from '../../../src/main/engine/envelopes.js';
+import { DIRECT_PROVIDERS } from '../../../src/shared/direct-providers.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
 import { Tracer } from '../../../src/main/trace/tracer.js';
 
@@ -36,6 +37,7 @@ interface FakeApi {
     input: Record<string, unknown>;
   }) => Promise<{ block: true; reason: string } | undefined | void>;
   beforeAgentStart?: (event: { systemPrompt: string }) => { systemPrompt: string } | undefined;
+  beforeProviderRequest?: (event: { payload: unknown }) => unknown;
   sessionBeforeCompact?: (event: {
     preparation: {
       firstKeptEntryId: string;
@@ -70,6 +72,9 @@ function fakeApi(): {
       }
       if (event === 'session_before_compact') {
         state.sessionBeforeCompact = handler as FakeApi['sessionBeforeCompact'];
+      }
+      if (event === 'before_provider_request') {
+        state.beforeProviderRequest = handler as FakeApi['beforeProviderRequest'];
       }
     },
   };
@@ -219,6 +224,31 @@ describe('the policy hook', () => {
       block: true,
       reason: 'slow but denied',
     });
+  });
+});
+
+describe('the Spark payload hook', () => {
+  it('rewrites tool-result images before the request goes to Meta', () => {
+    const { state } = bind(allow);
+    const sparkId = DIRECT_PROVIDERS.find((provider) => provider.id === 'meta')?.models[0]?.id;
+    const png = {
+      type: 'input_image',
+      detail: 'auto',
+      image_url: 'data:image/png;base64,aaa',
+    };
+    const payload = {
+      model: sparkId,
+      input: [
+        {
+          type: 'function_call_output',
+          call_id: 'c1',
+          output: [{ type: 'input_text', text: 'Read image file [image/png]' }, png],
+        },
+      ],
+    };
+    const next = state.beforeProviderRequest?.({ payload }) as { input: { output?: unknown }[] };
+    expect(next.input[0]?.output).toBe('Read image file [image/png]');
+    expect(next.input[1]).toMatchObject({ role: 'user' });
   });
 });
 
