@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.ui.components.StatusBadge
+import com.foundry.companion.ui.components.WaitingChip
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.ui.theme.foundryLiveClockEnabled
 import com.foundry.companion.util.RunFormatters
@@ -25,7 +26,9 @@ import kotlinx.coroutines.isActive
 fun LiveRunCard(
     run: RunRow,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Spec §3.7: amber `waiting` chip while this run has a pending interrupt. */
+    isWaiting: Boolean = false
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -89,6 +92,9 @@ fun LiveRunCard(
                 modifier = Modifier.weight(1f, fill = false)
             ) {
                 StatusBadge(status = "running")
+                if (isWaiting) {
+                    WaitingChip()
+                }
                 Text(
                     text = run.pipelineName,
                     style = typography.labelMono,

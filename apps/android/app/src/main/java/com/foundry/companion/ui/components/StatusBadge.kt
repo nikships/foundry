@@ -14,6 +14,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.ui.theme.foundrySpinRotation
@@ -56,6 +59,48 @@ fun StatusBadge(
             text = displayLabel,
             style = typography.labelMono,
             color = statusColor
+        )
+    }
+}
+
+/**
+ * Amber `waiting` chip for spec §3.7 engineer-waiting (read-only).
+ *
+ * Rendered *alongside* the run's [StatusBadge], never instead of it: the run
+ * keeps its `running` badge and gains this chip while
+ * `TranscriptEvents.pendingInterrupt` is non-null for that run. Static dot —
+ * only `running` pulses per spec §2.2.
+ */
+@Composable
+fun WaitingChip(
+    modifier: Modifier = Modifier,
+    label: String = "WAITING"
+) {
+    val colors = FoundryTheme.colors
+    val typography = FoundryTheme.typography
+    val shapes = FoundryTheme.shapes
+    val amber = colors.statusWarning
+    Row(
+        modifier = modifier
+            .background(
+                color = amber.copy(alpha = 0.14f),
+                shape = shapes.badge
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .testTag("waiting-chip")
+            .semantics { contentDescription = "Waiting on you" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .background(color = amber, shape = CircleShape)
+        )
+        Text(
+            text = label,
+            style = typography.labelMono,
+            color = amber
         )
     }
 }

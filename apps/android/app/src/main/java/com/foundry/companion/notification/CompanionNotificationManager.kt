@@ -19,6 +19,11 @@ import com.foundry.companion.data.model.RunRow
 interface CompanionNotificationManager {
     fun hasNotificationPermission(): Boolean
     fun postRunSettledNotification(run: RunRow)
+    /**
+     * High-priority engineer-waiting alert (spec §3.7): "⟨pipeline⟩ is waiting
+     * on you". Fires even with the settle toggle off — it blocks a run.
+     */
+    fun postEngineerWaitingNotification(run: RunRow, question: String)
 }
 
 class FoundryNotificationManager(
@@ -46,7 +51,18 @@ class FoundryNotificationManager(
                 enableVibration(true)
             }
 
+            val waitingChannel = NotificationChannel(
+                CHANNEL_ENGINEER_WAITING,
+                "Engineer Waiting",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "High-priority alerts when a run is waiting on your answer."
+                enableLights(true)
+                enableVibration(true)
+            }
+
             systemNotificationManager.createNotificationChannel(settledChannel)
+            systemNotificationManager.createNotificationChannel(waitingChannel)
         }
     }
 
@@ -126,7 +142,56 @@ class FoundryNotificationManager(
         }
     }
 
+    override fun postEngineerWaitingNotification(run: RunRow, question: String) {
+        if (!hasNotificationPermission()) return
+
+        val pipelineName = run.pipelineName.ifBlank { "Foundry" }
+        val title = "$pipelineName is waiting on you"
+        val detail = question.trim().ifBlank { run.request.trim() }
+        val contentText = "An engineer phase is waiting for your answer."
+
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("foundry://run/${run.runId}"),
+            context,
+            MainActivity::class.java
+        ).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("runId", run.runId)
+            if (run.projectId.isNotBlank()) putExtra("projectId", run.projectId)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            waitingNotificationId(run.runId),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ENGINEER_WAITING)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setColor(0xFFF5A623.toInt())
+            .setContentTitle(title)
+            .setContentText(contentText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(listOf(contentText, detail).filter { it.isNotBlank() }.joinToString("\n\n")))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        try {
+            notificationManager.notify(waitingNotificationId(run.runId), notification)
+        } catch (_: SecurityException) {
+            // Permission not granted or revoked
+        }
+    }
+
     companion object {
         const val CHANNEL_SETTLED_RUNS = "foundry_settled_runs"
+        const val CHANNEL_ENGINEER_WAITING = "foundry_engineer_waiting"
+
+        /** A distinct id space from settle alerts so waiting never overwrites one. */
+        fun waitingNotificationId(runId: String): Int = (runId + "#waiting").hashCode()
     }
 }

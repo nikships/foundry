@@ -100,6 +100,21 @@ class OfflineCompanionRepository(
 
     override suspend fun cancelOrchestratorPlan(planId: String) = answer(false)
 
+    override suspend fun listOrchestratorPlans(projectId: String) =
+        answer(emptyList<ProposalSnapshot>())
+
+    override suspend fun acceptOrchestratorPlan(planId: String, plan: GeneratedRunPlan?) =
+        if (reachable) {
+            Result.success(
+                OrchestratorAcceptResult(
+                    ok = false,
+                    issues = listOf(ValidationIssue("error", "proposal not found", "plan"))
+                )
+            )
+        } else {
+            Result.failure(IOException("unreachable"))
+        }
+
     override suspend fun getLinearState() = answer(LinearConnectionState())
 
     override suspend fun searchLinearIssues(query: String) = answer(emptyList<LinearIssueSnapshot>())

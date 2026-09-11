@@ -102,8 +102,25 @@ class SessionManager(context: Context) {
         editPrefs { putStringSet(KEY_NOTIFIED_RUNS, current) }
     }
 
+    /**
+     * Runs already announced as engineer-waiting. Separate from the settled
+     * set: a waiting alert fires even with the settle toggle off, and a run
+     * may wait and later settle, announcing twice for two different reasons.
+     */
+    fun getNotifiedWaitingRunIds(): Set<String> {
+        return prefs.getStringSet(KEY_NOTIFIED_WAITING_RUNS, emptySet()) ?: emptySet()
+    }
+
+    fun addNotifiedWaitingRunId(runId: String) {
+        if (runId.isBlank()) return
+        val current = getNotifiedWaitingRunIds().toMutableSet()
+        current.add(runId)
+        editPrefs { putStringSet(KEY_NOTIFIED_WAITING_RUNS, current) }
+    }
+
     companion object {
         private const val KEY_SESSION = "paired_session"
+        private const val KEY_NOTIFIED_WAITING_RUNS = "notified_waiting_runs"
         private const val KEY_NOTIFY_SETTLE = "notify_settle"
         private const val KEY_NOTIFY_PROMPTED = "notify_prompted"
         private const val KEY_LAST_ROUTE = "last_active_route"

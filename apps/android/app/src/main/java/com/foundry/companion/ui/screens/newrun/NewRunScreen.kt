@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,6 +29,8 @@ import com.foundry.companion.data.model.LinearStatusMapping
 import com.foundry.companion.data.model.LinearWorkflowState
 import com.foundry.companion.data.model.OrchestratorOptions
 import com.foundry.companion.data.model.OrchestratorState
+import com.foundry.companion.data.model.ProposalSnapshot
+import com.foundry.companion.data.model.ProposalStatus
 import com.foundry.companion.data.model.SmithModelInfo
 import com.foundry.companion.data.model.ValidationIssue
 import com.foundry.companion.data.model.linearIssuePlanPrompt
@@ -82,6 +85,18 @@ fun NewRunScreen(
     onSetPlanPhaseReasoningEffort: (phaseName: String, effort: String) -> Unit = { _, _ -> },
     onRestorePlanPhaseSettings: () -> Unit = {},
     onStartOrchestratedRun: (projectId: String) -> Unit = {},
+    /**
+     * Durable proposals (`GET /v1/orchestrator/plans`), newest first. Rendered
+     * as the `SAVED PLANS` list in Orchestrator mode; each ready row accepts
+     * via exactly-once `POST .../accept` (see ViewModel.acceptOrchestratedPlan).
+     */
+    orchestratorProposals: List<ProposalSnapshot> = emptyList(),
+    isLoadingProposals: Boolean = false,
+    /** Exactly-once accept in flight; guards against double-tap double-start. */
+    isAcceptingPlan: Boolean = false,
+    /** Accept a durable proposal by id with its stored snapshot (null override). */
+    onAcceptProposal: (planId: String) -> Unit = {},
+    onRefreshProposals: () -> Unit = {},
     // Linear
     linearConnection: LinearConnectionState? = null,
     linearIssues: List<LinearIssueSnapshot> = emptyList(),
@@ -220,13 +235,14 @@ fun NewRunScreen(
                     NewRunMode.Orchestrator -> OrchestratorBottomBar(
                         isConnected = isConnected,
                         isStarting = isStarting,
+                        isAcceptingPlan = isAcceptingPlan,
                         planReady = planReady,
                         planningLive = planningLive,
                         modelsAvailable = !orchestratorOptions?.models.isNullOrEmpty(),
                         canGenerate = isConnected && requestText.isNotBlank() && plannerModel.isNotBlank() &&
                             plannerEffort.isNotBlank() && !orchestratorOptions?.models.isNullOrEmpty() &&
                             !hasBlockingErrors,
-                        canStart = isConnected && planReady,
+                        canStart = isConnected && planReady && !isAcceptingPlan,
                         disabledReason = when {
                             !isConnected -> "Reconnect to start a run"
                             orchestratorOptions == null -> "Loading planning options…"
@@ -390,6 +406,16 @@ fun NewRunScreen(
                             onEffortChange = { plannerEffort = it }
                         )
                     }
+
+                    OrchestratorProposalsSection(
+                        proposals = orchestratorProposals,
+                        isLoading = isLoadingProposals,
+                        isAccepting = isAcceptingPlan,
+                        isConnected = isConnected,
+                        activePlanId = orchestratorState?.planId,
+                        onAccept = onAcceptProposal,
+                        onRefresh = onRefreshProposals
+                    )
                 }
 
                 NewRunMode.Linear -> {
@@ -576,6 +602,7 @@ private fun ManualBottomBar(
 private fun OrchestratorBottomBar(
     isConnected: Boolean,
     isStarting: Boolean,
+    isAcceptingPlan: Boolean,
     planReady: Boolean,
     planningLive: Boolean,
     modelsAvailable: Boolean,
@@ -587,11 +614,15 @@ private fun OrchestratorBottomBar(
     onDiscard: () -> Unit,
     onStart: () -> Unit
 ) {
-    BottomBarShell(disabledReason = disabledReason) {
+    // Exactly-once accept guards double-tap: the button shows the accept
+    // flight and stays disabled until the desktop answers (same run id on retry).
+    val acceptDisabledReason = if (isAcceptingPlan) "Accepting plan…" else disabledReason
+    BottomBarShell(disabledReason = acceptDisabledReason) {
         if (planReady) {
             RunStartBar(
                 planReady = true,
                 isStarting = isStarting,
+                isAccepting = isAcceptingPlan,
                 isConnected = isConnected,
                 canStart = canStart,
                 onDiscard = onDiscard,
@@ -679,30 +710,37 @@ private fun RunStartBar(
     isConnected: Boolean,
     canStart: Boolean,
     onDiscard: (() -> Unit)?,
-    onStart: () -> Unit
+    onStart: () -> Unit,
+    isAccepting: Boolean = false
 ) {
+    val busy = isStarting || isAccepting
+    val startLabel = when {
+        isAccepting -> "Accepting…"
+        isStarting -> "Starting…"
+        else -> "START RUN"
+    }
     if (planReady && onDiscard != null) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             FoundrySecondaryButton(
                 text = "Discard",
                 onClick = onDiscard,
-                enabled = isConnected && !isStarting,
+                enabled = isConnected && !busy,
                 modifier = Modifier.weight(1f)
             )
             FoundryPrimaryButton(
-                text = if (isStarting) "Starting…" else "START RUN",
+                text = startLabel,
                 onClick = onStart,
                 enabled = canStart,
-                isLoading = isStarting,
+                isLoading = busy,
                 modifier = Modifier.weight(1f)
             )
         }
     } else {
         FoundryPrimaryButton(
-            text = if (isStarting) "Starting…" else "START RUN",
+            text = startLabel,
             onClick = onStart,
             enabled = canStart,
-            isLoading = isStarting
+            isLoading = busy
         )
     }
 }
@@ -1060,6 +1098,178 @@ private fun PlanningCard(state: OrchestratorState) {
             style = typography.body,
             color = colors.textDim
         )
+    }
+}
+
+/**
+ * Durable proposals (`GET /v1/orchestrator/plans`), newest first.
+ *
+ * Each `ready` row accepts via exactly-once `POST .../accept` with its stored
+ * snapshot (null override); repeats return the same run and start nothing, so
+ * the buttons stay disabled while [isAccepting] guards the flight. Offline
+ * disables every accept — the phone never queues writes.
+ */
+@Composable
+private fun OrchestratorProposalsSection(
+    proposals: List<ProposalSnapshot>,
+    isLoading: Boolean,
+    isAccepting: Boolean,
+    isConnected: Boolean,
+    activePlanId: String?,
+    onAccept: (planId: String) -> Unit,
+    onRefresh: () -> Unit
+) {
+    val colors = FoundryTheme.colors
+    val typography = FoundryTheme.typography
+    val shapes = FoundryTheme.shapes
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.bgPanel, shapes.card)
+            .border(1.dp, colors.line, shapes.card)
+            .padding(16.dp)
+            .semantics { contentDescription = "Saved orchestrator plans" }
+            .testTag("orchestrator-proposals"),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "SAVED PLANS",
+                style = typography.eyebrowMono,
+                color = colors.textDim
+            )
+            Text(
+                text = "REFRESH",
+                style = typography.labelMono,
+                color = if (isConnected && !isLoading) colors.accent else colors.textFaint,
+                modifier = Modifier
+                    .clickable(enabled = isConnected && !isLoading) { onRefresh() }
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .semantics { contentDescription = "Refresh saved plans" }
+            )
+        }
+        when {
+            isLoading && proposals.isEmpty() -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.testTag("proposals-loading")
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        color = colors.accent,
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = "Loading saved plans…",
+                        style = typography.body,
+                        color = colors.textDim
+                    )
+                }
+            }
+            proposals.isEmpty() -> {
+                Text(
+                    text = "No saved plans yet. Generate one above.",
+                    style = typography.body,
+                    color = colors.textDim,
+                    modifier = Modifier.testTag("proposals-empty")
+                )
+            }
+            else -> {
+                proposals.forEach { proposal ->
+                    val isActive = proposal.planId == activePlanId
+                    val canAccept = isConnected && !isAccepting &&
+                        proposal.status == ProposalStatus.READY && !isActive
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.bgRaised, shapes.card)
+                            .border(
+                                1.dp,
+                                if (isActive) colors.accent.copy(alpha = 0.45f) else colors.line,
+                                shapes.card
+                            )
+                            .padding(12.dp)
+                            .testTag("proposal-${proposal.planId}"),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = proposal.status.uppercase(),
+                                style = typography.labelMono,
+                                color = when (proposal.status) {
+                                    ProposalStatus.READY -> colors.statusAccepted
+                                    ProposalStatus.ACCEPTED -> colors.accent
+                                    ProposalStatus.GENERATING -> colors.statusWarning
+                                    ProposalStatus.FAILED -> colors.statusFailed
+                                    ProposalStatus.CANCELLED -> colors.textFaint
+                                    else -> colors.textDim
+                                },
+                                modifier = Modifier
+                                    .background(
+                                        when (proposal.status) {
+                                            ProposalStatus.READY -> colors.statusAccepted.copy(alpha = 0.12f)
+                                            ProposalStatus.ACCEPTED -> colors.accent.copy(alpha = 0.12f)
+                                            else -> colors.bgPanel
+                                        },
+                                        shapes.chip
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                            Text(
+                                text = proposal.planId,
+                                style = typography.metaMono,
+                                color = colors.textFaint,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (proposal.status == ProposalStatus.READY && !isActive) {
+                                Text(
+                                    text = if (isAccepting) "ACCEPTING…" else "ACCEPT",
+                                    style = typography.labelMono,
+                                    color = if (canAccept) colors.accent else colors.textFaint,
+                                    modifier = Modifier
+                                        .clickable(enabled = canAccept) { onAccept(proposal.planId) }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                        .semantics { contentDescription = "Accept plan ${proposal.planId}" }
+                                        .testTag("proposal-accept-${proposal.planId}")
+                                )
+                            } else if (isActive) {
+                                Text(
+                                    text = "OPEN",
+                                    style = typography.metaMono,
+                                    color = colors.accent,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        if (proposal.prompt.isNotBlank()) {
+                            Text(
+                                text = proposal.prompt,
+                                style = typography.body,
+                                color = colors.textPrimary,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                        if (proposal.acceptedRunId != null) {
+                            Text(
+                                text = "Accepted → ${proposal.acceptedRunId}",
+                                style = typography.metaMono,
+                                color = colors.textFaint
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

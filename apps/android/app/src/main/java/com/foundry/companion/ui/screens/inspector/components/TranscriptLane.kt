@@ -36,7 +36,12 @@ fun TranscriptLane(
     var collapseGeneration by remember { mutableIntStateOf(0) }
     var followTail by remember { mutableStateOf(true) }
 
-    val visible = remember(events) { events.filter { TranscriptEvents.isRenderable(it.type) } }
+    // Desktop Inspector drops auto-allow policy leftovers (`allow (policy)` with
+    // `auto:true`): older runs recorded one `interrupt` per tool call, new runs
+    // no longer write them. Keep the lane readable on reopened traces.
+    val visible = remember(events) {
+        events.filter { TranscriptEvents.isRenderable(it.type) && !TranscriptEvents.isAutoAllowPolicy(it) }
+    }
 
     LaunchedEffect(visible.size, isRunning, followTail) {
         if (isRunning && followTail && visible.isNotEmpty()) {

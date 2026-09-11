@@ -31,7 +31,13 @@ fun RunsScreen(
     modifier: Modifier = Modifier,
     onInspectorClick: (runId: String) -> Unit = {},
     onOpenPr: ((String) -> Unit)? = null,
-    onSmithClick: (() -> Unit)? = null
+    onSmithClick: (() -> Unit)? = null,
+    /**
+     * Runs with a read-only engineer-waiting signal (spec §3.7). The set
+     * comes from `CompanionUiState.pendingInterruptRunId`; the phone never
+     * invents waiting state — it only mirrors `TranscriptEvents.pendingInterrupt`.
+     */
+    waitingRunIds: Set<String> = emptySet()
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -184,7 +190,8 @@ fun RunsScreen(
                     ) { run ->
                         LiveRunCard(
                             run = run,
-                            onClick = { onRunClick(run.runId) }
+                            onClick = { onRunClick(run.runId) },
+                            isWaiting = run.runId in waitingRunIds
                         )
                     }
                 }
@@ -208,7 +215,8 @@ fun RunsScreen(
                             run = run,
                             onClick = { onRunClick(run.runId) },
                             onInspectorClick = { onInspectorClick(run.runId) },
-                            onOpenPr = onOpenPr
+                            onOpenPr = onOpenPr,
+                            isWaiting = run.runId in waitingRunIds
                         )
                     }
                 }

@@ -188,6 +188,31 @@ class RunDetailScreenScreenshotTest {
     }
 
     @Test
+    fun captureLiveRunDetailWaiting() {
+        // Spec §3.7 pinned strip (read-only): exact copy + Answer… over live run.
+        val waiting = PendingInterrupt(
+            eventId = "ev_interrupt_1",
+            runId = "run_260818_live99",
+            phaseId = "p_3",
+            question = "May I rewrite the inspector?"
+        )
+        val bitmap = renderToBitmap {
+            RunDetailScreen(
+                runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                pendingInterrupt = waiting,
+                onBackClick = {},
+                onOpenInspector = {},
+                onKillRun = {},
+                onOpenPr = {},
+                onCreatePr = {},
+                onOpenIssue = {}
+            )
+        }
+        saveScreenshot(bitmap, "android-run-detail-waiting.png")
+    }
+
+    @Test
     fun captureSettledRunDetail() {
         val bitmap = renderToBitmap {
             RunDetailScreen(

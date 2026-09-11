@@ -173,6 +173,25 @@ class RunsScreenScreenshotTest {
     }
 
     @Test
+    fun captureRunsWithWaitingChip() {
+        // Spec §3.7: the affected live run keeps RUNNING and gains amber WAITING.
+        val bitmap = renderToBitmap {
+            RunsScreen(
+                runs = listOf(sampleLiveRun) + sampleHistoryRuns,
+                connectionStatus = ConnectionStatus.Connected("Nik’s Mac Studio", "http://192.168.1.100:52810"),
+                projectName = "Foundry Core",
+                onRunClick = {},
+                onStartRunClick = {},
+                onConnectionPillClick = {},
+                onRetryConnection = {},
+                onInspectorClick = {},
+                waitingRunIds = setOf("run_260818_live99")
+            )
+        }
+        saveScreenshot(bitmap, "android-runs-waiting.png")
+    }
+
+    @Test
     fun captureRunsEmptyState() {
         val bitmap = renderToBitmap {
             RunsScreen(
