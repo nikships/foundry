@@ -148,6 +148,10 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   // A follow-up spends another agent turn, exactly like the plan itself.
   [IPC.orchestratorMessage]: approve('smith_runs', 'orchestrator_message'),
   [IPC.orchestratorCancel]: approve('smith_runs', 'orchestrator_cancel'),
+  [IPC.orchestratorList]: read('smith_runs', 'orchestrator_list'),
+  [IPC.orchestratorGet]: read('smith_runs', 'orchestrator_get'),
+  [IPC.orchestratorAccept]: approve('smith_runs', 'orchestrator_accept'),
+  [IPC.orchestratorDiscard]: approve('smith_runs', 'orchestrator_discard'),
   [IPC.prsStatus]: read('smith_prs', 'status'),
   [IPC.prsList]: read('smith_prs', 'list'),
   [IPC.prsCreate]: approve('smith_prs', 'create'),

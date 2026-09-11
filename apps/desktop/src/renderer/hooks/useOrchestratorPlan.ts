@@ -1,9 +1,30 @@
+/**
+ * Per-composer Orchestrator controller over durable, parallel proposals.
+ *
+ * Each `submit()` opens one independent proposal and returns immediately —
+ * it never cancels or replaces siblings, and the composer stays usable for
+ * the next prompt. Proposal ownership lives in main (the DB row), not in
+ * this hook: navigating away, switching projects, or unmounting never
+ * cancels generation, and a remount re-reads durable state via
+ * `useProposals`. Live `orchestrator-progress` pushes patch the single row;
+ * `proposals-changed` reconciles with the DB.
+ *
+ * The singular `stage`/`planning`/`plan` fields describe the selected
+ * proposal (newest actionable by default) so single-card composers keep
+ * working; multi-card surfaces read `proposals` directly.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GeneratedRunPlan, PlanImageAttachment, ReasoningEffort } from '@shared/types.js';
+import type {
+  GeneratedRunPlan,
+  PlanImageAttachment,
+  ProposalSnapshot,
+  ReasoningEffort,
+} from '@shared/types.js';
 import type { OrchestratorState, PlanChatMessage } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
 import type { OrchestratorChoice } from '../components/run/OrchestratorPicker.js';
 import { withPhaseModel, withPhaseReasoningEffort } from '../view-models/plan-view.js';
+import { useProposals } from './useProposals.js';
 
 export type OrchestratorStage = 'compose' | 'planning' | 'ready';
 
@@ -21,16 +42,63 @@ export interface OrchestratorPlanController {
   /** True while the Orchestrator is considering a follow-up message. */
   replying: boolean;
   chatError: string;
+  /** Every durable proposal for the project, newest first. */
+  proposals: ProposalSnapshot[];
+  proposalsLoading: boolean;
+  proposalsError: string;
+  /** Explicit selection for the singular fields; null follows the newest actionable. */
+  selectedPlanId: string | null;
+  selectPlan: (planId: string | null) => void;
+  refreshProposals: () => Promise<void>;
   addImages(images: readonly PlanImageAttachment[]): void;
   removeImage(index: number): void;
-  submit(prompt: string): Promise<void>;
+  /** Opens one independent proposal; resolves with its planId (null when refused). */
+  submit(prompt: string): Promise<string | null>;
   /** One follow-up message about the accepted plan. */
   sendMessage(text: string): Promise<void>;
+  sendMessageTo(planId: string, text: string): Promise<void>;
   cancel(): void;
   discard(): void;
+  cancelPlan(planId: string): void;
+  discardPlan(planId: string): void;
   setPhaseModel(phaseName: string, model: string): void;
   setPhaseReasoningEffort(phaseName: string, reasoningEffort: ReasoningEffort): void;
   resetPhaseOverrides(): void;
+}
+
+function isActionable(proposal: ProposalSnapshot): boolean {
+  return (
+    proposal.status === 'generating' || proposal.status === 'ready' || proposal.status === 'failed'
+  );
+}
+
+function toLiveState(proposal: ProposalSnapshot): OrchestratorState {
+  const status =
+    proposal.status === 'generating'
+      ? 'running'
+      : proposal.status === 'ready'
+        ? 'done'
+        : proposal.status === 'failed'
+          ? 'failed'
+          : proposal.status === 'cancelled'
+            ? 'cancelled'
+            : 'done';
+  return {
+    planId: proposal.planId,
+    projectId: proposal.projectId,
+    status,
+    model: proposal.model,
+    reasoningEffort: proposal.reasoningEffort,
+    prompt: proposal.prompt,
+    entries: proposal.entries,
+    plan: proposal.plan,
+    rawReply: proposal.rawReply,
+    detail: proposal.detail,
+    startedAt: proposal.createdAt,
+    ...(proposal.endedAt !== undefined ? { endedAt: proposal.endedAt } : {}),
+    messages: proposal.messages,
+    revision: proposal.revision,
+  };
 }
 
 /** One independent Orchestrator planning session, reusable by any request source. */
@@ -38,66 +106,57 @@ export function useOrchestratorPlan(
   projectId: string,
   choice: OrchestratorChoice,
 ): OrchestratorPlanController {
-  const [planning, setPlanning] = useState<OrchestratorState | null>(null);
+  const {
+    proposals,
+    loading: proposalsLoading,
+    error: proposalsError,
+    refresh,
+  } = useProposals(projectId);
   const [requestingPlan, setRequestingPlan] = useState(false);
   const [planError, setPlanError] = useState('');
   const [chatError, setChatError] = useState('');
   const [images, setImages] = useState<PlanImageAttachment[]>([]);
   const [modelOverrides, setModelOverrides] = useState<Record<string, string>>({});
   const [reasoningOverrides, setReasoningOverrides] = useState<Record<string, ReasoningEffort>>({});
-  const progressRef = useRef(new Map<string, OrchestratorState>());
-  const planIdRef = useRef('');
-  const requestGenerationRef = useRef(0);
-  // A revision replaces the proposal, so operator re-casts of the old one
-  // would silently patch phases the new pipeline may not even have.
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const seenRevisionRef = useRef(0);
+  const choiceRef = useRef(choice);
+  useEffect(() => {
+    choiceRef.current = choice;
+  }, [choice]);
 
-  const resetPlanningFields = useCallback((): void => {
-    setPlanning(null);
+  // Project switch resets composer-local state only. Generation keeps
+  // running in main; the new scope's mount refresh restores its rows.
+  // Unmount and navigation never cancel: there is no cleanup cancel here
+  // by design (FOU-349).
+  useEffect(() => {
+    setSelectedPlanId(null);
     setPlanError('');
     setChatError('');
     setModelOverrides({});
     setReasoningOverrides({});
     seenRevisionRef.current = 0;
-  }, []);
-
-  const clearImages = useCallback((): void => {
     setImages([]);
-  }, []);
+    setRequestingPlan(false);
+  }, [projectId]);
 
-  useEffect(
-    () =>
-      api.on('orchestrator-progress', (data) => {
-        const state = data as OrchestratorState | undefined;
-        if (!state) return;
-        progressRef.current.set(state.planId, state);
-        if (state.planId !== planIdRef.current) return;
-        if (state.revision !== seenRevisionRef.current) {
-          seenRevisionRef.current = state.revision;
-          setModelOverrides({});
-          setReasoningOverrides({});
-        }
-        setPlanning(state);
-      }),
-    [],
-  );
+  const selected = useMemo((): ProposalSnapshot | null => {
+    if (selectedPlanId) {
+      const pinned = proposals.find((p) => p.planId === selectedPlanId) ?? null;
+      if (pinned) return pinned;
+    }
+    return proposals.find(isActionable) ?? proposals[0] ?? null;
+  }, [proposals, selectedPlanId]);
 
   useEffect(() => {
-    requestGenerationRef.current += 1;
-    setRequestingPlan(false);
-    resetPlanningFields();
-    clearImages();
-    return () => {
-      requestGenerationRef.current += 1;
-      const planId = planIdRef.current;
-      planIdRef.current = '';
-      if (planId) void api.orchestrator.cancel(planId);
-    };
-  }, [projectId, resetPlanningFields, clearImages]);
+    if (!selected || selected.revision === seenRevisionRef.current) return;
+    seenRevisionRef.current = selected.revision;
+    setModelOverrides({});
+    setReasoningOverrides({});
+  }, [selected]);
 
-  // The accepted plan stands while a follow-up reply is being considered, so
-  // the card never vanishes mid-conversation.
-  const original = planning?.plan ?? null;
+  const planning = useMemo(() => (selected ? toLiveState(selected) : null), [selected]);
+  const original = selected?.plan ?? null;
   const plan = useMemo(() => {
     if (!original) return null;
     const withModels = Object.entries(modelOverrides).reduce(
@@ -114,7 +173,7 @@ export function useOrchestratorPlan(
     : requestingPlan || planning?.status === 'running' || planning?.status === 'failed'
       ? 'planning'
       : 'compose';
-  const planningLive = requestingPlan || (planning?.status === 'running' && !planning.plan);
+  const planningLive = requestingPlan || planning?.status === 'running';
   const replying = planning?.status === 'running' && planning.plan !== null;
 
   const addImages = useCallback((next: readonly PlanImageAttachment[]): void => {
@@ -127,93 +186,98 @@ export function useOrchestratorPlan(
   }, []);
 
   const submit = useCallback(
-    async (prompt: string): Promise<void> => {
-      if ((!prompt.trim() && images.length === 0) || !projectId || requestingPlan) return;
-      const generation = ++requestGenerationRef.current;
-      // A regenerate may land mid-conversation; the replaced session must not
-      // keep an Orchestrator turn running for a proposal no one can see.
-      const previous = planIdRef.current;
-      if (previous) void api.orchestrator.cancel(previous);
-      planIdRef.current = '';
+    async (prompt: string): Promise<string | null> => {
+      const currentImages = images;
+      if ((!prompt.trim() && currentImages.length === 0) || !projectId) return null;
+      // No sibling cancel, no requestingPlan gate: concurrent submits open
+      // concurrent proposals. requestingPlan only tracks this invoke.
       setRequestingPlan(true);
-      resetPlanningFields();
+      setPlanError('');
       try {
+        const active = choiceRef.current;
         const result = await api.orchestrator.plan(
           projectId,
           prompt,
-          choice.model,
-          choice.reasoningEffort,
-          images.length ? images : undefined,
+          active.model,
+          active.reasoningEffort,
+          currentImages.length ? currentImages : undefined,
         );
-        if (generation !== requestGenerationRef.current) {
-          if (!('error' in result)) void api.orchestrator.cancel(result.planId);
-          return;
-        }
         if ('error' in result) {
           setPlanError(result.error);
-          return;
+          return null;
         }
-        planIdRef.current = result.planId;
-        setPlanning(
-          progressRef.current.get(result.planId) ?? {
-            planId: result.planId,
-            projectId,
-            status: 'running',
-            model: choice.model,
-            reasoningEffort: choice.reasoningEffort,
-            prompt,
-            entries: [],
-            plan: null,
-            rawReply: '',
-            detail: 'Opening the planning session…',
-            startedAt: Date.now(),
-            messages: [],
-            revision: 0,
-          },
-        );
+        setSelectedPlanId(result.planId);
+        setImages([]);
+        void refresh();
+        return result.planId;
       } catch (error) {
-        if (generation === requestGenerationRef.current) {
-          setPlanError((error as Error).message || 'Could not open the planning session.');
-        }
+        setPlanError((error as Error).message || 'Could not open the planning session.');
+        return null;
       } finally {
-        if (generation === requestGenerationRef.current) setRequestingPlan(false);
+        setRequestingPlan(false);
       }
     },
-    [choice, images, projectId, requestingPlan, resetPlanningFields],
+    [images, projectId, refresh],
   );
 
-  const sendMessage = useCallback(async (text: string): Promise<void> => {
-    const planId = planIdRef.current;
+  const sendMessageTo = useCallback(async (planId: string, text: string): Promise<void> => {
     if (!planId || !text.trim()) return;
     setChatError('');
     try {
       const refused = await api.orchestrator.message(planId, text);
-      if (refused && planId === planIdRef.current) setChatError(refused);
+      if (refused) setChatError(refused);
     } catch (error) {
-      if (planId === planIdRef.current) {
-        setChatError((error as Error).message || 'Could not send the message.');
-      }
+      setChatError((error as Error).message || 'Could not send the message.');
     }
   }, []);
 
+  const sendMessage = useCallback(
+    async (text: string): Promise<void> => {
+      if (selected) await sendMessageTo(selected.planId, text);
+    },
+    [selected, sendMessageTo],
+  );
+
+  const cancelPlan = useCallback(
+    (planId: string): void => {
+      if (!planId) return;
+      void api.orchestrator.cancel(planId);
+      void refresh();
+    },
+    [refresh],
+  );
+
+  const discardPlan = useCallback(
+    (planId: string): void => {
+      if (!planId) return;
+      const discard = api.orchestrator.discard;
+      if (discard) void discard(planId).finally(() => void refresh());
+      else void api.orchestrator.cancel(planId).finally(() => void refresh());
+      if (selectedPlanId === planId) setSelectedPlanId(null);
+      void refresh();
+    },
+    [refresh, selectedPlanId],
+  );
+
   const cancel = useCallback((): void => {
-    requestGenerationRef.current += 1;
-    const planId = planIdRef.current;
-    planIdRef.current = '';
-    if (planId) void api.orchestrator.cancel(planId);
+    if (selected) cancelPlan(selected.planId);
     setRequestingPlan(false);
-    resetPlanningFields();
-  }, [resetPlanningFields]);
+  }, [selected, cancelPlan]);
 
   const discard = useCallback((): void => {
-    requestGenerationRef.current += 1;
-    const planId = planIdRef.current;
-    planIdRef.current = '';
-    if (planId) void api.orchestrator.cancel(planId);
-    setRequestingPlan(false);
-    resetPlanningFields();
-    clearImages();
-  }, [resetPlanningFields, clearImages]);
+    if (selected) discardPlan(selected.planId);
+    else {
+      setRequestingPlan(false);
+      setPlanError('');
+      setChatError('');
+    }
+    setImages([]);
+  }, [selected, discardPlan]);
+
+  const selectPlan = useCallback((planId: string | null): void => {
+    setSelectedPlanId(planId);
+    setChatError('');
+  }, []);
 
   return {
     stage,
@@ -227,12 +291,21 @@ export function useOrchestratorPlan(
     messages: planning?.messages ?? [],
     replying,
     chatError,
+    proposals,
+    proposalsLoading,
+    proposalsError,
+    selectedPlanId: selected?.planId ?? null,
+    selectPlan,
+    refreshProposals: refresh,
     addImages,
     removeImage,
     submit,
     sendMessage,
+    sendMessageTo,
     cancel,
     discard,
+    cancelPlan,
+    discardPlan,
     setPhaseModel: (phaseName, model) =>
       setModelOverrides((current) => ({ ...current, [phaseName]: model })),
     setPhaseReasoningEffort: (phaseName, reasoningEffort) =>
