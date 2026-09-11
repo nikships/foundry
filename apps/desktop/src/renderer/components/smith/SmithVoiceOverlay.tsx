@@ -9,7 +9,7 @@
  * the text UI drives.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
 import { useSmithVoice } from '../../hooks/useSmithVoice.js';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
@@ -59,17 +59,23 @@ export default function SmithVoiceOverlay({
     setScreenContext(screenContext);
   }, [screenContext, setScreenContext]);
 
-  useEscapeToClose(() => setOpen(false), open);
+  /**
+   * Closing the panel never stops a live session: voice keeps running while
+   * the operator navigates, and the breathing mic shows it. Stopping is the
+   * Stop button's job inside the panel.
+   */
+  const close = useCallback((): void => setOpen(false), []);
+  useEscapeToClose(close, open);
 
   const live = state.status === 'live';
 
   const toggle = (): void => {
-    if (live) {
-      stop();
+    if (open) {
+      close();
       return;
     }
     setOpen(true);
-    void start();
+    if (state.status === 'idle' || state.status === 'error') void start();
   };
 
   return (
@@ -90,25 +96,34 @@ export default function SmithVoiceOverlay({
             >
               {statusPill(state.status)}
             </span>
+            <button
+              type="button"
+              className={styles.close}
+              onClick={close}
+              title="Close"
+              aria-label="Close Smith voice"
+              data-testid="smith-voice-close"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path
+                  d="M4 4l8 8M12 4l-8 8"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
           </div>
           {state.status === 'error' && state.error && (
             <p className={cx(styles.line, styles.errorText)}>{state.error}</p>
           )}
           {state.status !== 'error' && (
-            <>
-              <div>
-                <p className={styles.lineLabel}>You</p>
-                <p className={cx(styles.line, state.inputText && styles.lineSpeaking)}>
-                  {state.inputText || '—'}
-                </p>
-              </div>
-              <div>
-                <p className={styles.lineLabel}>Smith</p>
-                <p className={cx(styles.line, state.outputText && styles.lineSpeaking)}>
-                  {state.outputText || '—'}
-                </p>
-              </div>
-            </>
+            <div>
+              <p className={styles.lineLabel}>You</p>
+              <p className={cx(styles.line, state.inputText && styles.lineSpeaking)}>
+                {state.inputText || '—'}
+              </p>
+            </div>
           )}
           <p className={styles.hint}>
             {state.smithRunning
@@ -132,8 +147,8 @@ export default function SmithVoiceOverlay({
       <button
         type="button"
         className={cx(styles.launcher, live && styles.launcherLive)}
-        aria-expanded={live}
-        aria-label={live ? 'Stop Smith voice mode' : 'Start Smith voice mode'}
+        aria-expanded={open}
+        aria-label={open ? 'Close Smith voice mode' : 'Start Smith voice mode'}
         data-testid="smith-voice-launcher"
         title={live ? 'Smith voice is live' : 'Smith voice mode'}
         onClick={toggle}

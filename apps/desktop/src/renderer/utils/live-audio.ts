@@ -4,39 +4,9 @@
  * API requires, and playback schedules the 24 kHz PCM16 the model returns on
  * the WebAudio clock so chunks join without clicks.
  *
- * The worklet source is built from a Blob URL so no bundler-specific `?worklet`
- * import is needed and the capture code ships inside this module.
+ * The capture worklet lives in `live-worklet.js`, referenced by URL so Vite
+ * emits it as a separate file the worklet thread loads same-origin.
  */
-
-const WORKLET_SRC = `
-class PcmCapture extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this.buffer = new Int16Array(1024);
-    this.filled = 0;
-  }
-  process(inputs) {
-    const input = inputs[0];
-    if (!input || input.length === 0) return true;
-    const channel = input[0];
-    if (!channel) return true;
-    // Linear-interpolate 48 kHz → 16 kHz: three input frames per output frame.
-    const step = channel.length / 3;
-    for (let i = 0; i < step; i++) {
-      const at = i * 3;
-      const sample = channel[at] * 0.77 + channel[at + 1] * 0.1155 + channel[at + 2] * 0.1155;
-      this.buffer[this.filled++] = Math.max(-1, Math.min(1, sample)) * 32767;
-      if (this.filled === this.buffer.length) {
-        this.port.postMessage(this.buffer);
-        this.buffer = new Int16Array(1024);
-        this.filled = 0;
-      }
-    }
-    return true;
-  }
-}
-registerProcessor('foundry-pcm-capture', PcmCapture);
-`;
 
 /** The Live API's input format: raw PCM, little-endian, 16-bit, mono, 16 kHz. */
 export const INPUT_MIME = 'audio/pcm;rate=16000';
@@ -72,12 +42,9 @@ export function micCapture(): MicCapture {
       });
       context = new Ctor({ sampleRate: 48000 });
       const source = context.createMediaStreamSource(stream);
-      const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'text/javascript' }));
-      try {
-        await context.audioWorklet.addModule(url);
-      } finally {
-        URL.revokeObjectURL(url);
-      }
+      // Explicit-URL import: Vite emits the worklet as its own file and
+      // rewrites this URL for dev and build alike.
+      await context.audioWorklet.addModule(new URL('./live-worklet.js', import.meta.url));
       node = new AudioWorkletNode(context, 'foundry-pcm-capture');
       node.port.onmessage = (event: MessageEvent<Int16Array>) => {
         onChunk(event.data.buffer as ArrayBuffer);

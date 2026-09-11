@@ -80,6 +80,24 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
   ];
 }
 
+/**
+ * Maps a voice-session failure to the one line the overlay shows. Mint
+ * failures from main are already friendly, but the live socket can also hand
+ * the hook a raw Google JSON-RPC blob (an invalid key carries
+ * `API_KEY_INVALID` inside `{"error":{"code":400,...}}`); that must never
+ * render verbatim, so an invalid key always resolves to the Settings →
+ * Integrations pointer and anything else keeps its short detail.
+ */
+export function friendlyVoiceError(raw: unknown): string {
+  const message = raw instanceof Error ? raw.message : String(raw);
+  if (/API_KEY_INVALID|API key not valid|invalid API key|API key expired/i.test(message)) {
+    return 'Your Gemini API key was rejected. Replace it in Settings → Integrations.';
+  }
+  const oneLine = message.replace(/\s+/g, ' ').trim();
+  if (oneLine.length > 240) return `${oneLine.slice(0, 240)}…`;
+  return oneLine || 'The live session failed. Try connecting again.';
+}
+
 /** What the live session should show for one delegated turn's progress. */
 export interface VoiceSettleWatch {
   /** True once a delegate call marked a turn live. */

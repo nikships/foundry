@@ -93,6 +93,25 @@
   margin: 0;
 }
 
+.close {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  margin-left: auto;
+}
+
+.close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .pill {
   font-size: var(--text-xs);
   padding: 2px var(--s2);

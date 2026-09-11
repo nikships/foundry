@@ -8,6 +8,7 @@ import type { SmithChatState, SmithTranscriptEntry } from '../../src/shared/ipc-
 import {
   EMPTY_SETTLE_WATCH,
   foldSettleWatch,
+  friendlyVoiceError,
   proposalSummary,
   settledAnswerText,
   VOICE_TOOL_NAMES,
@@ -130,6 +131,28 @@ describe('proposalSummary', () => {
 
   it('says when nothing is waiting', () => {
     expect(proposalSummary([])).toBe('No proposal is waiting.');
+  });
+});
+
+describe('friendlyVoiceError', () => {
+  it('maps an invalid-key blob to the Settings pointer, never the raw JSON', () => {
+    const raw = new Error(
+      'Could not mint a Live API token: {"error":{"code":400,"message":"API key not valid.",' +
+        '"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo",' +
+        '"reason":"API_KEY_INVALID"}]}}',
+    );
+    expect(friendlyVoiceError(raw)).toBe(
+      'Your Gemini API key was rejected. Replace it in Settings → Integrations.',
+    );
+  });
+
+  it('passes ordinary errors through and truncates walls of text', () => {
+    expect(friendlyVoiceError(new Error('The live connection dropped.'))).toBe(
+      'The live connection dropped.',
+    );
+    const long = friendlyVoiceError(new Error(`x${'y'.repeat(500)}`));
+    expect(long.length).toBeLessThan(300);
+    expect(long.endsWith('…')).toBe(true);
   });
 });
 

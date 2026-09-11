@@ -28,6 +28,25 @@ import type { SecretStore } from '../system/secret-file.js';
 /** The Live API model the voice layer speaks with. */
 export const GEMINI_LIVE_MODEL = 'gemini-3.1-flash-live-preview';
 
+/**
+ * Maps a token-mint failure to the one line the voice overlay shows. Google's
+ * mint failures arrive as raw JSON-RPC blobs (an invalid key carries
+ * `API_KEY_INVALID` inside `{"error":{"code":400,...}}`); rendering that
+ * verbatim leaves the operator with no hint that the fix is a new key, so an
+ * invalid key always resolves to the Settings → Integrations pointer and
+ * anything else keeps its short detail without the blob.
+ */
+export function friendlyMintError(message: string): string {
+  if (/API_KEY_INVALID|API key not valid|invalid API key|API key expired/i.test(message)) {
+    return 'Your Gemini API key was rejected. Replace it in Settings → Integrations.';
+  }
+  const oneLine = message.replace(/\s+/g, ' ').trim();
+  if (oneLine.length > 240) {
+    return `Could not mint a Live API token: ${oneLine.slice(0, 240)}… Check Settings → Integrations and try again.`;
+  }
+  return `Could not mint a Live API token: ${oneLine}`;
+}
+
 export interface GeminiLiveServiceDeps {
   credentials: SecretStore;
   /** Test seam: mints the ephemeral token from the stored key. */
@@ -98,7 +117,7 @@ export class GeminiLiveService {
         systemInstruction: voiceSystemInstruction(),
       };
     } catch (error) {
-      return { error: `Could not mint a Live API token: ${(error as Error).message}` };
+      return { error: friendlyMintError((error as Error).message) };
     }
   }
 }

@@ -120,4 +120,32 @@ describe('GeminiLiveService', () => {
     expect('error' in failed).toBe(true);
     if ('error' in failed) expect(failed.error).toContain('quota exceeded');
   });
+
+  it('maps an invalid-key mint failure to the Settings pointer, never the raw blob', async () => {
+    const raw =
+      '{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.",' +
+      '"status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo",' +
+      '"reason":"API_KEY_INVALID"}]}}';
+    const support = tempDir('foundry-gemini-live-');
+    const credentials = new GeminiLiveCredentialStore(
+      join(support, 'credentials', 'gemini-live-api-key.bin'),
+      {
+        available: () => true,
+        encrypt: (value: string) => Buffer.from(value),
+        decrypt: (value: Buffer) => value.toString(),
+      },
+    );
+    credentials.set('AIza_saved');
+    const invalid = new GeminiLiveService({
+      credentials,
+      mint: () => Promise.reject(new Error(raw)),
+    });
+    const refused = await invalid.mintToken();
+    expect('error' in refused).toBe(true);
+    if (!('error' in refused)) return;
+    expect(refused.error).toBe(
+      'Your Gemini API key was rejected. Replace it in Settings → Integrations.',
+    );
+    expect(refused.error).not.toContain('API_KEY_INVALID');
+  });
 });

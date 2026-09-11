@@ -33,6 +33,7 @@ import {
 import {
   EMPTY_SETTLE_WATCH,
   foldSettleWatch,
+  friendlyVoiceError,
   proposalSummary,
   settledAnswerText,
   VOICE_TOOL_NAMES,
@@ -47,8 +48,6 @@ export interface SmithVoiceState {
   error: string | null;
   /** Live transcription of what the operator said, for the overlay. */
   inputText: string;
-  /** Live transcription of what the voice model said, for the overlay. */
-  outputText: string;
   /** A delegated Smith turn is running. */
   smithRunning: boolean;
   /** A proposal card is waiting; the voice layer can read and answer it. */
@@ -76,7 +75,7 @@ type ToolResult = { output?: Record<string, unknown>; error?: string };
 const MAX_TRANSCRIPT_CHARS = 200;
 
 function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  return friendlyVoiceError(e);
 }
 
 export function useSmithVoice(): {
@@ -92,7 +91,6 @@ export function useSmithVoice(): {
     status: 'idle',
     error: null,
     inputText: '',
-    outputText: '',
     smithRunning: false,
     proposalPending: false,
   });
@@ -207,11 +205,6 @@ export function useSmithVoice(): {
           inputText: content.inputTranscription.text.slice(-MAX_TRANSCRIPT_CHARS),
         });
       }
-      if (content?.outputTranscription?.text) {
-        patch({
-          outputText: content.outputTranscription.text.slice(-MAX_TRANSCRIPT_CHARS),
-        });
-      }
       if (message.toolCall?.functionCalls?.length) {
         answerToolCalls(message.toolCall.functionCalls);
       }
@@ -263,7 +256,6 @@ export function useSmithVoice(): {
       status: 'idle',
       error: null,
       inputText: '',
-      outputText: '',
       smithRunning: false,
       proposalPending: false,
     });
@@ -276,7 +268,7 @@ export function useSmithVoice(): {
   const start = useCallback(async (): Promise<void> => {
     if (sessionRef.current) return;
     aliveRef.current = true;
-    patch({ status: 'connecting', error: null, inputText: '', outputText: '' });
+    patch({ status: 'connecting', error: null, inputText: '' });
     try {
       const minted = await api.geminiLive.mintToken();
       if ('error' in minted) throw new Error(minted.error);
@@ -313,7 +305,6 @@ export function useSmithVoice(): {
           thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
           systemInstruction: minted.systemInstruction,
           inputAudioTranscription: {},
-          outputAudioTranscription: {},
           tools: [{ functionDeclarations: voiceToolDeclarations() }],
         },
       });
