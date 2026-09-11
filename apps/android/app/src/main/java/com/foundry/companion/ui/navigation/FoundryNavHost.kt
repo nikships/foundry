@@ -186,6 +186,8 @@ fun FoundryNavHost(
                 runs = uiState.runs,
                 connectionStatus = uiState.connectionStatus,
                 projectName = currentProject?.name ?: "Foundry",
+                // Read-only waiting mirror: the phone never invents waiting state.
+                waitingRunIds = setOfNotNull(uiState.pendingInterruptRunId),
                 onRunClick = { runId ->
                     viewModel.loadRunDetail(runId)
                     navController.navigate(NavRoute.RunDetail.createRoute(runId))
@@ -235,6 +237,7 @@ fun FoundryNavHost(
         composable(NavRoute.NewRun.route) {
             LaunchedEffect(Unit) {
                 viewModel.loadNewRunCapabilities()
+                viewModel.loadOrchestratorProposals()
             }
             NewRunScreen(
                 projects = uiState.projects,
@@ -277,6 +280,15 @@ fun FoundryNavHost(
                 onStartOrchestratedRun = { projectId ->
                     viewModel.startOrchestratedRun(projectId, ::openStartedRun)
                 },
+                // Durable proposals + exactly-once accept (core slice added the
+                // repository/VM side; this slice only renders and calls it).
+                orchestratorProposals = uiState.orchestratorProposals,
+                isLoadingProposals = uiState.isLoadingProposals,
+                isAcceptingPlan = uiState.isAcceptingPlan,
+                onAcceptProposal = { planId ->
+                    viewModel.acceptOrchestratedPlan(planId, null, ::openStartedRun)
+                },
+                onRefreshProposals = { viewModel.loadOrchestratorProposals() },
                 linearConnection = uiState.linearConnection,
                 linearIssues = uiState.linearIssues,
                 selectedLinearIssue = uiState.selectedLinearIssue,
@@ -312,6 +324,8 @@ fun FoundryNavHost(
             RunDetailScreen(
                 runDetail = uiState.currentRunDetail?.takeIf { it.run.runId == runId },
                 isRunMissing = uiState.missingRunId == runId,
+                // Scope the waiting signal: switching runs must never leak the strip.
+                pendingInterrupt = uiState.pendingInterrupt?.takeIf { uiState.pendingInterruptRunId == runId },
                 events = uiState.eventRows,
                 connectionStatus = uiState.connectionStatus,
                 actionError = uiState.errorMessage,
@@ -366,6 +380,8 @@ fun FoundryNavHost(
             InspectorScreen(
                 runDetail = uiState.currentRunDetail?.takeIf { it.run.runId == runId },
                 isRunMissing = uiState.missingRunId == runId,
+                // Same scoped waiting signal as the operator view (read-only).
+                pendingInterrupt = uiState.pendingInterrupt?.takeIf { uiState.pendingInterruptRunId == runId },
                 events = uiState.eventRows,
                 initialPhaseId = phaseId,
                 connectionStatus = uiState.connectionStatus,

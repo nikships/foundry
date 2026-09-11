@@ -242,6 +242,47 @@ class NewRunScreenScreenshotTest {
     }
 
     @Test
+    fun captureNewRunOrchestratorProposals() {
+        val proposals = listOf(
+            ProposalSnapshot(
+                planId = "plan_saved_1",
+                projectId = "proj_foundry_core",
+                prompt = "Bring Android run creation and recovery to desktop parity",
+                model = "anthropic/claude-sonnet-4-6",
+                reasoningEffort = "high",
+                status = ProposalStatus.READY,
+                detail = "Plan ready.",
+                plan = sampleGeneratedPlan,
+                createdAt = 1L,
+                updatedAt = 2L
+            ),
+            ProposalSnapshot(
+                planId = "plan_accepted_9",
+                projectId = "proj_foundry_core",
+                prompt = "Already accepted proposal",
+                status = ProposalStatus.ACCEPTED,
+                acceptedRunId = "run_acc_1",
+                createdAt = 0L,
+                updatedAt = 1L
+            )
+        )
+        val bitmap = renderToBitmap {
+            NewRunScreen(
+                projects = sampleProjects,
+                selectedProjectId = "proj_foundry_core",
+                onProjectSelect = {},
+                onDismiss = {},
+                onStartRun = { _, _, _ -> },
+                connectionStatus = ConnectionStatus.Connected("Nik’s Mac Studio", "http://192.168.1.100:52810"),
+                initialMode = NewRunMode.Orchestrator,
+                orchestratorOptions = sampleOrchestratorOptions,
+                orchestratorProposals = proposals
+            )
+        }
+        saveScreenshot(bitmap, "android-new-run-orchestrator-proposals.png")
+    }
+
+    @Test
     fun captureNewRunLinearIssue() {
         val issue = LinearIssueSnapshot(
             id = "linear-fou-204",

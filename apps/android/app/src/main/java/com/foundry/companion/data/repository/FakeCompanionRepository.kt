@@ -629,6 +629,19 @@ class FakeCompanionRepository(
 
     private val orchestratorStates = mutableMapOf<String, OrchestratorState>()
 
+    /**
+     * Durable proposal rows, mirroring the desktop `ProposalStore`: one row
+     * per `startOrchestratorPlan` call, with the durable `acceptedRunId` key
+     * making repeats return the same run without starting another.
+     */
+    private val orchestratorProposals = mutableMapOf<String, ProposalSnapshot>()
+    var acceptPlanCallCount: Int = 0
+        private set
+    var lastAcceptPlanId: String? = null
+        private set
+    var lastAcceptPlanOverride: GeneratedRunPlan? = null
+        private set
+
     override suspend fun getOrchestratorOptions(): Result<OrchestratorOptions> {
         return Result.success(
             OrchestratorOptions(
@@ -647,6 +660,7 @@ class FakeCompanionRepository(
         }
         val planId = "plan_android_${UUID.randomUUID().toString().take(6)}"
         val plan = fakeGeneratedPlan(planId, request)
+        val now = System.currentTimeMillis()
         orchestratorStates[planId] = OrchestratorState(
             planId = planId,
             projectId = request.projectId,
@@ -657,8 +671,22 @@ class FakeCompanionRepository(
             plan = plan,
             rawReply = "{\"pipeline\":\"generated\"}",
             detail = "Plan ready.",
-            startedAt = System.currentTimeMillis(),
-            endedAt = System.currentTimeMillis() + 450
+            startedAt = now,
+            endedAt = now + 450
+        )
+        orchestratorProposals[planId] = ProposalSnapshot(
+            planId = planId,
+            projectId = request.projectId,
+            prompt = request.prompt,
+            model = request.model,
+            reasoningEffort = request.reasoningEffort,
+            status = ProposalStatus.READY,
+            detail = "Plan ready.",
+            plan = plan,
+            rawReply = "{\"pipeline\":\"generated\"}",
+            createdAt = now,
+            updatedAt = now,
+            endedAt = now + 450
         )
         return Result.success(OrchestratorStartResult(planId = planId))
     }
@@ -678,7 +706,107 @@ class FakeCompanionRepository(
             plan = null,
             detail = "Planning cancelled."
         )
+        orchestratorProposals[planId]?.let { snapshot ->
+            orchestratorProposals[planId] = snapshot.copy(
+                status = ProposalStatus.CANCELLED,
+                plan = null,
+                detail = "Planning cancelled.",
+                updatedAt = System.currentTimeMillis()
+            )
+        }
         return Result.success(true)
+    }
+
+    override suspend fun listOrchestratorPlans(projectId: String): Result<List<ProposalSnapshot>> {
+        // The desktop list hides `discarded` rows, newest first.
+        return Result.success(
+            orchestratorProposals.values
+                .filter { it.projectId == projectId && it.status != ProposalStatus.DISCARDED }
+                .sortedWith(compareByDescending<ProposalSnapshot> { it.updatedAt }.thenByDescending { it.planId })
+        )
+    }
+
+    override suspend fun acceptOrchestratorPlan(
+        planId: String,
+        plan: GeneratedRunPlan?
+    ): Result<OrchestratorAcceptResult> {
+        acceptPlanCallCount += 1
+        lastAcceptPlanId = planId
+        lastAcceptPlanOverride = plan
+        val snapshot = orchestratorProposals[planId]
+            ?: return Result.success(
+                OrchestratorAcceptResult(
+                    ok = false,
+                    issues = listOf(ValidationIssue("error", "proposal not found", "plan"))
+                )
+            )
+        snapshot.acceptedRunId?.let { runId ->
+            return Result.success(OrchestratorAcceptResult(ok = true, runId = runId))
+        }
+        if (snapshot.status == ProposalStatus.DISCARDED) {
+            return Result.success(
+                OrchestratorAcceptResult(
+                    ok = false,
+                    issues = listOf(ValidationIssue("error", "proposal discarded", "plan"))
+                )
+            )
+        }
+        if (snapshot.status != ProposalStatus.READY) {
+            return Result.success(
+                OrchestratorAcceptResult(
+                    ok = false,
+                    issues = listOf(ValidationIssue("error", "proposal is not ready to start", "plan"))
+                )
+            )
+        }
+        val effective = plan ?: snapshot.plan
+            ?: return Result.success(
+                OrchestratorAcceptResult(
+                    ok = false,
+                    issues = listOf(ValidationIssue("error", "proposal has no plan to start", "plan"))
+                )
+            )
+        if (effective.projectId != snapshot.projectId) {
+            return Result.success(
+                OrchestratorAcceptResult(
+                    ok = false,
+                    issues = listOf(
+                        ValidationIssue("error", "this plan was generated for a different project", "plan")
+                    )
+                )
+            )
+        }
+        val runId = "run_260818_" + UUID.randomUUID().toString().take(6)
+        runsList.add(
+            0,
+            RunRow(
+                runId = runId,
+                projectId = snapshot.projectId,
+                pipelineId = effective.pipelineId,
+                pipelineName = effective.pipelineName,
+                request = effective.refinedRequest,
+                status = "running",
+                createdAt = "2026-08-18T23:50:00Z",
+                durationMs = 1000,
+                totalTokens = 450,
+                branch = "foundry/$runId",
+                mode = "adaptive",
+                orchestrated = true,
+                phases = livePhaseSummaries
+            )
+        )
+        val now = System.currentTimeMillis()
+        orchestratorProposals[planId] = snapshot.copy(
+            status = ProposalStatus.ACCEPTED,
+            acceptedRunId = runId,
+            acceptedPlan = effective,
+            updatedAt = now,
+            endedAt = now
+        )
+        orchestratorStates[planId]?.let { state ->
+            orchestratorStates[planId] = state.copy(status = "done", plan = effective, endedAt = now)
+        }
+        return Result.success(OrchestratorAcceptResult(ok = true, runId = runId))
     }
 
     override suspend fun getLinearState(): Result<LinearConnectionState> {

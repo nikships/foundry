@@ -25,6 +25,7 @@ import org.robolectric.annotation.Config
 
 class TestNotificationManager : CompanionNotificationManager {
     val postedSettledRuns = mutableListOf<RunRow>()
+    val postedWaitingRuns = mutableListOf<Pair<RunRow, String>>()
     var permissionGranted = true
 
     override fun hasNotificationPermission(): Boolean = permissionGranted
@@ -33,8 +34,13 @@ class TestNotificationManager : CompanionNotificationManager {
         postedSettledRuns.add(run)
     }
 
+    override fun postEngineerWaitingNotification(run: RunRow, question: String) {
+        postedWaitingRuns.add(run to question)
+    }
+
     fun clear() {
         postedSettledRuns.clear()
+        postedWaitingRuns.clear()
     }
 }
 
@@ -158,6 +164,64 @@ class NotificationsTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(testNotificationManager.postedSettledRuns.isEmpty())
+    }
+
+    @Test
+    fun testEngineerWaitingFiresEvenWithSettleToggleOff() {
+        val vm = CompanionViewModel(
+            repository = repository,
+            sessionManager = sessionManager,
+            notifier = notifier,
+            enablePolling = false
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleNotifyOnSettle(false)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val waiting = RunRow(
+            runId = "run_260818_live99",
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default",
+            pipelineName = "Feature Pipeline",
+            request = "Stand up the Android companion scaffold.",
+            status = "running"
+        )
+        notifier.onEngineerWaiting(waiting, "May I rewrite the inspector?")
+
+        assertEquals(1, testNotificationManager.postedWaitingRuns.size)
+        assertEquals("run_260818_live99", testNotificationManager.postedWaitingRuns.first().first.runId)
+        assertEquals("May I rewrite the inspector?", testNotificationManager.postedWaitingRuns.first().second)
+        // The settle path stays quiet: no settle happened.
+        assertTrue(testNotificationManager.postedSettledRuns.isEmpty())
+    }
+
+    @Test
+    fun testEngineerWaitingDedupesPerRun() {
+        val waiting = RunRow(
+            runId = "run_wait_01",
+            projectId = "proj_foundry_core",
+            pipelineName = "Feature Pipeline",
+            request = "Waiting run.",
+            status = "running"
+        )
+        notifier.onEngineerWaiting(waiting, "Proceed?")
+        notifier.onEngineerWaiting(waiting, "Proceed?")
+
+        assertEquals(1, testNotificationManager.postedWaitingRuns.size)
+
+        notifier.reset()
+        sessionManager.getNotifiedWaitingRunIds().let { assertTrue(it.contains("run_wait_01")) }
+    }
+
+    @Test
+    fun testEngineerWaitingRespectsPermission() {
+        testNotificationManager.permissionGranted = false
+        notifier.onEngineerWaiting(
+            RunRow(runId = "run_wait_02", pipelineName = "Feature Pipeline", request = "x", status = "running"),
+            "Proceed?"
+        )
+        assertTrue(testNotificationManager.postedWaitingRuns.isEmpty())
     }
 
     @Test

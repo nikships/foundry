@@ -822,4 +822,173 @@ class CompanionRepositoryTest {
         assertEquals("POST", restoreReq.method)
         assertTrue(restoreReq.body.readUtf8().contains("cp_1"))
     }
+
+    @Test
+    fun testHttpListOrchestratorPlans() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"planId":"plan_1","projectId":"proj_1","prompt":"Build it","model":"scripted/alpha","reasoningEffort":"high","status":"ready","detail":"Plan ready.","entries":[],"rawReply":"{}","messages":[],"revision":0,"createdAt":1,"updatedAt":2}]"""
+            )
+        )
+
+        val plans = httpRepository.listOrchestratorPlans("proj_1").getOrThrow()
+        assertEquals(1, plans.size)
+        assertEquals("plan_1", plans.single().planId)
+        assertEquals("ready", plans.single().status)
+        assertTrue(plans.single().isReady)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/orchestrator/plans?projectId=proj_1", req.path)
+        assertEquals("GET", req.method)
+        assertEquals("Bearer test_token", req.getHeader("Authorization"))
+    }
+
+    @Test
+    fun testHttpListOrchestratorPlansRevokesOn401() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "revoked_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":{"code":"unauthorized"}}"""))
+
+        val result = httpRepository.listOrchestratorPlans("proj_1")
+        assertTrue(result.isFailure)
+        assertNull(httpRepository.activeSession.value)
+        assertTrue(httpRepository.connectionStatus.value is ConnectionStatus.Unpaired)
+    }
+
+    @Test
+    fun testHttpAcceptOrchestratorPlanOmitsNullPlan() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true,"runId":"run_acc_1"}"""))
+
+        val result = httpRepository.acceptOrchestratorPlan("plan 1").getOrThrow()
+        assertTrue(result.ok)
+        assertEquals("run_acc_1", result.runId)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/orchestrator/plans/plan+1/accept", req.path)
+        assertEquals("POST", req.method)
+        assertEquals("Bearer test_token", req.getHeader("Authorization"))
+        // explicitNulls=false: a null plan means "no override", not `"plan":null`.
+        assertFalse(req.body.readUtf8().contains("\"plan\""))
+    }
+
+    @Test
+    fun testHttpAcceptOrchestratorPlanRefusalCarriesIssues() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"ok":false,"issues":[{"level":"error","message":"proposal is not ready to start","where":"plan"}]}"""
+            )
+        )
+
+        val result = httpRepository.acceptOrchestratorPlan("plan_1").getOrThrow()
+        assertFalse(result.ok)
+        assertNull(result.runId)
+        assertEquals("proposal is not ready to start", result.issues.single().message)
+
+        assertEquals("/v1/orchestrator/plans/plan_1/accept", server.takeRequest().path)
+    }
+
+    @Test
+    fun testFakeListAndExactlyOnceAccept() = runBlocking {
+        val projects = fakeRepository.getProjects().getOrThrow()
+        val projectId = projects.first().id
+
+        val started = fakeRepository.startOrchestratorPlan(
+            com.foundry.companion.data.model.OrchestratorStartRequest(
+                projectId = projectId,
+                prompt = "Durable proposal e2e",
+                model = "scripted/alpha",
+                reasoningEffort = "high"
+            )
+        ).getOrThrow()
+        val planId = started.planId!!
+
+        val listed = fakeRepository.listOrchestratorPlans(projectId).getOrThrow()
+        assertEquals(1, listed.size)
+        assertEquals(planId, listed.single().planId)
+        assertEquals("ready", listed.single().status)
+        assertNotNull(listed.single().plan)
+        assertTrue(fakeRepository.listOrchestratorPlans("proj_other").getOrThrow().isEmpty())
+
+        val runsBefore = fakeRepository.getRuns(projectId).getOrThrow().size
+        val first = fakeRepository.acceptOrchestratorPlan(planId).getOrThrow()
+        assertTrue(first.ok)
+        assertNotNull(first.runId)
+        assertEquals(runsBefore + 1, fakeRepository.getRuns(projectId).getOrThrow().size)
+
+        val accepted = fakeRepository.getRunDetail(projectId, first.runId!!).getOrThrow().run
+        assertEquals("running", accepted.status)
+        assertTrue(accepted.orchestrated)
+        assertEquals("adaptive", accepted.mode)
+
+        // Exactly-once: the repeat returns the same run and starts nothing.
+        val second = fakeRepository.acceptOrchestratorPlan(planId).getOrThrow()
+        assertTrue(second.ok)
+        assertEquals(first.runId, second.runId)
+        assertEquals(runsBefore + 1, fakeRepository.getRuns(projectId).getOrThrow().size)
+
+        val listedAfter = fakeRepository.listOrchestratorPlans(projectId).getOrThrow()
+        assertEquals("accepted", listedAfter.single { it.planId == planId }.status)
+        assertEquals(first.runId, listedAfter.single { it.planId == planId }.acceptedRunId)
+    }
+
+    @Test
+    fun testFakeAcceptRefusals() = runBlocking {
+        val projects = fakeRepository.getProjects().getOrThrow()
+        val projectId = projects.first().id
+
+        val missing = fakeRepository.acceptOrchestratorPlan("plan_nope").getOrThrow()
+        assertFalse(missing.ok)
+        assertEquals("proposal not found", missing.issues.single().message)
+
+        val started = fakeRepository.startOrchestratorPlan(
+            com.foundry.companion.data.model.OrchestratorStartRequest(
+                projectId = projectId,
+                prompt = "Will cancel",
+                model = "scripted/alpha",
+                reasoningEffort = "high"
+            )
+        ).getOrThrow()
+        assertTrue(fakeRepository.cancelOrchestratorPlan(started.planId!!).getOrThrow())
+        val cancelled = fakeRepository.acceptOrchestratorPlan(started.planId!!).getOrThrow()
+        assertFalse(cancelled.ok)
+        assertEquals("proposal is not ready to start", cancelled.issues.single().message)
+    }
 }

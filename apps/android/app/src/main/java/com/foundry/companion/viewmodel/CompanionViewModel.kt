@@ -55,6 +55,19 @@ data class CompanionUiState(
     val orchestratorState: OrchestratorState? = null,
     val orchestratorOriginalPlan: GeneratedRunPlan? = null,
     val isPlanning: Boolean = false,
+    /** Durable proposals (`GET /v1/orchestrator/plans`), newest first. */
+    val orchestratorProposals: List<ProposalSnapshot> = emptyList(),
+    val isLoadingProposals: Boolean = false,
+    /** Exactly-once accept in flight; guards against double-tap double-start. */
+    val isAcceptingPlan: Boolean = false,
+    /**
+     * Read-only engineer-waiting signal derived from `interrupt` trace rows
+     * (spec §3.7). There is no companion answer route, so this is display +
+     * notification state only.
+     */
+    val pendingInterrupt: PendingInterrupt? = null,
+    /** Which run the pending interrupt belongs to, so switching runs cannot leak it. */
+    val pendingInterruptRunId: String? = null,
     val newRunMode: String = "manual",
     val linearConnection: LinearConnectionState? = null,
     val linearIssues: List<LinearIssueSnapshot> = emptyList(),
@@ -237,10 +250,16 @@ class CompanionViewModel(
                                         existingMap[ev.eventId.ifBlank { "row_${ev.rowid}" }] = ev
                                     }
                                     val merged = existingMap.values.sortedBy { it.rowid }
+                                    val pending = TranscriptEvents.pendingInterrupt(merged)
                                     current.copy(
                                         eventRows = merged,
-                                        eventsCursor = maxOf(cursor, page.cursor)
+                                        eventsCursor = maxOf(cursor, page.cursor),
+                                        pendingInterrupt = pending,
+                                        pendingInterruptRunId = pending?.let { activeRun.runId }
                                     )
+                                }
+                                _uiState.value.pendingInterrupt?.let { pending ->
+                                    notifier?.onEngineerWaiting(activeRun, pending.question)
                                 }
                             }
                         }
@@ -281,6 +300,8 @@ class CompanionViewModel(
                         currentRunDetail = detail,
                         missingRunId = null,
                         errorMessage = null,
+                        pendingInterrupt = if (it.pendingInterruptRunId == runId) it.pendingInterrupt else null,
+                        pendingInterruptRunId = if (it.pendingInterruptRunId == runId) it.pendingInterruptRunId else null,
                         prDraft = if (it.prDraftRunId == runId) it.prDraft else null,
                         prDraftRunId = if (it.prDraftRunId == runId) it.prDraftRunId else null,
                         restorableCheckpoints = if (canRestore &&
@@ -317,6 +338,8 @@ class CompanionViewModel(
                             prDraftRunId = null,
                             restorableCheckpoints = null,
                             restoreMessage = null,
+                            pendingInterrupt = null,
+                            pendingInterruptRunId = null,
                         )
                     }
                 }
@@ -328,11 +351,19 @@ class CompanionViewModel(
         val projectId = _uiState.value.selectedProjectId
         viewModelScope.launch {
             repository.getEventPage(projectId, runId, 0L).onSuccess { page ->
+                val pending = TranscriptEvents.pendingInterrupt(page.events)
                 _uiState.update {
                     it.copy(
                         eventRows = page.events,
-                        eventsCursor = page.cursor
+                        eventsCursor = page.cursor,
+                        pendingInterrupt = pending,
+                        pendingInterruptRunId = pending?.let { runId }
                     )
+                }
+                if (pending != null) {
+                    runForWaitingNotice(runId)?.let { run ->
+                        notifier?.onEngineerWaiting(run, pending.question)
+                    }
                 }
             }
             repository.getTranscriptEvents(projectId, runId, phaseId).onSuccess { events ->
@@ -380,6 +411,11 @@ class CompanionViewModel(
                     orchestratorState = null,
                     orchestratorOriginalPlan = null,
                     isPlanning = false,
+                    orchestratorProposals = emptyList(),
+                    isLoadingProposals = false,
+                    isAcceptingPlan = false,
+                    pendingInterrupt = null,
+                    pendingInterruptRunId = null,
                     newRunMode = "manual",
                     linearConnection = null,
                     linearIssues = emptyList(),
@@ -805,23 +841,118 @@ class CompanionViewModel(
         }
     }
 
+    /**
+     * Finishes an orchestrated run via exactly-once accept
+     * (`POST /v1/orchestrator/plans/:planId/accept`) instead of a direct
+     * `POST /v1/runs`: repeats return the same run id and start nothing, so a
+     * retry or double-tap cannot fork a second run. The edited composer plan
+     * travels as the accept override and becomes the run's plan.
+     */
     fun startOrchestratedRun(
         projectId: String,
         onSuccess: (runId: String) -> Unit
     ) {
-        val plan = _uiState.value.orchestratorState?.plan ?: return
-        _uiState.update { it.copy(isStartingRun = true, validationIssues = emptyList()) }
+        val state = _uiState.value.orchestratorState ?: return
+        val plan = state.plan ?: return
+        acceptOrchestratedPlan(state.planId, plan, onSuccess)
+    }
+
+    /**
+     * Accepts a durable proposal by id. `plan` is an optional override (the
+     * edited composer plan); null keeps the stored snapshot. Guarded against
+     * concurrent accepts: exactly-once is a server key, but a second tap
+     * should not even send.
+     */
+    fun acceptOrchestratedPlan(
+        planId: String,
+        plan: GeneratedRunPlan? = null,
+        onSuccess: (runId: String) -> Unit
+    ) {
+        if (planId.isBlank() || _uiState.value.isAcceptingPlan) return
+        _uiState.update { it.copy(isAcceptingPlan = true, validationIssues = emptyList()) }
         viewModelScope.launch {
-            val result = repository.startRun(
-                StartRunInput(
-                    projectId = projectId,
-                    pipelineId = plan.pipelineId,
-                    request = plan.prompt,
-                    plan = plan
-                )
-            )
-            handleStartResult(projectId, result, onSuccess)
+            val projectId = _uiState.value.selectedProjectId
+            repository.acceptOrchestratorPlan(planId, plan).onSuccess { result ->
+                _uiState.update { it.copy(isAcceptingPlan = false) }
+                if (result.ok && result.runId != null) {
+                    handleAcceptedRun(projectId, result.runId, onSuccess)
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            validationIssues = result.issues.map { issue ->
+                                if (issue.where == "plan" || issue.where.isBlank()) issue.copy(where = "orchestrator") else issue
+                            }.ifEmpty {
+                                listOf(
+                                    ValidationIssue(
+                                        "error",
+                                        "The desktop refused that plan",
+                                        "orchestrator"
+                                    )
+                                )
+                            }
+                        )
+                    }
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isAcceptingPlan = false,
+                        validationIssues = listOf(
+                            ValidationIssue(
+                                "error",
+                                error.message ?: "Could not accept the plan",
+                                "orchestrator"
+                            )
+                        )
+                    )
+                }
+            }
         }
+    }
+
+    fun loadOrchestratorProposals(projectId: String = _uiState.value.selectedProjectId) {
+        if (projectId.isBlank()) return
+        _uiState.update { it.copy(isLoadingProposals = true) }
+        viewModelScope.launch {
+            repository.listOrchestratorPlans(projectId).onSuccess { proposals ->
+                _uiState.update {
+                    it.copy(
+                        orchestratorProposals = proposals,
+                        isLoadingProposals = false
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isLoadingProposals = false,
+                        errorMessage = error.message ?: "Could not list plans"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handleAcceptedRun(
+        projectId: String,
+        runId: String,
+        onSuccess: (runId: String) -> Unit
+    ) {
+        clearNewRunDraft()
+        orchestratorPollingJob?.cancel()
+        _uiState.update {
+            it.copy(
+                orchestratorState = null,
+                orchestratorOriginalPlan = null,
+                isPlanning = false,
+                newRunMode = "manual",
+                selectedLinearIssue = null,
+                linearWorkflowStates = emptyList(),
+                validationIssues = emptyList()
+            )
+        }
+        loadRuns(projectId)
+        loadOrchestratorProposals(projectId)
+        onSuccess(runId)
     }
 
     fun startLinearRun(
@@ -1242,6 +1373,12 @@ class CompanionViewModel(
                 emitHaptic(CompanionHapticEvent.RunSettle)
             }
         }
+    }
+
+    /** The run a waiting notice belongs to: the open detail, else the list row. */
+    private fun runForWaitingNotice(runId: String): RunRow? {
+        _uiState.value.currentRunDetail?.run?.takeIf { it.runId == runId }?.let { return it }
+        return _uiState.value.runs.firstOrNull { it.runId == runId }
     }
 
     private fun canDraftPr(run: RunRow): Boolean {

@@ -28,6 +28,13 @@ class ThemeTokensTest {
     }
 
     @Test
+    fun testWaitingChipUsesWarningAmber() {
+        // Spec §3.7 waiting chip + §2.2 rejected share the amber token.
+        assertEquals(Color(0xFFF5A623), colors.statusWarning)
+        assertEquals(colors.statusWarning, colors.statusColorFor("rejected"))
+    }
+
+    @Test
     fun testStatusTokensMapping() {
         assertEquals(colors.statusRunning, colors.statusColorFor("running"))
         assertEquals(colors.statusAccepted, colors.statusColorFor("accepted"))

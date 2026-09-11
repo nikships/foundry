@@ -2,8 +2,10 @@ package com.foundry.companion
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import com.foundry.companion.ui.components.StatusBadge
+import com.foundry.companion.ui.components.WaitingChip
 import com.foundry.companion.ui.theme.FoundryTheme
 import org.junit.Rule
 import org.junit.Test
@@ -36,5 +38,17 @@ class StatusBadgeTest {
             }
         }
         composeTestRule.onNodeWithText("ACCEPTED").assertIsDisplayed()
+    }
+
+    @Test
+    fun waitingChipRendersAmberWaitingLabel() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                WaitingChip()
+            }
+        }
+        // Spec §3.7: the affected run keeps its status badge and gains this chip.
+        composeTestRule.onNodeWithText("WAITING").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("waiting-chip").assertIsDisplayed()
     }
 }

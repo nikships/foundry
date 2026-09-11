@@ -306,6 +306,26 @@ class HttpCompanionRepository(
             { it.postJson() }
         ) { json.decodeFromString(CompanionKillResult.serializer(), it).ok }
 
+    override suspend fun listOrchestratorPlans(projectId: String): Result<List<ProposalSnapshot>> {
+        val encoded = URLEncoder.encode(projectId, StandardCharsets.UTF_8.name())
+        return getJson(
+            "/v1/orchestrator/plans?projectId=$encoded",
+            ListSerializer(ProposalSnapshot.serializer())
+        )
+    }
+
+    override suspend fun acceptOrchestratorPlan(
+        planId: String,
+        plan: GeneratedRunPlan?
+    ): Result<OrchestratorAcceptResult> {
+        val encoded = URLEncoder.encode(planId, StandardCharsets.UTF_8.name())
+        return postJson(
+            "/v1/orchestrator/plans/$encoded/accept",
+            OrchestratorAcceptResult.serializer(),
+            encode(OrchestratorAcceptRequest.serializer(), OrchestratorAcceptRequest(plan = plan))
+        )
+    }
+
     override suspend fun getLinearState(): Result<LinearConnectionState> =
         getJson("/v1/linear", LinearConnectionState.serializer())
 

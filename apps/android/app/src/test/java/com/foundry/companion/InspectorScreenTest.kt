@@ -322,6 +322,73 @@ class InspectorScreenTest {
     }
 
     @Test
+    fun autoAllowPolicyLeftoversStayHiddenInLane() {
+        val policy = EventRow(
+            eventId = "ev_policy",
+            phaseId = "p_3",
+            type = "interrupt",
+            name = "allow (policy)",
+            payload = buildJsonObject { put("auto", true) },
+            startedAt = "2026-08-18T23:30:00Z"
+        )
+        val waiting = EventRow(
+            eventId = "ev_wait",
+            phaseId = "p_3",
+            type = "interrupt",
+            name = "engineer checkpoint",
+            payload = buildJsonObject { put("question", "May I proceed?") },
+            startedAt = "2026-08-18T23:30:01Z"
+        )
+        composeTestRule.setContent {
+            FoundryTheme {
+                InspectorScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    events = listOf(policy, waiting),
+                    initialPhaseId = "p_3",
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.1"),
+                    onBackClick = {},
+                    onPhaseSelected = {}
+                )
+            }
+        }
+
+        // Desktop Inspector drops auto-allow leftovers; genuine waiting stays.
+        composeTestRule.onNodeWithTag("inspector-interrupt-ev_policy").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("inspector-interrupt-ev_wait").assertIsDisplayed()
+    }
+
+    @Test
+    fun waitingStripShowsInInspectorAndDismissPersists() {
+        val waitingInterrupt = com.foundry.companion.data.model.PendingInterrupt(
+            eventId = "ev_interrupt_1",
+            runId = "run_live",
+            phaseId = "p_3",
+            question = "May I rewrite the inspector?"
+        )
+        composeTestRule.setContent {
+            FoundryTheme {
+                InspectorScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    events = sampleEvents,
+                    initialPhaseId = "p_3",
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.1"),
+                    onBackClick = {},
+                    onPhaseSelected = {},
+                    pendingInterrupt = waitingInterrupt
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("engineer-waiting-strip").assertIsDisplayed()
+        composeTestRule.onNodeWithText("An engineer phase is waiting for your answer.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Answer…").performClick()
+        composeTestRule.onNodeWithTag("engineer-waiting-sheet").assertIsDisplayed()
+        composeTestRule.onNodeWithText("May I rewrite the inspector?").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("engineer-waiting-dismiss").performClick()
+        composeTestRule.onNodeWithTag("engineer-waiting-strip").assertIsDisplayed()
+    }
+
+    @Test
     fun emptyProjectAndOfflineBanner() {
         composeTestRule.setContent {
             FoundryTheme {
