@@ -13,6 +13,7 @@ Smith is the native operator agent. It exposes typed app capabilities while keep
 ## Capabilities
 
 - Entity reads execute immediately; validated entity create/edit operations use proposals.
+- `smith_runs` `events` is one bounded page (count + JSON budget). Never dump a full run trace into the model; `detail` is the failure summary.
 - App operations use fixed enums mapped to fixed main handlers. Never accept an IPC channel from the model.
 - Persistent, destructive, credential, process, Git/PR, lifecycle, network, and maintenance actions require an action proposal whose executor closes over one fixed handler.
 - `SmithService.invoke` is a main-only handler registry, not renderer IPC.
