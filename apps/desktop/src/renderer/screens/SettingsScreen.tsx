@@ -47,6 +47,7 @@ import {
   SETTINGS_PANES,
   SETTINGS_TOGGLES,
   Highlight,
+  normalizeSettingsPane,
   paneMatchesQuery,
   searchSettings,
   sectionId,
@@ -64,12 +65,7 @@ type Pane = SettingsPaneId;
 
 /** Old pane ids from saved navigation state still land somewhere sensible. */
 function normalizePane(value: string): Pane {
-  if (value === 'project') return 'project';
-  if (value === 'integrations') return 'integrations';
-  if (value === 'general' || value === 'maintenance' || value === 'about' || value === 'app') {
-    return 'app';
-  }
-  return 'models';
+  return normalizeSettingsPane(value);
 }
 
 /**
@@ -78,10 +74,12 @@ function normalizePane(value: string): Pane {
  * pane metadata. Keep the two in step when a pane is added or renamed.
  */
 const PANES: { id: Pane; label: string }[] = [
-  { id: 'models', label: 'Models & Providers' },
+  { id: 'providers', label: 'Providers' },
+  { id: 'models', label: 'Models & agent defaults' },
   { id: 'integrations', label: 'Integrations' },
   { id: 'project', label: 'Project' },
-  { id: 'app', label: 'App' },
+  { id: 'preferences', label: 'Appearance & notifications' },
+  { id: 'system', label: 'System & maintenance' },
 ];
 
 /**
@@ -90,7 +88,9 @@ const PANES: { id: Pane; label: string }[] = [
  * search is narrowing the list.
  */
 const RAIL_GROUPS: { label: string; items: Pane[] }[] = [
-  { label: 'Settings', items: ['models', 'integrations', 'project', 'app'] },
+  { label: 'Agent runtime', items: ['providers', 'models'] },
+  { label: 'Workspace', items: ['integrations', 'project'] },
+  { label: 'Application', items: ['preferences', 'system'] },
 ];
 
 /**
@@ -259,7 +259,7 @@ export default function SettingsScreen({
 }: {
   pane: string;
   /** Keep the shell's `data-settings-pane` marker in sync with tab clicks. */
-  onPaneChange?: (pane: string) => void;
+  onPaneChange?: (pane: SettingsPaneId) => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
   /** Bumped by the app shell's ⌘K chord; each bump opens the search palette. */
@@ -797,7 +797,7 @@ export default function SettingsScreen({
   );
 
   useEffect(() => {
-    if (pane === 'app') void loadOrphans();
+    if (pane === 'system') void loadOrphans();
   }, [pane]);
 
   const hiddenCount = settings?.hiddenModelIds?.length ?? 0;
@@ -1033,7 +1033,7 @@ export default function SettingsScreen({
 
           <div className={styles.settingsScroll}>
             <div className={styles.settingsPage}>
-              {pane === 'app' && (
+              {pane === 'system' && (
                 <PaneBody>
                   {() => (
                     <>
@@ -1042,10 +1042,17 @@ export default function SettingsScreen({
                           checks={checks}
                           title="Environment checks"
                           onRecheck={() => void api.doctor.run().then(setChecks)}
-                          onOpenSettings={(next) => setPaneLive(next as Pane)}
+                          onOpenSettings={(next) => setPaneLive(normalizePane(next))}
                         />
                       </Section>
-
+                    </>
+                  )}
+                </PaneBody>
+              )}
+              {pane === 'preferences' && (
+                <PaneBody>
+                  {() => (
+                    <>
                       <Section
                         label="Appearance"
                         note="Choose the palette Foundry uses across the desktop."
@@ -1086,7 +1093,14 @@ export default function SettingsScreen({
                           />
                         </div>
                       </Section>
-
+                    </>
+                  )}
+                </PaneBody>
+              )}
+              {pane === 'system' && (
+                <PaneBody>
+                  {() => (
+                    <>
                       <Section
                         label="Software updates"
                         note="Foundry checks only when you ask it to."
@@ -1319,7 +1333,7 @@ export default function SettingsScreen({
                   )}
                 </PaneBody>
               )}
-              {pane === 'models' && (
+              {pane === 'providers' && (
                 <PaneBody>
                   {() => (
                     <>
@@ -1562,7 +1576,14 @@ export default function SettingsScreen({
                           })}
                         </div>
                       </Section>
-
+                    </>
+                  )}
+                </PaneBody>
+              )}
+              {pane === 'models' && (
+                <PaneBody>
+                  {() => (
+                    <>
                       <Section label="Models" note="What every picker in the app will offer.">
                         <p className={styles.settingsLead}>
                           Hide a model to remove it from every picker. Hidden models are gone until
@@ -2173,7 +2194,7 @@ export default function SettingsScreen({
                               onRecheck={() =>
                                 void api.projects.check(projectDraft.id).then(setProjectChecks)
                               }
-                              onOpenSettings={(next) => setPaneLive(next as Pane)}
+                              onOpenSettings={(next) => setPaneLive(normalizePane(next))}
                             />
                           </Section>
                           <Section
@@ -2340,7 +2361,7 @@ export default function SettingsScreen({
                   )}
                 </PaneBody>
               )}
-              {pane === 'app' && (
+              {pane === 'system' && (
                 <PaneBody>
                   {() => (
                     <>
@@ -2473,7 +2494,7 @@ export default function SettingsScreen({
                       </Section>
                       <Section label="Elsewhere" note="Providers and the cinematic intro.">
                         <div className={styles.settingsBtnrow}>
-                          <Button size="sm" onClick={() => setPaneLive('models')}>
+                          <Button size="sm" onClick={() => setPaneLive('providers')}>
                             Manage providers
                           </Button>
                           <Button size="sm" onClick={() => void replayIntro()}>

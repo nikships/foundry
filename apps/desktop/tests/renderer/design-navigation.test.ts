@@ -24,6 +24,7 @@ const read = (rel: string): string => readFileSync(join(here, '../..', rel), 'ut
 const mainSrc = read('src/main/main.ts');
 const bridgeSrc = read('src/preload/bridge.ts');
 const settingsSrc = read('src/renderer/screens/SettingsScreen.tsx');
+const settingsSearchSrc = read('src/renderer/view-models/settings-search.tsx');
 const doctorSrc = read('src/main/system/doctor.ts');
 const designSrc = read('src/renderer/screens/DesignScreen.tsx');
 const rosterSrc = read('src/renderer/screens/RosterScreen.tsx');
@@ -87,11 +88,14 @@ describe('Design', () => {
 });
 
 describe('Settings', () => {
-  it('publishes App as the canonical initial pane while retaining the legacy inbound alias', () => {
-    expect(appSrc).toContain("useState('app')");
-    expect(sidebarSrc).toContain("onOpenSettings('app')");
-    expect(appSrc).toContain("pane === 'general' ? 'app' : pane");
-    expect(settingsSrc).toContain("value === 'general'");
+  it('publishes Preferences as the canonical initial pane and shares legacy normalization', () => {
+    expect(appSrc).toContain("useState<SettingsPaneId>('preferences')");
+    expect(sidebarSrc).toContain("onOpenSettings('preferences')");
+    expect(appSrc).toContain('setSettingsPane(normalizeSettingsPane(pane))');
+    expect(settingsSrc).toContain('return normalizeSettingsPane(value)');
+    for (const alias of ['app', 'general', 'maintenance', 'about']) {
+      expect(settingsSearchSrc).toContain(`${alias}:`);
+    }
   });
 
   it('no longer treats Envelopes as a preference pane', () => {
@@ -101,10 +105,20 @@ describe('Settings', () => {
     expect(settingsSrc).not.toContain('openEnvelope');
   });
 
-  it('keeps the remaining preference panes', () => {
-    for (const pane of ['models', 'integrations', 'project', 'app']) {
+  it('renders six panes in three concern-based groups', () => {
+    for (const pane of [
+      'providers',
+      'models',
+      'integrations',
+      'project',
+      'preferences',
+      'system',
+    ]) {
       expect(settingsSrc).toContain(`id: '${pane}'`);
     }
+    expect(settingsSrc).toContain("{ label: 'Agent runtime', items: ['providers', 'models'] }");
+    expect(settingsSrc).toContain("{ label: 'Workspace', items: ['integrations', 'project'] }");
+    expect(settingsSrc).toContain("{ label: 'Application', items: ['preferences', 'system'] }");
   });
 
   it('no longer configures CLIs or MCP servers, which the app does not run', () => {
@@ -113,11 +127,11 @@ describe('Settings', () => {
     expect(settingsSrc).not.toContain('McpSettings');
   });
 
-  // Every provider remediation the doctor offers is `open-settings: providers`,
-  // so a renamed pane would land the operator on Models with no explanation.
-  it('is the destination the doctor’s provider fixes name', () => {
-    expect(doctorSrc).toContain("kind: 'open-settings', value: 'models'");
-    expect(settingsSrc).toContain("id: 'models'");
+  it('routes provider, worktree, and phone cross-links to their canonical panes', () => {
+    expect(doctorSrc).toContain("kind: 'open-settings', value: 'providers'");
+    expect(doctorSrc).toContain("kind: 'open-settings', value: 'system'");
+    expect(runsSrc).toContain("onOpenSettings?.('system')");
+    expect(settingsSrc).toContain("setPaneLive('providers')");
   });
 
   it('exposes a data-testid on every pane tab for CDP automation', () => {

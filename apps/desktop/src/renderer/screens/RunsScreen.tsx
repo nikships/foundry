@@ -82,7 +82,7 @@ function RunsHeader({
         <button
           type="button"
           className={styles.phonePill}
-          onClick={() => onOpenSettings?.('general')}
+          onClick={() => onOpenSettings?.('system')}
           data-testid="companion-pill"
           data-running={companion.running ? 'true' : 'false'}
           title={pill.title}

@@ -20,6 +20,7 @@ import {
   type View,
 } from './utils/navigation.js';
 import { loadOrchestratorChoice } from './utils/orchestrator-choice.js';
+import { normalizeSettingsPane, type SettingsPaneId } from './view-models/settings-search.js';
 import { describeScreen } from './view-models/smith-chat-view.js';
 import styles from './App.module.css';
 
@@ -65,7 +66,7 @@ function AppInner(): React.JSX.Element {
   const [creatingProject, setCreatingProject] = useState(false);
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
-  const [settingsPane, setSettingsPane] = useState('app');
+  const [settingsPane, setSettingsPane] = useState<SettingsPaneId>('preferences');
   /** ⌘K opens Settings' search palette; the nonce re-raises it on every press. */
   const [settingsPaletteNonce, setSettingsPaletteNonce] = useState(0);
   const [designTab, setDesignTab] = useState<DesignTab>('pipelines');
@@ -267,9 +268,8 @@ function AppInner(): React.JSX.Element {
 
   const openSettingsPane = useCallback(
     (pane: string): void => {
-      // `general` remains an inbound alias for old deep links, but the shell
-      // only publishes current pane ids to automation and screen context.
-      setSettingsPane(pane === 'general' ? 'app' : pane);
+      // Normalize old deep links before publishing the pane to automation and screen context.
+      setSettingsPane(normalizeSettingsPane(pane));
       go('settings');
     },
     [go],

@@ -13,7 +13,11 @@ test.describe('settings theme', () => {
 
       await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
       await window.getByTestId('nav-settings').click();
-      await window.getByTestId('settings-tab-app').click();
+      await expect(window.getByTestId('app-view')).toHaveAttribute(
+        'data-settings-pane',
+        'preferences',
+      );
+      await window.getByTestId('settings-tab-preferences').click();
 
       const picker = window.getByTestId('settings-theme');
       await expect(window.getByTestId('settings-theme-dark')).toHaveAttribute(
@@ -75,11 +79,48 @@ test.describe('settings theme', () => {
         .poll(() => window.evaluate(() => document.documentElement.dataset.theme))
         .toBe('light');
       await window.getByTestId('nav-settings').click();
-      await window.getByTestId('settings-tab-app').click();
+      await window.getByTestId('settings-tab-preferences').click();
       await expect(window.getByTestId('settings-theme-light')).toHaveAttribute(
         'aria-checked',
         'true',
       );
+    } finally {
+      await app?.close();
+    }
+  });
+
+  test('search and command palette jump to sections in the new panes', async () => {
+    const fixture = seedOnboardedFixture();
+    let app: ElectronApplication | undefined;
+    try {
+      const launched = await launchFoundry(fixture.userDataDir);
+      app = launched.app;
+      const { window } = launched;
+
+      await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
+      await window.getByTestId('nav-settings').click();
+      await window.getByTestId('settings-search').fill('api key');
+      await window.getByRole('option').filter({ hasText: 'API keys' }).first().click();
+      await expect(window.getByTestId('settings-tab-providers')).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(window.getByTestId('app-view')).toHaveAttribute(
+        'data-settings-pane',
+        'providers',
+      );
+      await expect(window.locator('[data-sec="api-keys"]')).toBeInViewport();
+
+      await window.getByTestId('settings-search').fill('');
+      await window.keyboard.press('Meta+K');
+      await window.getByTestId('settings-palette-input').fill('retention');
+      await window.getByRole('option').filter({ hasText: 'Retention' }).first().click();
+      await expect(window.getByTestId('settings-tab-system')).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(window.getByTestId('app-view')).toHaveAttribute('data-settings-pane', 'system');
+      await expect(window.locator('[data-sec="retention"]')).toBeInViewport();
     } finally {
       await app?.close();
     }

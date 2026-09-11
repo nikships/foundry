@@ -18,7 +18,7 @@ import { resolvedEnv } from './env.js';
 const TOOLCHAIN_BINARIES = ['node', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go', 'uv', 'swift'];
 
 /** Where a failing provider check sends the operator. */
-const PROVIDERS_PANE = { kind: 'open-settings', value: 'models' } as const;
+const PROVIDERS_PANE = { kind: 'open-settings', value: 'providers' } as const;
 
 function onPath(binary: string, path: string): boolean {
   return path.split(':').some((dir) => dir && existsSync(join(dir, binary)));
@@ -272,9 +272,9 @@ export async function checkProject(project: ProjectDef): Promise<DoctorCheck[]> 
     label: 'Leftover run worktrees',
     ok: leftover === 0,
     detail: leftover
-      ? `${leftover} left from earlier runs: review or sweep them in Maintenance`
+      ? `${leftover} left from earlier runs: review or sweep them in System & maintenance`
       : 'none',
-    fix: leftover ? { kind: 'open-settings', value: 'maintenance' } : undefined,
+    fix: leftover ? { kind: 'open-settings', value: 'system' } : undefined,
   });
 
   return checks;
