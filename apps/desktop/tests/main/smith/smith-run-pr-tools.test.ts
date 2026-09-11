@@ -74,6 +74,30 @@ describe('Smith run and PR tools', () => {
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.linearWorkflowStates, 'team-1');
   });
 
+  it('compacts a fat events page before it reaches the model', async () => {
+    const h = setup('runs');
+    const events = Array.from({ length: 80 }, (_, i) => ({
+      rowid: i + 1,
+      changeId: i + 1,
+      eventId: `e${i + 1}`,
+      runId: 'r1',
+      phaseId: 'p1',
+      parentId: null,
+      type: 'log',
+      name: 'reviewer: text',
+      payload: { text: 'z'.repeat(2_000) },
+      tokens: 0,
+      startedAt: '2026-01-01T00:00:00Z',
+      endedAt: null,
+    }));
+    h.invoke.mockResolvedValueOnce({ events, cursor: 80 });
+    const result = json(await h.execute({ operation: 'events', runId: 'r1', afterChangeId: 0 }));
+    expect(result).toMatchObject({ ok: true, result: { hasMore: true, truncated: true } });
+    const page = result.result as { events: unknown[]; cursor: number };
+    expect(page.events.length).toBeLessThan(80);
+    expect(JSON.stringify(result).length).toBeLessThan(80_000);
+  });
+
   it.each([
     ['detail', {}, 'runId'],
     ['events', { runId: 'r' }, 'afterChangeId'],

@@ -1,8 +1,10 @@
 import { IPC } from '@shared/ipc-contract.js';
 import type { SmithActionRisk } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
+import { compactSmithRunEvents } from './event-page.js';
 import {
   booleanField,
+  errorMessage,
   field,
   immediate,
   json,
@@ -94,7 +96,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_runs',
     label: 'Smith runs',
     description:
-      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt/artifacts(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_issue(issueId), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId).',
+      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt/artifacts(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_issue(issueId), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId). Prefer detail for a failure summary. events returns one small page, never the whole run; pass the returned cursor as afterChangeId to continue.',
     parameters: {
       type: 'object',
       properties: {
@@ -149,7 +151,12 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
         if (op === 'events') {
           const cursor = numberField(params, 'afterChangeId');
           if (cursor === null) return json({ ok: false, error: 'afterChangeId is required' });
-          return immediate(deps, read.channel, projectId, id, cursor);
+          try {
+            const result = await deps.invoke(read.channel, projectId, id, cursor);
+            return json({ ok: true, result: compactSmithRunEvents(result ?? null) });
+          } catch (error) {
+            return json({ ok: false, error: errorMessage(error) });
+          }
         }
         if (op === 'context') {
           const agent = stringField(params, 'agent');

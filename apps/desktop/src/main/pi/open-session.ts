@@ -16,6 +16,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import type { ContextBreakdown } from '@shared/types.js';
 import type { PiModel, PiThinkingLevel } from './model.js';
+import { MODEL_RETRY_LIMIT } from './model-failover.js';
 import type { ContextStats } from './transport.js';
 import { lastAssistantStop } from './vendor-events.js';
 
@@ -29,7 +30,7 @@ export function foundrySettings(): SettingsManager {
       httpIdleTimeoutMs: 300_000,
       retry: {
         enabled: true,
-        maxRetries: 5,
+        maxRetries: MODEL_RETRY_LIMIT,
         baseDelayMs: 2_000,
         // One semantic retry loop owns the budget. Provider retries here would
         // multiply the attempts invisibly before Pi's surfaced backoff begins.
@@ -248,8 +249,9 @@ export function lastAssistantText(session: PiAgentSession): string {
 }
 
 /**
- * Prompt, wait through retries, then optionally continue (failover). Throws if
- * the model ended the turn with an error. Discovery templates stay off.
+ * Prompt, wait through retries (Pi's transient budget plus Foundry's
+ * any-error budget), then optionally continue (failover). Throws if the model
+ * ended the turn with an error. Discovery templates stay off.
  */
 export async function promptUntilIdle(
   session: PiAgentSession,

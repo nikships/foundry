@@ -49,7 +49,11 @@ export function subscribeSessionEvents(
   reader: VendorEventReader,
   onEvent?: (event: TransportEvent) => void,
 ): () => void {
-  return session.subscribe((event) => reader.absorb(event, (e) => onEvent?.(e)));
+  const emit = (event: TransportEvent): void => {
+    onEvent?.(event);
+  };
+  reader.bind(emit);
+  return session.subscribe((event) => reader.absorb(event, emit));
 }
 
 export class VendorEventReader {
@@ -58,6 +62,7 @@ export class VendorEventReader {
   private usage: TurnUsage | null = null;
   private retryMaxAttempts = 0;
   private exhaustedRetry = false;
+  private sink: ((event: TransportEvent) => void) | null = null;
   /** `bash_execution_update` is a chunk; the Inspector wants accumulated text. */
   private readonly bashOutput = new Map<string, string>();
 
@@ -69,6 +74,25 @@ export class VendorEventReader {
   /** True only when Pi spent the whole retry budget, not when a kill cancelled it. */
   get retryExhausted(): boolean {
     return this.exhaustedRetry;
+  }
+
+  /** The emit sink `absorb` already uses; Foundry-owned retries share it. */
+  bind(sink: (event: TransportEvent) => void): void {
+    this.sink = sink;
+  }
+
+  /**
+   * Record one Foundry-owned same-model retry. Pi only emits `auto_retry_*`
+   * for transient errors; a 402 still has to show up as `agent: retry`.
+   */
+  noteRetry(attempt: number, maxAttempts: number, message: string): void {
+    this.retryMaxAttempts = maxAttempts;
+    this.sink?.({ type: 'retry', attempt, maxAttempts, message });
+  }
+
+  /** The current model spent its five attempts without recovering. */
+  markRetryExhausted(): void {
+    this.exhaustedRetry = true;
   }
 
   /** Called between turns: usage is per turn, the message counter is not. */
