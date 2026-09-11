@@ -31,6 +31,7 @@ import {
   toTransportModel,
   type PiModel,
 } from './model.js';
+import { continueWithModelFailover } from './model-failover.js';
 import {
   closeLiveSession,
   compactSession,
@@ -80,6 +81,10 @@ export interface SmithTransportOptions {
   onPermission: (ask: PermissionAsk) => PermissionDecision | Promise<PermissionDecision>;
   onEvent?: (event: TransportEvent) => void;
   onModelWarning?: (warning: string) => void;
+  /** Models the operator hid in Settings. Failover skips them. */
+  hiddenModelIds?: () => readonly string[];
+  /** Settings `defaultModel`. First failover hop prefers this id when reachable. */
+  defaultModel?: () => string;
 }
 
 export class SmithPiTransport implements AgentTransport {
@@ -87,6 +92,7 @@ export class SmithPiTransport implements AgentTransport {
   private unsubscribe: (() => void) | null = null;
   private readonly extension: ReturnType<typeof smithExtension>;
   private models: TransportModel[] = [];
+  private available: readonly PiModel[] = [];
   private resolvedModel: PiModel | null = null;
   private effort: ReasoningEffort;
   private closed = false;
@@ -139,6 +145,7 @@ export class SmithPiTransport implements AgentTransport {
     this.closed = false;
     const runtime = await modelRuntime(this.opts.supportDir);
     const available = await runtime.getAvailable();
+    this.available = available;
     this.models = available.map(toTransportModel);
 
     // Smith refuses rather than substitutes. A run can fall back to another
@@ -211,7 +218,16 @@ export class SmithPiTransport implements AgentTransport {
 
     // No turn deadline: Smith is interactive, the operator is present, and
     // cancel is the interrupt (deadlines were removed repo-wide with #171).
-    const last = await promptUntilIdle(session, text);
+    const last = await promptUntilIdle(session, text, () =>
+      continueWithModelFailover({
+        session,
+        events: this.events,
+        availableModels: this.available,
+        hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+        preferredModelId: this.opts.defaultModel?.(),
+        onWarning: (warning) => this.opts.onModelWarning?.(warning),
+      }),
+    );
 
     return {
       text: lastAssistantText(session),

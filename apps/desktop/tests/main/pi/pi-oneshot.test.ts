@@ -92,6 +92,7 @@ class ScriptedPiSession {
   promptOptions: unknown[] = [];
   customMessages: string[] = [];
   cycles = 0;
+  sets = 0;
   turn: (session: ScriptedPiSession) => void | Promise<void> = (s) => s.say('done');
   /** Held open so a test can drive explicit cancellation. */
   hangUntilAbort = false;
@@ -152,6 +153,11 @@ class ScriptedPiSession {
     this.model = model;
     this.cycles += 1;
     return { model, thinkingLevel: this.thinkingLevel, isScoped: false };
+  }
+
+  async setModel(model: PiModelStub): Promise<void> {
+    this.model = model;
+    this.sets += 1;
   }
 
   async sendCustomMessage(message: { content: string }): Promise<void> {
@@ -284,14 +290,20 @@ interface Harness {
   openWithOutput: (outputFormat: OutputFormat) => ReturnType<ReturnType<typeof piOneShots>>;
 }
 
-function harness(opts: { model?: string; hiddenModelIds?: () => readonly string[] } = {}): Harness {
+function harness(
+  opts: {
+    model?: string;
+    hiddenModelIds?: () => readonly string[];
+    defaultModel?: () => string;
+  } = {},
+): Harness {
   const supportDir = tempDir('foundry-oneshot-support-');
   const cwd = tempDir('foundry-oneshot-cwd-');
   const events: TransportEvent[] = [];
   const warnings: string[] = [];
   const scripted = new ScriptedPiSession();
   spy.session = scripted;
-  const factory = piOneShots(supportDir, opts.hiddenModelIds);
+  const factory = piOneShots(supportDir, opts.hiddenModelIds, opts.defaultModel);
   return {
     session: scripted,
     scripted,
@@ -557,6 +569,70 @@ describe('running one turn', () => {
     h.session.turn = (s) => s.say('', { stopReason: 'error', errorMessage: 'provider said no' });
     await expect(h.open().send('go')).rejects.toThrow(/provider said no/);
     expect(h.session.disposed).toBe(1);
+    expect(h.session.customMessages).toHaveLength(5);
+  });
+
+  it('retries a non-transient helper error five times, then continues on the next model', async () => {
+    spy.models.push({
+      provider: 'openai',
+      id: 'gpt-5',
+      name: 'GPT-5',
+      contextWindow: 400_000,
+      input: ['text', 'image'],
+    });
+    const h = harness();
+    let calls = 0;
+    h.session.turn = (s) => {
+      if (calls++ < 6) {
+        s.say('', {
+          stopReason: 'error',
+          errorMessage: 'OpenAI API error (402): balance exhausted',
+        });
+        return;
+      }
+      s.say('recovered');
+    };
+
+    expect((await h.open().send('go')).text).toBe('recovered');
+    expect(h.session.customMessages).toHaveLength(6);
+    expect(h.session.cycles).toBe(1);
+    expect(h.warnings.at(-1)).toContain('continuing this turn on openai/gpt-5');
+  });
+
+  it('fails a helper turn over to the default model rather than the next catalog id', async () => {
+    spy.models.push(
+      {
+        provider: 'openai',
+        id: 'gpt-5',
+        name: 'GPT-5',
+        contextWindow: 400_000,
+        input: ['text', 'image'],
+      },
+      {
+        provider: 'google',
+        id: 'gemini-2.5-pro',
+        name: 'Gemini 2.5 Pro',
+        contextWindow: 1_000_000,
+        input: ['text', 'image'],
+      },
+    );
+    const h = harness({ defaultModel: () => 'google/gemini-2.5-pro' });
+    let calls = 0;
+    h.session.turn = (s) => {
+      if (calls++ < 6) {
+        s.say('', {
+          stopReason: 'error',
+          errorMessage: 'OpenAI API error (402): balance exhausted',
+        });
+        return;
+      }
+      s.say('recovered on default');
+    };
+
+    expect((await h.open().send('go')).text).toBe('recovered on default');
+    expect(h.session.sets).toBe(1);
+    expect(h.session.cycles).toBe(0);
+    expect(h.warnings.at(-1)).toContain('continuing this turn on google/gemini-2.5-pro');
   });
 
   it('continues a helper turn on the next model after retries are exhausted', async () => {

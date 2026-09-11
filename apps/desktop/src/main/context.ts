@@ -149,7 +149,11 @@ export class AppContext {
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
     this.oneShot = lazyOneShots(async () => {
       const { piOneShots } = await import('./pi/pi-oneshot.js');
-      return piOneShots(supportDir, () => this.settings.get().hiddenModelIds);
+      return piOneShots(
+        supportDir,
+        () => this.settings.get().hiddenModelIds,
+        () => this.settings.get().defaultModel,
+      );
     });
     this.detections = createDetections(this.oneShot, (state) =>
       this.broadcast(IPC.eventDetectionProgress, state),
@@ -389,6 +393,8 @@ export class AppContext {
                 onPermission: request.onPermission,
                 onEvent: request.onEvent,
                 onModelWarning: request.onModelWarning,
+                hiddenModelIds: () => this.settings.get().hiddenModelIds,
+                defaultModel: () => this.settings.get().defaultModel,
               });
             }),
           onChange: (state) => this.broadcast(IPC.eventSmithProgress, state),

@@ -1183,6 +1183,7 @@ export class Executor {
         supportDir: this.deps.supportDir,
         sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
         hiddenModelIds: this.deps.hiddenModelIds,
+        defaultModel: () => this.deps.defaultModel ?? '',
         onPermission: req.onPermission,
         onEvent: req.onEvent,
         onModelWarning: req.onModelWarning,

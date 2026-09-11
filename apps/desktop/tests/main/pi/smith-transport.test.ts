@@ -65,8 +65,12 @@ class ScriptedPiSession {
   thinkingLevel = 'medium';
   messages: { role: string; stopReason: string }[] = [];
   state = { messages: this.messages };
+  agent = { state: { messages: this.messages as unknown[] } };
   lastText = '';
   prompts: string[] = [];
+  customMessages: string[] = [];
+  cycles = 0;
+  sets = 0;
   aborts = 0;
   disposed = 0;
 
@@ -100,6 +104,20 @@ class ScriptedPiSession {
 
   waitForIdle(): Promise<void> {
     return Promise.resolve();
+  }
+
+  async cycleModel(): Promise<undefined> {
+    this.cycles += 1;
+    return undefined;
+  }
+
+  async setModel(model: ScriptedPiSession['model']): Promise<void> {
+    this.model = model;
+    this.sets += 1;
+  }
+
+  async sendCustomMessage(message: { content: string }): Promise<void> {
+    this.customMessages.push(message.content);
   }
 
   abort(): Promise<void> {

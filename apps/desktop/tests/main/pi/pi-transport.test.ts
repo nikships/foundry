@@ -111,6 +111,7 @@ class ScriptedPiSession {
   prompts: string[] = [];
   customMessages: string[] = [];
   cycles = 0;
+  sets = 0;
   bound = false;
   /** Set by a test to script what one `prompt()` does. */
   turn: (session: ScriptedPiSession) => void | Promise<void> = () => {};
@@ -192,6 +193,11 @@ class ScriptedPiSession {
     this.model = model;
     this.cycles += 1;
     return { model, thinkingLevel: this.thinkingLevel, isScoped: false };
+  }
+
+  async setModel(model: PiModelStub): Promise<void> {
+    this.model = model;
+    this.sets += 1;
   }
 
   async sendCustomMessage(message: { content: string }): Promise<void> {
@@ -337,6 +343,7 @@ function harness(
     reasoningEffort?: string;
     toolProfile?: 'full' | 'read-only';
     hiddenModelIds?: () => readonly string[];
+    defaultModel?: () => string;
   } = {},
 ): Harness {
   const supportDir = tempDir('foundry-pi-support-');
@@ -355,6 +362,7 @@ function harness(
     sessionDir: join(supportDir, 'runs', 'run_tx', 'sessions'),
     tools: toolContext(),
     hiddenModelIds: opts.hiddenModelIds,
+    defaultModel: opts.defaultModel,
     onPermission: () => ({ outcome: 'allow' }),
     onEvent: (e) => events.push(e),
     onModelWarning: (w) => warnings.push(w),
@@ -740,12 +748,112 @@ describe('running a turn', () => {
     expect(result.reason).toBe('aborted');
   });
 
-  it('fails the turn loudly when the model ended in error', async () => {
+  it('fails the turn loudly when every retry on the only model still errors', async () => {
+    spy.models = [spy.models[0]!];
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('', { stopReason: 'error', errorMessage: 'provider said no' });
     await expect(h.transport.send('go')).rejects.toThrow(/provider said no/);
     expect(h.session.cycles).toBe(0);
+    expect(h.session.customMessages).toHaveLength(5);
+    expect(h.events.filter((event) => event.type === 'retry')).toEqual([
+      { type: 'retry', attempt: 1, maxAttempts: 5, message: 'provider said no' },
+      { type: 'retry', attempt: 2, maxAttempts: 5, message: 'provider said no' },
+      { type: 'retry', attempt: 3, maxAttempts: 5, message: 'provider said no' },
+      { type: 'retry', attempt: 4, maxAttempts: 5, message: 'provider said no' },
+      { type: 'retry', attempt: 5, maxAttempts: 5, message: 'provider said no' },
+    ]);
+  });
+
+  it('retries a non-transient error five times on the same model, then fails over', async () => {
+    const h = harness();
+    await h.transport.start();
+    let calls = 0;
+    h.session.turn = (s) => {
+      if (calls++ < 6) {
+        s.say('', {
+          stopReason: 'error',
+          errorMessage: 'OpenAI API error (402): Grok Build usage balance exhausted',
+        });
+        return;
+      }
+      s.say('finished on fallback');
+    };
+
+    const result = await h.transport.send('keep going');
+
+    expect(result.text).toBe('finished on fallback');
+    expect(h.session.prompts).toEqual(['keep going']);
+    expect(h.session.customMessages).toHaveLength(6);
+    expect(h.session.cycles).toBe(1);
+    expect(h.transport.activeModel).toBe('openai/gpt-5');
+    expect(
+      h.events.filter((event) => event.type === 'retry').map((event) => event.attempt),
+    ).toEqual([1, 2, 3, 4, 5]);
+    expect(h.warnings).toContain(
+      'anthropic/claude-sonnet-4 failed after 5 retries; continuing this turn on openai/gpt-5',
+    );
+  });
+
+  it('fails over to the default model rather than the next catalog id', async () => {
+    spy.models.push({
+      provider: 'google',
+      id: 'gemini-2.5-pro',
+      name: 'Gemini 2.5 Pro',
+      contextWindow: 1_000_000,
+    });
+    const h = harness({ defaultModel: () => 'google/gemini-2.5-pro' });
+    await h.transport.start();
+    let calls = 0;
+    h.session.turn = (s) => {
+      if (calls++ < 6) {
+        s.say('', {
+          stopReason: 'error',
+          errorMessage: 'OpenAI API error (402): balance exhausted',
+        });
+        return;
+      }
+      s.say('finished on default');
+    };
+
+    expect((await h.transport.send('keep going')).text).toBe('finished on default');
+    expect(h.session.sets).toBe(1);
+    expect(h.session.cycles).toBe(0);
+    expect(h.transport.activeModel).toBe('google/gemini-2.5-pro');
+    expect(h.warnings).toEqual([
+      'anthropic/claude-sonnet-4 failed after 5 retries; continuing this turn on google/gemini-2.5-pro',
+    ]);
+  });
+
+  it('retries the default-model hop and continues through the remaining catalog', async () => {
+    spy.models.push({
+      provider: 'google',
+      id: 'gemini-2.5-pro',
+      name: 'Gemini 2.5 Pro',
+      contextWindow: 1_000_000,
+    });
+    const h = harness({ defaultModel: () => 'google/gemini-2.5-pro' });
+    await h.transport.start();
+    let calls = 0;
+    h.session.turn = (s) => {
+      if (calls++ < 12) {
+        s.say('', {
+          stopReason: 'error',
+          errorMessage: 'OpenAI API error (402): balance exhausted',
+        });
+        return;
+      }
+      s.say('finished on remaining');
+    };
+
+    expect((await h.transport.send('keep going')).text).toBe('finished on remaining');
+    expect(h.session.sets).toBe(1);
+    expect(h.session.cycles).toBeGreaterThanOrEqual(1);
+    expect(h.transport.activeModel).toBe('openai/gpt-5');
+    expect(h.warnings).toEqual([
+      'anthropic/claude-sonnet-4 failed after 5 retries; continuing this turn on google/gemini-2.5-pro',
+      'google/gemini-2.5-pro failed after 5 retries; continuing this turn on openai/gpt-5',
+    ]);
   });
 
   it('continues the same turn on the next model after all five retries fail', async () => {

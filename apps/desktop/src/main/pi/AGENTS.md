@@ -40,7 +40,7 @@ Do not import pi’s transitive packages directly. Derive needed types from `pi-
 - `PI_OFFLINE=1` is read when constructing `ModelRuntime`; offline refreshes must not allow network.
 - Persistent direct API keys use the catalog login path. In-memory overrides must not be described as durable.
 - A provider absent from pi's table is registered on the runtime before it is handed out, never written into `models.json`, which the operator and the Bridge own. Registration carries no credential, so such a provider stays out of `getAvailable()` until a key is stored. Its models are pinned in `shared/direct-providers.ts` because the vendor endpoint reports ids alone.
-- Model fallback records the model that actually ran and skips operator-hidden failover targets.
+- Model fallback records the model that actually ran and skips operator-hidden failover targets. Any provider error is retried five times on the current model; the first hop prefers Settings `defaultModel`, then the rest of the catalog.
 - Callers verify claims independently: repair checks Git and command detection executes proposed commands.
 
 ## Tests

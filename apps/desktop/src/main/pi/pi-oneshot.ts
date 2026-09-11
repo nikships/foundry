@@ -28,7 +28,7 @@ import {
   type PromptOptions,
 } from '@earendil-works/pi-coding-agent';
 import { join } from 'node:path';
-import { modelKey, pickModel, thinkingLevelFor } from './model.js';
+import { modelKey, pickModel, thinkingLevelFor, type PiModel } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
 import {
   foundryResourceLoader,
@@ -60,6 +60,8 @@ export interface PiOneShotOptions extends OneShotOptions {
   supportDir: string;
   /** Models the operator hid in Settings. Failover skips them. */
   hiddenModelIds?: () => readonly string[];
+  /** Settings `defaultModel`. First failover hop prefers this id when reachable. */
+  defaultModel?: () => string;
 }
 
 class PiOneShot implements OneShotSession {
@@ -69,7 +71,7 @@ class PiOneShot implements OneShotSession {
   private readonly outputTool: SubmissionTool | null;
   private readonly extension: ReturnType<typeof policyOnlyExtension>;
   private aborted = false;
-  private availableModelCount = 0;
+  private available: readonly PiModel[] = [];
   /** Package tools this turn actually admitted, read back for the policy. */
   private loadedPackageTools: string[] = [];
 
@@ -113,8 +115,9 @@ class PiOneShot implements OneShotSession {
           continueWithModelFailover({
             session,
             events: this.events,
-            availableModelCount: this.availableModelCount,
+            availableModels: this.available,
             hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+            preferredModelId: this.opts.defaultModel?.(),
             requireImageInput: hasImages,
             onWarning: (warning) => this.opts.onWarning?.(warning),
           }),
@@ -143,7 +146,7 @@ class PiOneShot implements OneShotSession {
   private async open(): Promise<PiAgentSession> {
     const runtime = await modelRuntime(this.opts.supportDir);
     const available = await runtime.getAvailable();
-    this.availableModelCount = available.length;
+    this.available = available;
     const picked = pickModel(available, this.opts.model);
     if (picked.warning) this.opts.onWarning?.(picked.warning);
 
@@ -243,6 +246,7 @@ function toPiImages(images: readonly OneShotImage[]): NonNullable<PromptOptions[
 export function piOneShots(
   supportDir: string,
   hiddenModelIds?: () => readonly string[],
+  defaultModel?: () => string,
 ): OneShotFactory {
-  return (opts) => new PiOneShot({ ...opts, supportDir, hiddenModelIds });
+  return (opts) => new PiOneShot({ ...opts, supportDir, hiddenModelIds, defaultModel });
 }

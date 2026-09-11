@@ -64,6 +64,11 @@ export interface PiTransportOptions extends AgentTransportOptions {
    * send time so a hide mid-run takes effect on the next exhausted retry.
    */
   hiddenModelIds?: () => readonly string[];
+  /**
+   * Settings `defaultModel`. The first failover hop prefers this id when it is
+   * reachable and not hidden. Read live so a Settings change applies mid-run.
+   */
+  defaultModel?: () => string;
 }
 
 export class PiTransport implements AgentTransport {
@@ -73,6 +78,7 @@ export class PiTransport implements AgentTransport {
   private envelopeTool: SubmissionTool | null = null;
   private envelopeSchemaKey = '';
   private models: TransportModel[] = [];
+  private available: readonly PiModel[] = [];
   private resolvedModel: PiModel | null = null;
   private closed = false;
   private loadedPackageTools: string[] = [];
@@ -129,6 +135,7 @@ export class PiTransport implements AgentTransport {
     this.closed = false;
     const runtime = await modelRuntime(this.opts.supportDir);
     const available = await runtime.getAvailable();
+    this.available = available;
     this.models = available.map(toTransportModel);
 
     const picked = pickModel(available, this.opts.model);
@@ -199,8 +206,9 @@ export class PiTransport implements AgentTransport {
       continueWithModelFailover({
         session,
         events: this.events,
-        availableModelCount: this.models.length,
+        availableModels: this.available,
         hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+        preferredModelId: this.opts.defaultModel?.(),
         onWarning: (warning) => this.opts.onModelWarning?.(warning),
       }),
     );
