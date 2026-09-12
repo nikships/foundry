@@ -304,6 +304,7 @@ describe('CDP automation hooks', () => {
     expect(sidebarSrc).toContain('data-testid={`sidebar-run-${run.runId}`}');
     expect(prsSrc).toContain('data-testid={`prs-merge-${pr.number}`}');
     expect(prsSrc).toContain('data-testid={`prs-fix-${pr.number}`}');
+    expect(prsSrc).toContain('usePrMergeabilityRecheck');
     expect(prsSrc).toContain('data-testid={`prs-method-${pr.number}`}');
     expect(prsSrc).toContain('data-testid={`prs-run-tag-${pr.number}`}');
   });
