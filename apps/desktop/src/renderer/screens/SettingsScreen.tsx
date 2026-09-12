@@ -1317,7 +1317,7 @@ export default function SettingsScreen({
                             label="Serve the companion host on this network"
                             hint={
                               companion?.running && companion.origin
-                                ? `Serving on ${companion.origin} · Protocol v${companion.protocolVersion} — pairing is QR-only.${
+                                ? `Serving on ${companion.origin}${companion.tailscaleOrigin ? ` · Tailscale: ${companion.tailscaleOrigin}` : ''} · Protocol v${companion.protocolVersion} — pairing is QR-only.${
                                     companion.detail ? ` Note: ${companion.detail}.` : ''
                                   }`
                                 : (companion?.detail ??

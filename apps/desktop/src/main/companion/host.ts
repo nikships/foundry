@@ -11,12 +11,12 @@
  * to a paired device, and everything else — unknown paths included — answers
  * 401 before it answers 404, so an unpaired caller cannot map the surface.
  *
- * The bind is the machine's LAN address, not 0.0.0.0: a phone on the same
- * network can reach it, a loopback-only scanner cannot be reached from off
- * the machine, and the host only exists while the operator turned it on.
+ * Binds are the machine's LAN and optional Tailscale addresses, not 0.0.0.0.
+ * Both listeners share auth and only exist while the operator turned it on.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { isIPv4 } from 'node:net';
 import { networkInterfaces, hostname } from 'node:os';
 import type {
   AgentDef,
@@ -133,8 +133,9 @@ export interface CompanionHostDeps {
     state(): GeminiLiveConnectionState;
     mintToken(): Promise<GeminiLiveToken | { error: string }>;
   };
-  /** Test seams. Production leaves all three unset. */
+  /** Test seams. Production leaves these unset. Pinned binds disable discovery. */
   bindHost?: string;
+  tailscaleHost?: string;
   port?: number;
   gh?: GhOptions;
 }
@@ -230,6 +231,23 @@ function isVirtualName(name: string): boolean {
   return VIRTUAL_INTERFACE_PREFIXES.some((prefix) => lower.startsWith(prefix));
 }
 
+/** Tailscale uses CGNAT IPv4 addresses, regardless of the adapter's name. */
+export function isTailscaleAddress(address: string): boolean {
+  if (!isIPv4(address)) return false;
+  const [first, second] = address.split('.').map(Number);
+  return first === 100 && second! >= 64 && second! <= 127;
+}
+
+export function tailscaleAddress(): string | null {
+  for (const entries of Object.values(networkInterfaces())) {
+    const entry = entries?.find(
+      (candidate) => !candidate.internal && isTailscaleAddress(candidate.address),
+    );
+    if (entry) return entry.address;
+  }
+  return null;
+}
+
 /**
  * Where the LAN can reach us, and whether that address is worth trusting.
  * Prefers a physical adapter with a routable IPv4; falls back to whatever
@@ -243,7 +261,10 @@ export function lanInterface(): LanCandidate | null {
       candidates.push({
         name,
         address: entry.address,
-        usable: !isVirtualName(name) && !entry.address.startsWith('169.254.'),
+        usable:
+          !isVirtualName(name) &&
+          !entry.address.startsWith('169.254.') &&
+          !isTailscaleAddress(entry.address),
       });
     }
   }
@@ -257,7 +278,9 @@ export function lanAddress(): string | null {
 
 export class CompanionHost {
   private server: Server | null = null;
+  private tailscaleServer: Server | null = null;
   private origin: string | null = null;
+  private tailscaleOrigin: string | null = null;
   private detail: string | undefined;
   private readonly devices: DeviceStore;
   private readonly secrets = new PairingSecrets();
@@ -270,6 +293,7 @@ export class CompanionHost {
     return {
       running: !!this.server,
       origin: this.origin,
+      tailscaleOrigin: this.tailscaleOrigin,
       protocolVersion: COMPANION_PROTOCOL_VERSION,
       devices: this.devices.list(),
       ...(this.detail ? { detail: this.detail } : {}),
@@ -316,8 +340,33 @@ export class CompanionHost {
     this.origin = `http://${host}:${bound.port}`;
     this.devices.rememberPort(bound.port);
     this.detail = startupWarning(chosen, reassigned, bound.port);
+    await this.bindTailscale(host, bound.port);
     this.deps.onStateChanged();
     return this.state();
+  }
+
+  private async bindTailscale(primaryHost: string, port: number): Promise<void> {
+    const host = this.deps.tailscaleHost ?? (this.deps.bindHost ? null : tailscaleAddress());
+    if (!host) return;
+    if (host === primaryHost) {
+      this.tailscaleOrigin = this.origin;
+      return;
+    }
+    const primaryServer = this.server;
+    const bound = await this.bind(host, port);
+    if (this.server !== primaryServer) {
+      // A stop during the second bind must not leave a listener behind.
+      if (bound.ok) await new Promise<void>((resolve) => bound.server.close(() => resolve()));
+      return;
+    }
+    if (bound.ok) {
+      this.tailscaleServer = bound.server;
+      this.tailscaleOrigin = `http://${host}:${port}`;
+    } else {
+      this.detail = [this.detail, `could not bind Tailscale ${host}:${port}: ${bound.detail}`]
+        .filter(Boolean)
+        .join('; ');
+    }
   }
 
   /** Listens, answering the server and its port, or the failure message. */
@@ -346,11 +395,19 @@ export class CompanionHost {
   async stop(options: { preserveEnabled?: boolean } = {}): Promise<CompanionHostState> {
     if (!options.preserveEnabled) this.devices.setEnabled(false);
     const server = this.server;
+    const tailscaleServer = this.tailscaleServer;
     this.server = null;
+    this.tailscaleServer = null;
     this.origin = null;
+    this.tailscaleOrigin = null;
     this.secrets.clear();
+    await Promise.all(
+      [server, tailscaleServer].map(
+        (listener) =>
+          new Promise<void>((resolve) => (listener ? listener.close(() => resolve()) : resolve())),
+      ),
+    );
     if (server) {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
       this.deps.onStateChanged();
     }
     return this.state();
@@ -369,6 +426,7 @@ export class CompanionHost {
     return {
       protocolVersion: COMPANION_PROTOCOL_VERSION,
       origin: this.origin,
+      origins: [...new Set([this.origin, ...(this.tailscaleOrigin ? [this.tailscaleOrigin] : [])])],
       desktopId: this.devices.desktopId(),
       desktopName: hostname(),
       secret: issued.secret,

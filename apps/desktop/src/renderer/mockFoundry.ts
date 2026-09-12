@@ -94,6 +94,7 @@ function mockBaseSync(projectId: string): BaseSyncStatus {
 const COMPANION_OFF = {
   running: false,
   origin: null,
+  tailscaleOrigin: null,
   protocolVersion: 1,
   devices: [] as [],
 };
