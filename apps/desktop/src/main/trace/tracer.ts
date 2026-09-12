@@ -22,6 +22,7 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import type { Db } from './db.js';
 import type {
+  AgentDef,
   AgentSessionRow,
   EnvelopeRow,
   EventRow,
@@ -47,6 +48,7 @@ import type {
   RunStatus,
   UsageBreakdown,
 } from '@shared/types.js';
+import { agentSchema } from '../store/roster.js';
 
 export function newId(bytes = 6): string {
   return randomBytes(bytes).toString('hex');
@@ -523,16 +525,17 @@ export class Tracer {
   }
 
   /**
-   * Atomically replaces an orchestrated run's queued tail. The failed and
-   * completed rows are history; only still-queued rows may be removed, and
-   * every replacement receives a fresh identity after the historical rows.
+   * Atomically replaces a run's queued tail. The failed and completed rows
+   * are history; only still-queued rows may be removed, and every replacement
+   * receives a fresh identity after the historical rows. The plan is null for
+   * a manual run; `agents` carries the accepted run-local repair agents.
    */
   amendRun(input: {
     runId: string;
     failedPhaseId: string;
     removeQueuedPhaseIds: string[];
     pipeline: PipelineDef;
-    plan: GeneratedRunPlan;
+    plan: GeneratedRunPlan | null;
     reason: string;
     attempt: number;
     evidence: string;
@@ -540,6 +543,7 @@ export class Tracer {
     after: string[];
     newPhases: PhaseDef[];
     engineer: string;
+    agents?: AgentDef[];
   }): Map<string, string> {
     const apply = this.db.transaction(() => {
       for (const phaseId of input.removeQueuedPhaseIds) {
@@ -559,7 +563,7 @@ export class Tracer {
         input.pipeline.id,
         input.pipeline.name,
         JSON.stringify(input.pipeline),
-        JSON.stringify(input.plan),
+        input.plan ? JSON.stringify(input.plan) : null,
         input.runId,
       );
       const maxSeq =
@@ -596,11 +600,13 @@ export class Tracer {
         type: 'replan',
         name: 'pipeline amended',
         payload: {
+          actor: 'smith',
           attempt: input.attempt,
           reason: input.reason,
           evidence: input.evidence,
           before: input.before,
           after: input.after,
+          agents: input.agents ?? [],
         },
       });
       return ids;
@@ -608,7 +614,9 @@ export class Tracer {
 
     const ids = apply();
     this.writeRunFile(input.runId, 'pipeline.json', JSON.stringify(input.pipeline, null, 2));
-    this.writeRunFile(input.runId, 'plan.json', JSON.stringify(input.plan, null, 2));
+    if (input.plan) {
+      this.writeRunFile(input.runId, 'plan.json', JSON.stringify(input.plan, null, 2));
+    }
     return ids;
   }
 
@@ -777,7 +785,12 @@ export class Tracer {
     ).map(mapEvent);
   }
 
-  /** Highest proposal attempt already spent, so a resume cannot reset the run budget. */
+  /**
+   * Highest Smith proposal attempt already spent, so a resume cannot reset
+   * the run budget. Counts the highest finite positive integer attempt, not
+   * the number of events: one call may leave started/rejected/applied rows.
+   * Malformed attempt values are ignored; legacy `replan` rows still count.
+   */
   replanAttempts(runId: string): number {
     const rows = this.many<{ payload_json: string }>(
       `SELECT payload_json FROM events
@@ -786,8 +799,54 @@ export class Tracer {
     );
     return rows.reduce((highest, row) => {
       const attempt = safeJson(row.payload_json).attempt;
-      return typeof attempt === 'number' ? Math.max(highest, attempt) : highest;
+      if (typeof attempt !== 'number' || !Number.isInteger(attempt) || attempt < 1) return highest;
+      return Math.max(highest, attempt);
     }, 0);
+  }
+
+  /**
+   * Run-local repair agents accepted by Smith amendments, in creation order
+   * and deduplicated by name. Only accepted `pipeline amended` events
+   * contribute; rejected/started rows never introduce agents. Legacy events
+   * without an agents array are safe.
+   */
+  amendmentAgents(runId: string): AgentDef[] {
+    const rows = this.many<{ payload_json: string }>(
+      `SELECT payload_json FROM events
+       WHERE run_id = ? AND type = 'replan' AND name = 'pipeline amended'
+       ORDER BY rowid`,
+      runId,
+    );
+    const byName = new Map<string, AgentDef>();
+    for (const row of rows) {
+      const payload = safeJson(row.payload_json);
+      const agents = (payload as { agents?: unknown }).agents;
+      if (agents === undefined) continue;
+      if (!Array.isArray(agents)) continue;
+      for (const candidate of agents) {
+        const parsed = agentSchema.safeParse(candidate);
+        if (parsed.success) byName.set(parsed.data.name, parsed.data as AgentDef);
+      }
+    }
+    return [...byName.values()];
+  }
+
+  /**
+   * The authoritative pipeline snapshot after a committed amendment, or null
+   * when no snapshot is stored or it no longer parses. The `pipeline.json`
+   * file remains a useful mirror, not the only recovery source.
+   */
+  runPipeline(runId: string): PipelineDef | null {
+    const row = this.one<{ pipeline_snapshot_json: string | null }>(
+      'SELECT pipeline_snapshot_json FROM runs WHERE run_id = ?',
+      runId,
+    );
+    if (!row?.pipeline_snapshot_json) return null;
+    try {
+      return JSON.parse(row.pipeline_snapshot_json) as PipelineDef;
+    } catch {
+      return null;
+    }
   }
 
   // ── envelopes ─────────────────────────────────────────────────────────────

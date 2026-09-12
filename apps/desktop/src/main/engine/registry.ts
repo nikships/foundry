@@ -25,7 +25,7 @@ import { appDbPath, appRunsDir, openDb, projectDbPath, projectRunsDir } from '..
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { healingSupport } from './healing.js';
-import { replanningSupport } from '../orchestrator/replan.js';
+import { replanningSupport, resolvePipelineHealingModel } from '../orchestrator/replan.js';
 import { continueDetail, continueEligibility } from './continue-run.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
@@ -187,7 +187,9 @@ export class RunRegistry {
     if (this.live.has(input.runId) || run.status === 'running') {
       return { ok: false, detail: 'this run is already running' };
     }
-    const pipeline = tracer.readRunJson<PipelineDef>(input.runId, 'pipeline.json');
+    const pipeline =
+      tracer.runPipeline(input.runId) ??
+      tracer.readRunJson<PipelineDef>(input.runId, 'pipeline.json');
     const eligible = continueEligibility({
       run,
       pipeline,
@@ -195,12 +197,17 @@ export class RunRegistry {
     });
     if (!eligible.ok) return { ok: false, detail: eligible.detail };
     const plan = tracer.runPlan(input.runId);
-    const agents = plan
+    const baseAgents = plan
       ? [
           ...input.agents,
           ...plan.agents.filter((agent) => !input.agents.some((a) => a.name === agent.name)),
         ]
-      : input.agents;
+      : [...input.agents];
+    const byName = new Map(baseAgents.map((agent) => [agent.name, agent]));
+    for (const repair of tracer.amendmentAgents(input.runId)) {
+      byName.set(repair.name, repair);
+    }
+    const agents = [...byName.values()];
     const request = tracer.readRunFile(input.runId, 'request.md') ?? run.request;
     const executor = this.executorFor(
       { ...input, pipeline: eligible.pipeline, request, agents, plan, source: run.source },
@@ -223,14 +230,13 @@ export class RunRegistry {
       compactionThreshold: settings.compactionThreshold,
       rewindAfterCorrections: FIXED_ENGINE_DEFAULTS.rewindAfterCorrections,
       healing: this.deps.oneShot ? healingSupport(this.deps.oneShot, settings) : null,
-      replanner:
-        input.plan && this.deps.oneShot
-          ? replanningSupport(
-              this.deps.oneShot,
-              input.plan,
-              () => tracer.run(runId)?.worktreePath ?? input.project.path,
-            )
-          : null,
+      replanner: this.deps.oneShot
+        ? replanningSupport(
+            this.deps.oneShot,
+            resolvePipelineHealingModel(settings),
+            () => tracer.run(runId)?.worktreePath ?? input.project.path,
+          )
+        : null,
       supportDir: this.deps.appSupportDir,
       // The enabled catalog, read live: hidden models exist only behind the
       // setting, and the run never learns their ids.

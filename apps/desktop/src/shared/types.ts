@@ -374,7 +374,10 @@ export const FIXED_ENGINE_DEFAULTS = {
    * so a flaky test is not rewritten. `PhaseDef.flakeRerun` overrides.
    */
   flakeReruns: 2,
-  /** Mid-run pipeline amendments an orchestrated run may request. */
+  /**
+   * Smith pipeline-healing calls per run ID, including unsuccessful calls.
+   * A started call consumes a slot even when it never returns a repair.
+   */
   replanAttempts: 2,
 } as const;
 
@@ -1407,15 +1410,22 @@ export interface PlanImageAttachment {
   name?: string;
 }
 
-/** One mid-run amendment: replaces the not-yet-run tail of the pipeline. */
+/**
+ * One mid-run Smith repair: replaces the pipeline tail starting at the failed
+ * phase. The failed definition is replaced, not marked successful; completed
+ * phases before it are immutable history. An empty `phases` array is an
+ * explicit no-op: it leaves phases, acceptance, plan, agents, and the
+ * amendment count unchanged and settles with the original verdict.
+ */
 export interface PipelineAmendment {
   reason: string;
   /**
-   * Phases replacing everything after the failed phase. May insert repair
-   * phases, re-order, or extend; completed phases are immutable history.
+   * Phases replacing the failed phase and everything after it. May
+   * re-include the failed phase, insert repair phases, re-order, or extend;
+   * completed phases are immutable history. Empty means no repair.
    */
   phases: PhaseDef[];
-  /** Additional synthesized agents the new phases need. */
+  /** Additional run-local synthesized agents the new phases need. */
   agents: AgentDef[];
 }
 
