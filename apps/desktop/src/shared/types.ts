@@ -179,7 +179,8 @@ export interface EnvelopeDef {
 
 /**
  * `writes: null` = unrestricted (minus protected paths); `[]` = read-only;
- * a list = only those paths, prefixes, or globs.
+ * a list = only those paths, prefixes, or globs. Empty entries are invalid:
+ * they match nothing, so a blank allowlist would deny every write.
  */
 export type WriteBoundary = string[] | null;
 

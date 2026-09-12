@@ -16,6 +16,15 @@ import { JsonStore } from './json-store.js';
 import { BUILTIN_AGENTS } from '@shared/builtin-agents.js';
 import { seedBuiltins, uniqueCopyName, upsertBy } from './collections.js';
 
+/**
+ * `null` = unrestricted (minus protected paths); `[]` = read-only.
+ * Allowlist entries must be non-empty: `matchesPattern(path, '')` is false for
+ * every real path, so a blank row would silently deny every write.
+ */
+export const writeBoundarySchema = z
+  .array(z.string().trim().min(1, 'a write pattern cannot be empty'))
+  .nullable();
+
 export const agentSchema = z.object({
   name: z
     .string()
@@ -30,7 +39,7 @@ export const agentSchema = z.object({
   inheritDefaults: z.boolean().optional(),
   systemPrompt: z.string().min(1),
   userPrompt: z.string().min(1),
-  writes: z.array(z.string()).nullable(),
+  writes: writeBoundarySchema,
   // Built-in kind or a custom envelope library name.
   envelope: z.string().min(1),
   customFields: z
