@@ -446,9 +446,10 @@ function AppInner(): React.JSX.Element {
       )}
       {/*
        * Smith's voice layer: mounted on every screen, including Smith's own,
-       * so a live voice session survives navigation. The voice session runs in
-       * refs inside the hook, so this component staying mounted is all it
-       * needs; unmounting it stops the mic and closes the socket.
+       * so a live voice session survives navigation. Renders as a fullscreen
+       * takeover on the dedicated Smith screen and a popover on other screens.
+       * The single mount (no key) ensures audio and UI state survive navigation
+       * and the popover<->fullscreen transition.
        */}
       {ready && !needsOnboarding && (
         <Suspense fallback={null}>
@@ -456,6 +457,7 @@ function AppInner(): React.JSX.Element {
             screenContext={liveScreenContext}
             onOpenSmith={openSmith}
             onOpenSettings={openSettingsPane}
+            variant={view === 'smith' ? 'fullscreen' : 'popover'}
           />
         </Suspense>
       )}
