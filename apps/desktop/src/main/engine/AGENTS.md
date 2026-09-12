@@ -45,6 +45,6 @@ Detection and setup are not runs. They use shared panel sessions, have no worktr
 Use real Git repositories and scripted transports. Never mock Git or call a model.
 
 ```bash
-npx vitest run apps/desktop/tests/main/engine/executor.test.ts
-npx vitest run -t "envelope|gate|boundary|rewinder|healing|settle|base-sync"
+pnpm exec vitest run apps/desktop/tests/main/engine/executor.test.ts
+pnpm exec vitest run -t "envelope|gate|boundary|rewinder|healing|settle|base-sync"
 ```

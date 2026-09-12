@@ -35,6 +35,6 @@ Smith is the native operator agent. It exposes typed app capabilities while keep
 ## Validation
 
 ```bash
-npx vitest run -t "smith"
-npx vitest run apps/desktop/tests/main/smith/smith-capability-coverage.test.ts
+pnpm exec vitest run -t "smith"
+pnpm exec vitest run apps/desktop/tests/main/smith/smith-capability-coverage.test.ts
 ```

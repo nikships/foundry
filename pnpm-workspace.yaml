@@ -1,0 +1,16 @@
+# pnpm build-script policy (the `allowBuilds` map replaced
+# `onlyBuiltDependencies`/`neverBuiltDependencies` in pnpm 11; pnpm v12 no
+# longer reads the "pnpm" field in package.json).
+# true  = install script runs (needed binaries: Electron, esbuild,
+#         better-sqlite3 prebuilds). Mirrors the old .npmrc allow-scripts list.
+# false = install script stays blocked, exactly as under npm.
+# This repo is a single pnpm project: apps/website is standalone per AGENTS.md
+# and keeps its own installer, so there is deliberately no `packages:` glob.
+allowBuilds:
+  electron: true
+  esbuild: true
+  better-sqlite3: true
+  '@google/genai': false
+  electron-winstaller: false
+  protobufjs: false
+  unrs-resolver: false

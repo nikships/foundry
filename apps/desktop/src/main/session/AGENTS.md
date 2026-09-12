@@ -21,8 +21,8 @@ Feature tests should cover only their prompt/parse behavior. Ring, cancellation,
 ## Validation
 
 ```bash
-npx vitest run apps/desktop/tests/main/session/panel-session.test.ts
-npx vitest run apps/desktop/tests/main/engine/detect-session.test.ts
+pnpm exec vitest run apps/desktop/tests/main/session/panel-session.test.ts
+pnpm exec vitest run apps/desktop/tests/main/engine/detect-session.test.ts
 ```
 
 Drive turns with `apps/desktop/tests/helpers/scripted-oneshot.ts`, never a real model.

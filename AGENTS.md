@@ -30,13 +30,13 @@ More specific `AGENTS.md` files define local contracts. Read the closest one bef
 
 ## Working method
 
-Requirements are macOS 26+, Apple Silicon, Git, and Node 22.
+Requirements are macOS 26+, Apple Silicon, Git, Node 22, and pnpm 12 (pinned via the `packageManager` field; `corepack enable` picks it up).
 
-1. Install with `npm ci`.
+1. Install with `pnpm install --frozen-lockfile`.
 2. Inspect the relevant source, its closest guide, and neighboring tests.
 3. Make the smallest complete change that preserves process and persistence boundaries.
 4. Run the narrowest relevant test or static check while iterating.
-5. Run `npm run check` before submitting. It is the authoritative local gate.
+5. Run `pnpm run check` before submitting. It is the authoritative local gate.
 
 Do not launch the app for small fixes. For substantial UI changes, use the `foundry-ui` skill to drive the real Electron app. Do not create scratch Playwright specs for manual validation.
 
@@ -44,49 +44,49 @@ Tests must not call a model or network. Engine tests use real Git temp repositor
 
 ### Orbs force commit signing (test environment quirk)
 
-Amp orbs set `/etc/gitconfig` to sign every commit with the Amp-managed key (`commit.gpgsign=true` → `amp-sign-commit`). That helper cannot sign any other identity, so a `git commit` in a repo with a repo-local `user.email` — every engine scratch repo — fails with "No signing key is available for this commit". The vitest setup (`apps/desktop/tests/helpers/setup-tmp.ts`) sets `GIT_CONFIG_NOSYSTEM=1` for all suites, which makes the scratch repos ignore the system git config; this is why plain `npm test` passes in an orb without touching signing for real checkouts. Don't disable signing globally to work around this.
+Amp orbs set `/etc/gitconfig` to sign every commit with the Amp-managed key (`commit.gpgsign=true` → `amp-sign-commit`). That helper cannot sign any other identity, so a `git commit` in a repo with a repo-local `user.email` — every engine scratch repo — fails with "No signing key is available for this commit". The vitest setup (`apps/desktop/tests/helpers/setup-tmp.ts`) sets `GIT_CONFIG_NOSYSTEM=1` for all suites, which makes the scratch repos ignore the system git config; this is why plain `pnpm test` passes in an orb without touching signing for real checkouts. Don't disable signing globally to work around this.
 
 ### Orb test caveats
 
 - `apps/desktop/tests/main/system/env.test.ts` can intermittently fail in an orb with `/bin/bash: line 1: agent-only-tool: command not found`, while passing standalone and locally. Recheck it standalone; do not “fix” product environment code without evidence of a product bug.
-- Never run concurrent `npm run check` or coverage jobs in one checkout: Vitest shares `coverage/.tmp`, and overlapping jobs corrupt its temporary coverage files.
+- Never run concurrent `pnpm run check` or coverage jobs in one checkout: Vitest shares `coverage/.tmp`, and overlapping jobs corrupt its temporary coverage files.
 
 ## Commands
 
 All commands run from the repository root.
 
-| Task                       | Command                                                   |
-| -------------------------- | --------------------------------------------------------- |
-| Install and hooks          | `npm ci` (`npm run prepare` repairs hooks)                |
-| Electron development       | `npm run dev`                                             |
-| Built-app preview          | `npm run start`                                           |
-| Build desktop app          | `npm run build`                                           |
-| Web UI development         | `npm run dev:web`                                         |
-| Build/preview web UI       | `npm run build:web`; `npm run preview:web`                |
-| Type check                 | `npm run typecheck`                                       |
-| Lint / fix                 | `npm run lint`; `npm run lint:fix`                        |
-| Format / check             | `npm run format`; `npm run format:check`                  |
-| Dead-code check            | `npm run knip`                                            |
-| Unit tests                 | `npm test`; `npm run test:watch`                          |
-| Coverage gate              | `npm run test:coverage`                                   |
-| Electron smoke             | `npm run test:e2e` (after `npm run build`)                |
-| CSS collision check        | `npm run check:css`                                       |
-| Command-doc check          | `npm run check:docs`                                      |
-| File-size check            | `npm run check:files`                                     |
-| Duplication check          | `npm run check:duplicate`                                 |
-| Dependency audit           | `npm run audit:deps`                                      |
-| Full local gate            | `npm run check`                                           |
-| Fetch Bridge               | `npm run fetch:bridge`                                    |
-| Refresh model intelligence | `npm run fetch:intelligence` (`-- --check` verifies only) |
-| Dogfood seed / launch      | `npm run dogfood:seed`; `npm run dogfood`                 |
-| Package signed macOS app   | `npm run package`                                         |
+| Task                       | Command                                                             |
+| -------------------------- | ------------------------------------------------------------------- |
+| Install and hooks          | `pnpm install --frozen-lockfile` (`pnpm run prepare` repairs hooks) |
+| Electron development       | `pnpm run dev`                                                      |
+| Built-app preview          | `pnpm run start`                                                    |
+| Build desktop app          | `pnpm run build`                                                    |
+| Web UI development         | `pnpm run dev:web`                                                  |
+| Build/preview web UI       | `pnpm run build:web`; `pnpm run preview:web`                        |
+| Type check                 | `pnpm run typecheck`                                                |
+| Lint / fix                 | `pnpm run lint`; `pnpm run lint:fix`                                |
+| Format / check             | `pnpm run format`; `pnpm run format:check`                          |
+| Dead-code check            | `pnpm run knip`                                                     |
+| Unit tests                 | `pnpm test`; `pnpm run test:watch`                                  |
+| Coverage gate              | `pnpm run test:coverage`                                            |
+| Electron smoke             | `pnpm run test:e2e` (after `pnpm run build`)                        |
+| CSS collision check        | `pnpm run check:css`                                                |
+| Command-doc check          | `pnpm run check:docs`                                               |
+| File-size check            | `pnpm run check:files`                                              |
+| Duplication check          | `pnpm run check:duplicate`                                          |
+| Dependency audit           | `pnpm run audit:deps`                                               |
+| Full local gate            | `pnpm run check`                                                    |
+| Fetch Bridge               | `pnpm run fetch:bridge`                                             |
+| Refresh model intelligence | `pnpm run fetch:intelligence` (`-- --check` verifies only)          |
+| Dogfood seed / launch      | `pnpm run dogfood:seed`; `pnpm run dogfood`                         |
+| Package signed macOS app   | `pnpm run package`                                                  |
 
 Vitest accepts a file or name filter, for example:
 
 ```bash
-npx vitest run apps/desktop/tests/main/engine/executor.test.ts
-npx vitest run -t "<name>"
-npx vitest run --coverage
+pnpm exec vitest run apps/desktop/tests/main/engine/executor.test.ts
+pnpm exec vitest run -t "<name>"
+pnpm exec vitest run --coverage
 ```
 
 Vitest uses its adaptive default worker count. Do not add a fixed worker cap: it

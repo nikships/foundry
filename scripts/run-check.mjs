@@ -20,7 +20,7 @@ const checks = [
   'audit:deps',
 ];
 
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const packageManager = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const results = await Promise.all(checks.map(run));
 const failures = results.filter(({ code, signal, error }) => code !== 0 || signal || error);
 
@@ -31,7 +31,7 @@ if (failures.length > 0) {
 
 function run(name) {
   return new Promise((resolve) => {
-    const child = spawn(npm, ['run', name], { stdio: 'inherit' });
+    const child = spawn(packageManager, ['run', name], { stdio: 'inherit' });
     child.once('error', (error) => resolve({ name, code: null, signal: null, error }));
     child.once('exit', (code, signal) => resolve({ name, code, signal, error: null }));
   });

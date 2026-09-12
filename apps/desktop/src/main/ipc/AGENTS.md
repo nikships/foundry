@@ -23,7 +23,7 @@ Run events are polled with the trace cursor, not pushed. Update this list, prelo
 ## Validation
 
 ```bash
-npx vitest run apps/desktop/tests/main/ipc/ipc-surface.test.ts
-npx vitest run apps/desktop/tests/main/ipc/ipc-clone.test.ts
-npx vitest run apps/desktop/tests/main/ipc/ipc-invoker.test.ts
+pnpm exec vitest run apps/desktop/tests/main/ipc/ipc-surface.test.ts
+pnpm exec vitest run apps/desktop/tests/main/ipc/ipc-clone.test.ts
+pnpm exec vitest run apps/desktop/tests/main/ipc/ipc-invoker.test.ts
 ```

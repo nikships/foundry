@@ -5,8 +5,8 @@
 // clone tax every contributor pays forever, and a checksum in package.json says
 // exactly as much about what ships. The matching models.json is fetched from
 // the same tag and written beside it, so a CLIProxyAPI bump is enough for new
-// models to appear. `npm run fetch:bridge` is a packaging step, never part of
-// `npm run check` — the gate must stay offline.
+// models to appear. `pnpm run fetch:bridge` is a packaging step, never part of
+// `pnpm run check` — the gate must stay offline.
 //
 // Fail-closed is the whole point. A mismatched checksum leaves nothing
 // executable on disk: the partial download is deleted and the process exits

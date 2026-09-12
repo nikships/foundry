@@ -18,7 +18,7 @@ Adding an event usually requires its shared shape, Tracer write path, renderer d
 ## Validation
 
 ```bash
-npx vitest run apps/desktop/tests/main/trace/trace-cursor.test.ts
+pnpm exec vitest run apps/desktop/tests/main/trace/trace-cursor.test.ts
 ```
 
 Use real temporary SQLite files and assert both row content and cursor advancement.
