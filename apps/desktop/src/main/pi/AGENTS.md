@@ -49,7 +49,7 @@ Do not import pi’s transitive packages directly. Derive needed types from `pi-
 Most suites use `scripted-transport.ts` or `scripted-oneshot.ts` and never load a provider. Adapter tests replace the vendor session; runtime tests use a temporary state directory and assert `~/.pi` remains untouched.
 
 ```bash
-npx vitest run -t "pi"
-npx vitest run apps/desktop/tests/main/pi/pi-packaging.test.ts
-npx vitest run apps/desktop/tests/main/engine/executor.test.ts
+pnpm exec vitest run -t "pi"
+pnpm exec vitest run apps/desktop/tests/main/pi/pi-packaging.test.ts
+pnpm exec vitest run apps/desktop/tests/main/engine/executor.test.ts
 ```

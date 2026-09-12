@@ -1,29 +1,12 @@
 # Keep CI actions and the desktop app dependencies on a weekly cadence.
 # Agents benefit from small, automated update PRs that still run the full gate set.
+#
+# NOTE: Dependabot has no pnpm ecosystem, so the npm block was removed with the
+# pnpm migration (it fails without a package-lock.json). JS dependency updates
+# need a follow-up: either Renovate (supports pnpm-lock.yaml) or scheduled
+# `pnpm update` PRs. The github-actions block below is unaffected.
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      dev-lint-format:
-        patterns:
-          - 'eslint*'
-          - 'prettier'
-          - 'typescript-eslint'
-          - '@eslint/*'
-          - 'knip'
-          - 'globals'
-      vite-electron:
-        patterns:
-          - 'vite'
-          - 'electron-vite'
-          - '@vitejs/*'
-          - 'vitest'
-
   - package-ecosystem: github-actions
     directory: /
     schedule:

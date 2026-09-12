@@ -11,7 +11,7 @@
 // first launch prints which keys still need that one-time entry; every later
 // launch reuses them untouched.
 //
-// Usage: npm run dogfood:seed [-- --reset]
+// Usage: pnpm run dogfood:seed [-- --reset]
 //   --reset  rewrites settings.json even when one already exists. Credentials
 //            are never touched, so saved keys survive a reset.
 
@@ -124,4 +124,4 @@ if (missing.length > 0) {
 } else {
   console.log('dogfood:seed: both keys already stored; nothing to enter.');
 }
-console.log(`dogfood:seed: launch with \`npm run dogfood\` (state: ${stateDir})`);
+console.log(`dogfood:seed: launch with \`pnpm run dogfood\` (state: ${stateDir})`);

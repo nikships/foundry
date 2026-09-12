@@ -2,11 +2,11 @@
 # Foundry pre-commit hook — fast, scoped feedback on staged files.
 #
 # Checks staged blob sizes, then runs ESLint and Prettier against the files in
-# this commit only. It is a convenience, NOT the gate: `npm run check` and CI
+# this commit only. It is a convenience, NOT the gate: `pnpm run check` and CI
 # remain authoritative and run the full typecheck, dead-code, coverage, build,
 # and audit suite. Nothing here builds, spawns a model, or touches the network.
 #
-# Installed by `npm run prepare` (sets git's core.hooksPath to .githooks).
+# Installed by `pnpm run prepare` (sets git's core.hooksPath to .githooks).
 # Install manually with:  git config core.hooksPath .githooks
 #
 # Bypass with:  git commit --no-verify
@@ -43,7 +43,7 @@ fi
 
 if [ ! -d node_modules ]; then
   echo "pre-commit: node_modules missing — skipping lint/format checks."
-  echo "            Run 'npm ci', then 'npm run check' before opening a PR."
+  echo "            Run 'pnpm install --frozen-lockfile', then 'pnpm run check' before opening a PR."
   exit "$failed"
 fi
 
@@ -76,10 +76,10 @@ done
 
 if [ ${#lintable[@]} -gt 0 ]; then
   echo "pre-commit: eslint (${#lintable[@]} file(s))"
-  if ! npx --no-install eslint --max-warnings 0 --no-warn-ignored "${lintable[@]}"; then
+  if ! pnpm exec eslint --max-warnings 0 --no-warn-ignored "${lintable[@]}"; then
     echo ""
     echo "pre-commit: ESLint failed. Fix the reports above, or run:"
-    echo "            npm run lint:fix"
+    echo "            pnpm run lint:fix"
     failed=1
   fi
 fi
@@ -87,10 +87,10 @@ fi
 # --ignore-unknown lets us hand prettier every staged path and let it decide;
 # it also honours .prettierignore, so generated and binary paths are skipped.
 echo "pre-commit: prettier (${#staged[@]} file(s))"
-if ! npx --no-install prettier --check --ignore-unknown "${staged[@]}"; then
+if ! pnpm exec prettier --check --ignore-unknown "${staged[@]}"; then
   echo ""
   echo "pre-commit: Prettier found unformatted files. Fix with:"
-  echo "            npm run format"
+  echo "            pnpm run format"
   echo "            (then 'git add' them again)"
   failed=1
 fi

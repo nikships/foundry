@@ -17,6 +17,6 @@ When adding a field or builtin, test a file missing that field and verify user e
 ## Validation
 
 ```bash
-npx vitest run -t "builtin|roster|pipeline|settings|envelope|local-store"
-npx vitest run apps/desktop/tests/main/store/builtins.test.ts
+pnpm exec vitest run -t "builtin|roster|pipeline|settings|envelope|local-store"
+pnpm exec vitest run apps/desktop/tests/main/store/builtins.test.ts
 ```

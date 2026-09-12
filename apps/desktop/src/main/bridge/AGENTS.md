@@ -14,7 +14,7 @@ The Bridge runs a vendored CLIProxyAPI child that exposes an operator’s provid
 - `models.ts` merges Bridge providers into pi’s `models.json`.
 - `service.ts` coordinates lifecycle, regeneration, and runtime refresh.
 
-`npm run fetch:bridge` downloads and verifies the pinned binary and catalog. A checkout without it is supported: `bridgeBinaryPath()` returns null and `ensure()` reports `binary_missing`.
+`pnpm run fetch:bridge` downloads and verifies the pinned binary and catalog. A checkout without it is supported: `bridgeBinaryPath()` returns null and `ensure()` reports `binary_missing`.
 
 ## Security and lifecycle invariants
 
@@ -41,6 +41,6 @@ Provider IDs use a `bridge-` prefix so they cannot override pi’s built-in prov
 Tests use a scripted child and fixtures, never the real vendored binary or an account. Serialized account assertions must prove tokens do not escape.
 
 ```bash
-npx vitest run -t "bridge"
-npx vitest run apps/desktop/tests/main/bridge/bridge-process-row.test.ts
+pnpm exec vitest run -t "bridge"
+pnpm exec vitest run apps/desktop/tests/main/bridge/bridge-process-row.test.ts
 ```

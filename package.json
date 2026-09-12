@@ -7,6 +7,7 @@
   "license": "MIT",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@12.4.1",
   "overrides": {
     "@xmldom/xmldom": "^0.9.10",
     "fast-uri": "^3.1.7",
@@ -36,8 +37,8 @@
     "fetch:bridge": "node scripts/fetch-bridge.mjs",
     "fetch:intelligence": "node scripts/fetch-intelligence.mjs",
     "dogfood:seed": "node scripts/seed-dogfood-state.mjs",
-    "dogfood": "npm run dogfood:seed && npm run build && ./node_modules/.bin/electron . --remote-debugging-port=9251 --user-data-dir=./.dogfood-state",
-    "package": "npm run build && npm run icons && npm run fetch:bridge && electron-builder --mac --arm64",
+    "dogfood": "pnpm run dogfood:seed && pnpm run build && ./node_modules/.bin/electron . --remote-debugging-port=9251 --user-data-dir=./.dogfood-state",
+    "package": "pnpm run build && pnpm run icons && pnpm run fetch:bridge && electron-builder --mac --arm64",
     "check:css": "node scripts/check-css-collisions.mjs",
     "check:docs": "node scripts/check-docs-commands.mjs",
     "check:files": "node scripts/check-file-sizes.mjs",

@@ -29,6 +29,6 @@ Keep envelope documentation beside its schemas and add schema/parse tests for ne
 ## Validation
 
 ```bash
-npx vitest run -t "ipc|envelope|gate|boundary"
-npx vitest run apps/desktop/tests/main/ipc/ipc-surface.test.ts
+pnpm exec vitest run -t "ipc|envelope|gate|boundary"
+pnpm exec vitest run apps/desktop/tests/main/ipc/ipc-surface.test.ts
 ```

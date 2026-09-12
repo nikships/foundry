@@ -26,6 +26,6 @@ Renderer Vitest runs in Node, not jsdom. Focus unit tests on pure view-model, ho
 ## Validation
 
 ```bash
-npx vitest run -t "renderer|transcript|pipeline-view|keyboard"
-npm run check:css
+pnpm exec vitest run -t "renderer|transcript|pipeline-view|keyboard"
+pnpm run check:css
 ```

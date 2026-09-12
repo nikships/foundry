@@ -21,8 +21,8 @@ Doctor failures remain advisory. `finish()` decides when run completion triggers
 ## Validation
 
 ```bash
-npx vitest run -t "env|procs|doctor"
-npx vitest run apps/desktop/tests/main/system/env.test.ts
+pnpm exec vitest run -t "env|procs|doctor"
+pnpm exec vitest run apps/desktop/tests/main/system/env.test.ts
 ```
 
 Startup diagnostics use prefixed `console.warn` messages.

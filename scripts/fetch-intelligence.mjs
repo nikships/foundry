@@ -104,7 +104,7 @@ if (current === serialized) {
   process.exit(0);
 }
 if (check) {
-  console.error('model-intelligence.json is stale; run npm run fetch:intelligence');
+  console.error('model-intelligence.json is stale; run pnpm run fetch:intelligence');
   process.exit(1);
 }
 

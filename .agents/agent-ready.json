@@ -25,7 +25,7 @@
       "status": "pass",
       "notes": "Lint/format tooling is configured.",
       "measurement": {
-        "command": "npm run lint",
+        "command": "pnpm run lint",
         "via": "package.json"
       }
     },
@@ -34,7 +34,7 @@
       "status": "pass",
       "notes": "TypeScript typecheck is documented.",
       "measurement": {
-        "command": "npm run typecheck"
+        "command": "pnpm run typecheck"
       }
     },
     {
@@ -42,7 +42,7 @@
       "status": "pass",
       "notes": "A documented test command or test files exist.",
       "measurement": {
-        "command": "npm test",
+        "command": "pnpm test",
         "tests": 68
       }
     },
@@ -51,7 +51,7 @@
       "status": "pass",
       "notes": "A documented build command exists.",
       "measurement": {
-        "command": "npm run build"
+        "command": "pnpm run build"
       }
     },
     {
