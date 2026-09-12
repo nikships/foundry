@@ -19,7 +19,7 @@ import ExportPlanSheet from '../components/run/ExportPlanSheet.js';
 import RestoreSheet from '../components/run/RestoreSheet.js';
 import ResizableRunRequest from '../components/run/ResizableRunRequest.js';
 import { Button } from '../components/ui/Button.js';
-import { planHasActiveFailure } from '../view-models/plan-view.js';
+import { runHasActiveFailure } from '../view-models/plan-view.js';
 import { canResumeRun } from '../view-models/outcome-view.js';
 import { restoreAvailability } from '../view-models/restore-view.js';
 import styles from './RunDetailScreen.module.css';
@@ -44,6 +44,7 @@ export default function RunDetailScreen({
   const [now, setNow] = useState(Date.now());
   const [gh, setGh] = useState<GhStatus | null>(null);
   const [plan, setPlan] = useState<GeneratedRunPlan | null>(null);
+  const [planError, setPlanError] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
   const [checkpoints, setCheckpoints] = useState<RestorableCheckpointList | null>(null);
   const [checkpointsError, setCheckpointsError] = useState('');
@@ -76,6 +77,7 @@ export default function RunDetailScreen({
 
   useEffect(() => {
     setPlan(null);
+    setPlanError('');
     setExportOpen(false);
     if (!view.run?.orchestrated || view.run.status === 'running') return;
     let cancelled = false;
@@ -84,8 +86,10 @@ export default function RunDetailScreen({
       .then((loaded) => {
         if (!cancelled) setPlan(loaded);
       })
-      .catch(() => {
-        if (!cancelled) setPlan(null);
+      .catch((error: Error) => {
+        if (cancelled) return;
+        setPlan(null);
+        setPlanError(error.message || 'Could not read this run’s plan.');
       });
     return () => {
       cancelled = true;
@@ -146,6 +150,7 @@ export default function RunDetailScreen({
     setMergeRefused(false);
     setCheckpoints(null);
     setCheckpointsError('');
+    setPlanError('');
     setRestoreOpen(false);
   }, [runId]);
 
@@ -262,13 +267,11 @@ export default function RunDetailScreen({
     }
   };
 
-  const bannerError = actionError || view.run?.sourceSyncError || view.error;
+  const bannerError = actionError || view.run?.sourceSyncError || view.error || planError;
 
   const pipelineLabel = view.run?.pipelineName?.trim() || '';
   const linearSource = view.run?.source?.kind === 'linear' ? view.run.source : null;
-  const hasActiveFailure = view.run?.orchestrated
-    ? Boolean(plan && planHasActiveFailure(plan, view.phases))
-    : view.phases.some((phase) => phase.status === 'fail');
+  const hasActiveFailure = runHasActiveFailure(Boolean(view.run?.orchestrated), plan, view.phases);
   const checkpointsLoading = wantsCheckpoints && !checkpoints && !checkpointsError;
   const restore = restoreAvailability({
     run: view.run,

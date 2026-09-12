@@ -319,3 +319,21 @@ export function planHasActiveFailure(plan: GeneratedRunPlan, history: PhaseRow[]
   for (const row of history) latestByName.set(row.name, row);
   return plan.pipeline.phases.some((phase) => latestByName.get(phase.name)?.status === 'fail');
 }
+
+/**
+ * Whether Continue should treat this run as still having a red phase.
+ *
+ * Orchestrated runs prefer the persisted plan so superseded amendment
+ * failures are ignored. If that plan is not in hand yet — still loading,
+ * missing, or the read failed — fall back to phase status so Continue is
+ * not silently withheld behind a fresh plan fetch. The engine still
+ * refuses if the saved pipeline has nothing red.
+ */
+export function runHasActiveFailure(
+  orchestrated: boolean,
+  plan: GeneratedRunPlan | null,
+  history: PhaseRow[],
+): boolean {
+  if (orchestrated && plan) return planHasActiveFailure(plan, history);
+  return history.some((phase) => phase.status === 'fail');
+}

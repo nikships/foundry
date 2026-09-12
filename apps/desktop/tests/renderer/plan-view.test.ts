@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { GeneratedRunPlan } from '@shared/types.js';
+import type { GeneratedRunPlan, PhaseRow } from '@shared/types.js';
 import {
   allPlanExportSelection,
   boundaryLabel,
@@ -11,12 +11,35 @@ import {
   planExportSelectionCount,
   planExportView,
   planHasActiveFailure,
+  runHasActiveFailure,
   planPreviewPositions,
   planCardView,
   togglePlanExportSelection,
   withPhaseModel,
   withPhaseReasoningEffort,
 } from '@renderer/view-models/plan-view.js';
+
+function historyPhase(
+  phaseId: string,
+  name: string,
+  status: 'fail' | 'success',
+  seq: number,
+): PhaseRow {
+  return {
+    phaseId,
+    runId: 'run-1',
+    seq,
+    name,
+    kind: 'agent',
+    owner: 'builder',
+    description: name,
+    status,
+    attempt: 0,
+    error: null,
+    startedAt: null,
+    endedAt: null,
+  };
+}
 
 function generatedPlan(): GeneratedRunPlan {
   return {
@@ -340,31 +363,43 @@ describe('plan-view', () => {
 
   it('ignores superseded and removed failures when deciding whether Continue applies', () => {
     const plan = generatedPlan();
-    const phase = (phaseId: string, name: string, status: 'fail' | 'success', seq: number) => ({
-      phaseId,
-      runId: 'run-1',
-      seq,
-      name,
-      kind: 'agent' as const,
-      owner: 'builder',
-      description: name,
-      status,
-      attempt: 0,
-      error: null,
-      startedAt: null,
-      endedAt: null,
-    });
     const history = [
-      phase('old-build', 'build', 'fail', 0),
-      phase('removed', 'obsolete', 'fail', 1),
-      phase('new-build', 'build', 'success', 2),
-      phase('test', 'test', 'success', 3),
-      phase('checkpoint', 'checkpoint', 'success', 4),
-      phase('review', 'review', 'success', 5),
+      historyPhase('old-build', 'build', 'fail', 0),
+      historyPhase('removed', 'obsolete', 'fail', 1),
+      historyPhase('new-build', 'build', 'success', 2),
+      historyPhase('test', 'test', 'success', 3),
+      historyPhase('checkpoint', 'checkpoint', 'success', 4),
+      historyPhase('review', 'review', 'success', 5),
     ];
 
     expect(planHasActiveFailure(plan, history)).toBe(false);
-    history[5] = phase('review', 'review', 'fail', 5);
+    history[5] = historyPhase('review', 'review', 'fail', 5);
     expect(planHasActiveFailure(plan, history)).toBe(true);
+  });
+
+  it('falls back to phase status when an orchestrated run has no plan in hand', () => {
+    const plan = generatedPlan();
+    const superseded = [
+      historyPhase('old-build', 'build', 'fail', 0),
+      historyPhase('removed', 'obsolete', 'fail', 1),
+      historyPhase('new-build', 'build', 'success', 2),
+      historyPhase('test', 'test', 'success', 3),
+      historyPhase('checkpoint', 'checkpoint', 'success', 4),
+      historyPhase('review', 'review', 'success', 5),
+    ];
+    const activeFail = [...superseded.slice(0, 5), historyPhase('review', 'review', 'fail', 5)];
+
+    expect(runHasActiveFailure(true, plan, superseded)).toBe(false);
+    expect(runHasActiveFailure(true, plan, activeFail)).toBe(true);
+    // Loading or a failed plan read must not hide Continue when something is red.
+    expect(runHasActiveFailure(true, null, superseded)).toBe(true);
+    expect(runHasActiveFailure(true, null, activeFail)).toBe(true);
+    expect(runHasActiveFailure(true, null, [historyPhase('review', 'review', 'success', 0)])).toBe(
+      false,
+    );
+    expect(runHasActiveFailure(false, null, superseded)).toBe(true);
+    expect(runHasActiveFailure(false, plan, [historyPhase('review', 'review', 'success', 0)])).toBe(
+      false,
+    );
   });
 });
