@@ -19,6 +19,7 @@ import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import type { CompactionFacts } from '../engine/compaction.js';
 import { modelKey, pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
+import type { EnabledModelsSource } from './enabled-models.js';
 import {
   closeLiveSession,
   compactSession,
@@ -60,13 +61,16 @@ export interface PiTransportOptions extends AgentTransportOptions {
   /** What Foundry's own tools close over. */
   tools: FoundryToolContext;
   /**
-   * Models the operator hid in Settings. Failover skips them. Read live at
-   * send time so a hide mid-run takes effect on the next exhausted retry.
+   * What this install may run on or fail over onto, in pi's shape. The
+   * composition root filters the catalog — a model the operator hid in
+   * Settings is already gone — and this transport never sees one to skip.
+   * Read live so a Settings change applies to the next open and the next
+   * exhausted retry.
    */
-  hiddenModelIds?: () => readonly string[];
+  enabledModels: EnabledModelsSource;
   /**
    * Settings `defaultModel`. The first failover hop prefers this id when it is
-   * reachable and not hidden. Read live so a Settings change applies mid-run.
+   * enabled. Read live so a Settings change applies mid-run.
    */
   defaultModel?: () => string;
 }
@@ -78,7 +82,6 @@ export class PiTransport implements AgentTransport {
   private envelopeTool: SubmissionTool | null = null;
   private envelopeSchemaKey = '';
   private models: TransportModel[] = [];
-  private available: readonly PiModel[] = [];
   private resolvedModel: PiModel | null = null;
   private closed = false;
   private loadedPackageTools: string[] = [];
@@ -134,8 +137,7 @@ export class PiTransport implements AgentTransport {
   async start(existingSessionId?: string | null): Promise<void> {
     this.closed = false;
     const runtime = await modelRuntime(this.opts.supportDir);
-    const available = await runtime.getAvailable();
-    this.available = available;
+    const available = await this.opts.enabledModels();
     this.models = available.map(toTransportModel);
 
     const picked = pickModel(available, this.opts.model);
@@ -222,12 +224,13 @@ export class PiTransport implements AgentTransport {
     this.extension.useSystemPrompt(opts.systemPrompt ?? null);
     this.events.startTurn();
 
-    const last = await promptUntilIdle(session, text, () =>
+    const last = await promptUntilIdle(session, text, async () =>
       continueWithModelFailover({
         session,
         events: this.events,
-        availableModels: this.available,
-        hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
+        // Live per turn: a model hidden while the run runs is gone from the
+        // catalog failover appoints from, without reopening the session.
+        availableModels: await this.opts.enabledModels(),
         preferredModelId: this.opts.defaultModel?.(),
         onWarning: (warning) => this.opts.onModelWarning?.(warning),
       }),

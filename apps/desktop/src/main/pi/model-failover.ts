@@ -38,12 +38,7 @@ function popFailedAssistant(session: PiAgentSession): void {
   }
 }
 
-function isUsable(
-  model: PiModel,
-  hidden: ReadonlySet<string>,
-  requireImageInput?: boolean,
-): boolean {
-  if (hidden.has(modelKey(model))) return false;
+function isUsable(model: PiModel, requireImageInput?: boolean): boolean {
   if (requireImageInput && !model.input.includes('image')) return false;
   return true;
 }
@@ -78,28 +73,31 @@ async function retrigger(
  * a normal turn. Same-model retries reuse the conversation; a hop also switches
  * the session model. Every fallback gets its own retry budget.
  *
- * Hidden picker models are skipped, not tried. The current model may itself be
- * hidden — the operator or roster named it — but failover will not spend a
- * retry budget on anything else the operator hid.
+ * Failover appoints nothing outside the enabled catalog it is handed: the
+ * caller reads it live, so a model hidden after the session opened is skipped
+ * like one already tried. The model the session currently runs is not
+ * re-checked here — it was appointed from that catalog when it opened, and the
+ * retry budget below belongs to it.
  *
- * The first hop prefers Settings `defaultModel` when that id is reachable.
+ * The first hop prefers Settings `defaultModel` when that id is enabled.
  * Remaining hops walk the catalog, skipping ids already tried.
  */
 export async function continueWithModelFailover(input: {
   session: PiAgentSession;
   events: VendorEventReader;
+  /** What this install may run on. Failover names nothing outside it. */
   availableModels: readonly PiModel[];
-  hiddenModelIds?: readonly string[];
   preferredModelId?: string;
   requireImageInput?: boolean;
   onWarning?: (warning: string) => void;
 }): Promise<void> {
   const attempted = new Set<string>();
-  const hidden = new Set(input.hiddenModelIds ?? []);
+  const enabled = new Set(input.availableModels.map(modelKey));
   const initial = modelId(input.session);
   if (initial) attempted.add(initial);
-  // The last model that actually ran a turn. cycleModel() steps onto hidden
-  // ids we skip, and those must not appear as the failure we are recovering from.
+  // The last model that actually ran a turn. cycleModel() walks pi's own
+  // registry, which still holds ids the enabled catalog drops, and those must
+  // not appear as the failure we are recovering from.
   let lastTried = initial ?? 'the current model';
 
   await retrySameModel(input);
@@ -109,7 +107,7 @@ export async function continueWithModelFailover(input: {
       session: input.session,
       availableModels: input.availableModels,
       attempted,
-      hidden,
+      enabled,
       preferredModelId: input.preferredModelId,
       requireImageInput: input.requireImageInput,
     });
@@ -148,14 +146,14 @@ async function nextFallbackModel(input: {
   session: PiAgentSession;
   availableModels: readonly PiModel[];
   attempted: Set<string>;
-  hidden: ReadonlySet<string>;
+  enabled: ReadonlySet<string>;
   preferredModelId?: string;
   requireImageInput?: boolean;
 }): Promise<PiModel | null> {
   const wanted = preferredId(input.preferredModelId);
   if (wanted && !input.attempted.has(wanted)) {
     const preferred = input.availableModels.find((model) => modelKey(model) === wanted);
-    if (preferred && isUsable(preferred, input.hidden, input.requireImageInput)) {
+    if (preferred && isUsable(preferred, input.requireImageInput)) {
       await input.session.setModel(preferred);
       return preferred;
     }
@@ -170,7 +168,7 @@ async function nextFallbackModel(input: {
     if (seen.has(id)) return null;
     seen.add(id);
     if (input.attempted.has(id)) continue;
-    if (!isUsable(next.model, input.hidden, input.requireImageInput)) {
+    if (!input.enabled.has(id) || !isUsable(next.model, input.requireImageInput)) {
       input.attempted.add(id);
       continue;
     }

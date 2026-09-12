@@ -31,6 +31,7 @@ import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js'
 import type { BridgeTrace } from '../bridge/service.js';
 import type { RunSourceLifecycle } from './source-lifecycle.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
+import { enabledPiModels } from '../pi/enabled-models.js';
 import { breakdownFile, type CapturedBreakdown } from '../pi/session.js';
 
 export interface RegistryDeps {
@@ -231,7 +232,10 @@ export class RunRegistry {
             )
           : null,
       supportDir: this.deps.appSupportDir,
-      hiddenModelIds: () => this.deps.settings().hiddenModelIds,
+      // The enabled catalog, read live: hidden models exist only behind the
+      // setting, and the run never learns their ids.
+      enabledModels: () =>
+        enabledPiModels(this.deps.appSupportDir, this.deps.settings().hiddenModelIds),
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,

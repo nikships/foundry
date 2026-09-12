@@ -458,4 +458,31 @@ describe('hiddenModelIds', () => {
     >;
     expect(onDisk.hiddenModelIds).toEqual(['bridge-claude/claude-opus-5']);
   });
+
+  it('resets every model pin that names a hidden model to inherit', () => {
+    const store = seed({
+      ...defaultSettings(),
+      defaultModel: 'openai/gpt-5',
+      healingModel: 'openai/gpt-5',
+      smithModel: 'anthropic/claude-sonnet-4',
+      helperModel: 'inherit',
+    });
+    const result = store.patch({ hiddenModelIds: ['openai/gpt-5'] });
+    expect(result.ok).toBe(true);
+    const settings = store.get();
+    expect(settings.defaultModel).toBe('inherit');
+    expect(settings.healingModel).toBe('inherit');
+    // A pin on a model that still exists stands.
+    expect(settings.smithModel).toBe('anthropic/claude-sonnet-4');
+    expect(settings.helperModel).toBe('inherit');
+  });
+
+  it('repairs a hand-edited file that pins a hidden model, on read', () => {
+    const store = seed({
+      ...defaultSettings(),
+      defaultModel: 'openai/gpt-5',
+      hiddenModelIds: ['openai/gpt-5'],
+    });
+    expect(store.get().defaultModel).toBe('inherit');
+  });
 });

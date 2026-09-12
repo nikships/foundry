@@ -24,13 +24,14 @@ export function register(ctx: Ctx, handle: Handle): void {
           : { ok: false, detail: result.detail, reason: result.reason };
       },
       bridgeProviders: () => ctx.bridge.snapshot().providers,
+      // The enabled catalog: a model the operator hid does not exist on any
+      // surface, including this one.
       agentModels: async () => {
         // Lazy: building pi's runtime reads catalogs off disk, and the doctor
         // is the only caller in this router that needs one.
-        const { availableModels } = await import('../pi/catalog.js');
-        return availableModels(ctx.supportDir);
+        const { enabledModels } = await import('../pi/enabled-models.js');
+        return enabledModels(ctx.supportDir, ctx.settings.get().hiddenModelIds);
       },
-      hiddenModelIds: () => ctx.settings.get().hiddenModelIds,
     }),
   );
 
