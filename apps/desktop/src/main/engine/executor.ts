@@ -60,7 +60,7 @@ import {
   resolveAgentExecution,
 } from '@shared/types.js';
 import type { SetupExecution } from './agent-context.js';
-import type { Replanner } from '../orchestrator/replan.js';
+import type { AllowedModelAppointment, Replanner } from '../orchestrator/replan.js';
 import { generatedCompositionIssues, phaseModelIssues } from '../orchestrator/plan.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateAgent } from '../store/roster.js';
@@ -88,7 +88,11 @@ export interface ExecutorDeps {
    * healing: a red command escalates through `feedbackTo` or fails the run.
    */
   healing?: HealingSupport | null;
-  /** Present only for an orchestrated run. Manual runs never amend themselves. */
+  /**
+   * How a failing pipeline asks Smith for a tail repair. Present whenever the
+   * runtime can open a Smith one-shot, for both manual and generated runs.
+   * Absent means no automatic healing: a failure fails the run.
+   */
   replanner?: Replanner | null;
   /** Foundry's Application Support directory; the agent runtime's state lives under it. */
   supportDir: string;
@@ -148,6 +152,19 @@ export interface RunOutcome {
 
 /** Vestigial: builtins write specs/, but custom prompts may still use {{handoff_dir}}. */
 const HANDOFF_DIR = '.foundry-handoff';
+
+/**
+ * Where a phase walk stopped. `completed` ran every phase to `next`;
+ * `cancelled` saw the kill flag; `interrupted` is an operator phase
+ * interruption; `stop` halted at a failure point (`index` null means no
+ * usable phase anchor, e.g. a vanished feedback target). `forced` marks a
+ * runtime exception that is unsuccessful regardless of acceptance.
+ */
+type WalkResult =
+  | { kind: 'completed' }
+  | { kind: 'cancelled' }
+  | { kind: 'interrupted'; detail: string }
+  | { kind: 'stop'; index: number | null; detail: string; forced: boolean };
 
 export class Executor {
   private readonly sessions = new Map<string, AgentSession>();
@@ -493,85 +510,210 @@ export class Executor {
   }
 
   private async runFrom(startIndex: number): Promise<RunOutcome> {
-    const { tracer, runId } = this.deps;
-
     let index = startIndex;
-    let guard = 0;
-    let detail = '';
-
-    while (index < this.pipeline.phases.length) {
-      if (this.cancelled) return this.settleKilled();
-      if (guard++ > this.pipeline.phases.length + 32 + this.replanAttempts * 32) {
-        detail = 'the pipeline exceeded its step budget: a feedback loop is not converging';
-        tracer.event({ runId, type: 'error', name: 'loop guard', payload: { detail } });
-        break;
+    for (;;) {
+      const walk = await this.walkPhases(index);
+      if (walk.kind === 'cancelled') return this.settleKilled();
+      if (walk.kind === 'interrupted') {
+        await this.closeSessions();
+        return this.finish('rejected', walk.detail);
       }
-
-      // Between phases is the only window a session may be compacted in: no
-      // stream is open, and the next phase's turn has not been composed yet.
-      // Before the phase rather than after, so the last phase of a run is never
-      // followed by a compaction nothing will use; the first pass has no
-      // sessions yet, which is what makes this the space *between* phases.
-      await this.compactFullSessions();
-
-      const phase = this.pipeline.phases[index]!;
-      // Before the phase's work begins, and on every entry into it: a
-      // `feedbackTo` re-entry is a new attempt, so it earns its own generation
-      // rather than reusing where the first attempt started.
-      await this.checkpointPhaseStart(phase);
-      const jump = await this.runPhase(phase);
-      if (jump.kind === 'abort') {
-        if (this.cancelled) return this.settleKilled();
-        if (jump.interrupted) {
-          await this.closeSessions();
-          return this.finish('rejected', jump.detail);
-        }
-        if (await this.tryReplan(index, phase, jump.detail)) {
-          // The failed definition was removed from the active pipeline. The
-          // first replacement occupies the same logical index.
+      if (this.cancelled) return this.settleKilled();
+      if (walk.kind === 'completed') {
+        const settled = await this.settleCompletedWalk();
+        if (settled.continueAt != null) {
+          index = settled.continueAt;
           continue;
         }
-        if (this.cancelled) return this.settleKilled();
-        // FOU-15: a PR (or issue) phase that could not create its artifact is
-        // a hard fail with the exact error. Do not let a prior acceptance flag
-        // (e.g. production_check.approved) mark the run accepted.
-        const envelope = this.phaseEnvelope(phase);
-        if (envelope === 'pr' || envelope === 'issue') {
-          await this.closeSessions();
-          return this.finish('rejected', jump.detail);
-        }
-        detail = jump.detail;
-        break;
+        return settled.outcome;
       }
-      if (jump.kind === 'goto') {
-        index = this.pipeline.phases.findIndex((p) => p.name === jump.phase);
-        if (index < 0) {
-          detail = `feedback target "${jump.phase}" vanished`;
-          break;
-        }
+      const settled = await this.settleStoppedWalk(walk);
+      if (settled.continueAt != null) {
+        index = settled.continueAt;
         continue;
       }
-      index++;
+      return settled.outcome;
     }
+  }
 
-    // A kill is an operator verdict, not a phase outcome: whatever the pipeline
-    // managed to finish first must not be run through acceptance, or a phase
-    // that completed before the kill landed settles the run as accepted.
-    if (this.cancelled) return this.settleKilled();
-
-    await this.closeSessions();
-    const verdict = decideAcceptance({
+  private currentVerdict(): { accepted: boolean; reason: string } {
+    return decideAcceptance({
       acceptance: this.pipeline.acceptance,
       phases: this.activePhaseRows(),
       envelopes: this.envelopes,
       commandResults: this.commandResults,
     });
-    // An abort detail explains why the pipeline stopped early; otherwise the
-    // acceptance criterion explains itself.
-    return this.finish(
-      verdict.accepted ? 'accepted' : 'rejected',
-      detail ? `${detail} (${verdict.reason})` : verdict.reason,
-    );
+  }
+
+  private async settleCompletedWalk(): Promise<
+    { outcome: RunOutcome; continueAt?: undefined } | { outcome?: undefined; continueAt: number }
+  > {
+    const verdict = this.currentVerdict();
+    if (verdict.accepted) {
+      await this.closeSessions();
+      return { outcome: await this.finish('accepted', verdict.reason) };
+    }
+    const anchor = this.acceptanceFailureAnchor();
+    if (!anchor) {
+      await this.closeSessions();
+      return { outcome: await this.finish('rejected', verdict.reason) };
+    }
+    if (await this.tryReplan(anchor.index, anchor.phase, verdict.reason)) {
+      return { continueAt: anchor.index };
+    }
+    if (this.cancelled) return { outcome: await this.settleKilled() };
+    await this.closeSessions();
+    return { outcome: await this.finish('rejected', verdict.reason) };
+  }
+
+  private needsHealing(
+    walk: Extract<WalkResult, { kind: 'stop' }>,
+    verdict: { accepted: boolean; reason: string },
+    failedPhase: PhaseDef,
+  ): boolean {
+    if (walk.forced || !verdict.accepted) return true;
+    const envelope = this.phaseEnvelope(failedPhase);
+    return envelope === 'pr' || envelope === 'issue';
+  }
+
+  private async stoppedOutcome(
+    walk: Extract<WalkResult, { kind: 'stop' }> & { index: number },
+    verdict: { accepted: boolean; reason: string },
+    failedPhase: PhaseDef,
+  ): Promise<RunOutcome> {
+    const envelope = this.phaseEnvelope(failedPhase);
+    if (walk.forced) return this.finish('failed', walk.detail);
+    if ((envelope === 'pr' || envelope === 'issue') && verdict.accepted) {
+      return this.finish('rejected', walk.detail);
+    }
+    if (!verdict.accepted) {
+      const detail = walk.detail ? `${walk.detail} (${verdict.reason})` : verdict.reason;
+      return this.finish('rejected', detail);
+    }
+    return this.finish('accepted', verdict.reason);
+  }
+
+  private async settleStoppedWalk(
+    walk: Extract<WalkResult, { kind: 'stop' }>,
+  ): Promise<
+    { outcome: RunOutcome; continueAt?: undefined } | { outcome?: undefined; continueAt: number }
+  > {
+    if (walk.index == null) {
+      const verdict = this.currentVerdict();
+      const detail = walk.detail ? `${walk.detail} (${verdict.reason})` : verdict.reason;
+      await this.closeSessions();
+      const outcome = await this.finish(verdict.accepted ? 'accepted' : 'rejected', detail);
+      return { outcome };
+    }
+    const failedPhase = this.pipeline.phases[walk.index]!;
+    let verdict: { accepted: boolean; reason: string };
+    try {
+      verdict = this.currentVerdict();
+    } catch {
+      verdict = { accepted: false, reason: walk.detail };
+    }
+    if (!this.needsHealing(walk, verdict, failedPhase)) {
+      await this.closeSessions();
+      return { outcome: await this.finish('accepted', verdict.reason) };
+    }
+    if (await this.tryReplan(walk.index, failedPhase, walk.detail)) {
+      return { continueAt: walk.index };
+    }
+    if (this.cancelled) return { outcome: await this.settleKilled() };
+    await this.closeSessions();
+    const narrowed = { ...walk, index: walk.index } as Extract<WalkResult, { kind: 'stop' }> & {
+      index: number;
+    };
+    return { outcome: await this.stoppedOutcome(narrowed, verdict, failedPhase) };
+  }
+
+  private async walkPhases(startIndex: number): Promise<WalkResult> {
+    const { tracer, runId } = this.deps;
+    let index = startIndex;
+    let guard = 0;
+    while (index < this.pipeline.phases.length) {
+      if (this.cancelled) return { kind: 'cancelled' };
+      if (guard++ > this.pipeline.phases.length + 32) {
+        const detail = 'the pipeline exceeded its step budget: a feedback loop is not converging';
+        tracer.event({ runId, type: 'error', name: 'loop guard', payload: { detail } });
+        const anchor = this.firstFailedAnchor();
+        if (anchor) return { kind: 'stop', index: anchor.index, detail, forced: false };
+        return { kind: 'stop', index: null, detail, forced: false };
+      }
+      await this.compactFullSessions();
+      const phase = this.pipeline.phases[index]!;
+      await this.checkpointPhaseStart(phase);
+      let jump: PhaseJump;
+      try {
+        jump = await this.runPhase(phase);
+      } catch (e) {
+        const message = (e as Error).message;
+        const phaseId = this.phaseIds.get(phase.name) ?? null;
+        if (phaseId) tracer.closePhase(phaseId, 'fail', message);
+        tracer.event({ runId, phaseId, type: 'error', name: 'engine', payload: { message } });
+        return { kind: 'stop', index, detail: message, forced: true };
+      }
+      if (jump.kind === 'abort') {
+        if (this.cancelled) return { kind: 'cancelled' };
+        if (jump.interrupted) return { kind: 'interrupted', detail: jump.detail };
+        return { kind: 'stop', index, detail: jump.detail, forced: false };
+      }
+      if (jump.kind === 'goto') {
+        const next = this.pipeline.phases.findIndex((p) => p.name === jump.phase);
+        if (next < 0) {
+          return {
+            kind: 'stop',
+            index: null,
+            detail: `feedback target "${jump.phase}" vanished`,
+            forced: false,
+          };
+        }
+        index = next;
+        continue;
+      }
+      index++;
+    }
+    if (this.cancelled) return { kind: 'cancelled' };
+    return { kind: 'completed' };
+  }
+
+  private firstFailedAnchor(): { index: number; phase: PhaseDef } | null {
+    let rows: PhaseRow[];
+    try {
+      rows = this.activePhaseRows();
+    } catch {
+      return null;
+    }
+    const failed = rows.find((row) => row.status === 'fail');
+    if (!failed) return null;
+    const index = this.pipeline.phases.findIndex((phase) => phase.name === failed.name);
+    if (index < 0) return null;
+    return { index, phase: this.pipeline.phases[index]! };
+  }
+
+  private acceptanceFailureAnchor(): { index: number; phase: PhaseDef } | null {
+    const acceptance = this.pipeline.acceptance;
+    if (acceptance.kind === 'phase_flag' || acceptance.kind === 'envelope_status') {
+      const index = this.pipeline.phases.findIndex((phase) => phase.name === acceptance.phase);
+      if (index < 0) return null;
+      return { index, phase: this.pipeline.phases[index]! };
+    }
+    if (acceptance.kind === 'all_phases_pass') {
+      let rows: PhaseRow[];
+      try {
+        rows = this.activePhaseRows();
+      } catch {
+        return null;
+      }
+      const bad = rows.find((row) => row.status !== 'success' && row.status !== 'skipped');
+      if (!bad) return null;
+      const index = this.pipeline.phases.findIndex((phase) => phase.name === bad.name);
+      if (index < 0) return null;
+      return { index, phase: this.pipeline.phases[index]! };
+    }
+    if (!this.pipeline.phases.length) return null;
+    const index = this.pipeline.phases.length - 1;
+    return { index, phase: this.pipeline.phases[index]! };
   }
 
   /** The current logical pipeline rows, excluding superseded amendment history. */
@@ -589,9 +731,11 @@ export class Executor {
   }
 
   /**
-   * The final recovery layer. Invalid and empty proposals spend the fixed
-   * budget but do not mutate the active pipeline; only a proposal that passes
-   * both ordinary rails reaches the Tracer's atomic queue replacement.
+   * The final recovery layer: Smith proposes, the engine validates. Each
+   * started call durably consumes one of two per-run slots, including calls
+   * that never return a repair. Empty proposals leave the pipeline unchanged;
+   * only a proposal that passes the ordinary rails reaches the Tracer's
+   * atomic queue replacement.
    */
   private async tryReplan(
     failedIndex: number,
@@ -599,22 +743,45 @@ export class Executor {
     detail: string,
   ): Promise<boolean> {
     const replanner = this.deps.replanner;
-    if (!replanner || !this.plan) return false;
-
+    if (!replanner) return false;
+    if (this.cancelled || this.replanAttempts >= FIXED_ENGINE_DEFAULTS.replanAttempts) {
+      return false;
+    }
     const completed = this.pipeline.phases.slice(0, failedIndex).map((phase) => {
       const envelope = this.envelopes.get(phase.name);
       return envelope ? { phase, envelope } : { phase };
     });
     const remaining = this.pipeline.phases.slice(failedIndex + 1);
     const evidence = this.replanEvidence(failedPhase, detail);
-
+    const allowedModels = this.allowedModelAppointments();
+    let previousIssues: string[] = [];
     while (!this.cancelled && this.replanAttempts < FIXED_ENGINE_DEFAULTS.replanAttempts) {
       const attempt = ++this.replanAttempts;
-      let amendment: PipelineAmendment | null = null;
+      try {
+        this.deps.tracer.event({
+          runId: this.deps.runId,
+          phaseId: this.phaseId(failedPhase.name),
+          type: 'log',
+          name: 'replan proposal started',
+          payload: {
+            actor: 'smith',
+            attempt,
+            budget: FIXED_ENGINE_DEFAULTS.replanAttempts,
+            phase: failedPhase.name,
+          },
+        });
+      } catch {
+        this.replanAttempts -= 1;
+        return false;
+      }
+      if (this.cancelled) return false;
       const release = this.onCancel(() => replanner.abort?.());
+      let amendment: PipelineAmendment | null = null;
       try {
         amendment = await replanner.propose({
-          plan: this.plan,
+          request: this.deps.request,
+          pipeline: this.pipeline,
+          allowedModels,
           roster: this.agents,
           commands: this.deps.project.commands,
           failedPhase,
@@ -622,43 +789,54 @@ export class Executor {
           remaining,
           evidence,
           attempt,
+          ...(previousIssues.length ? { previousIssues } : {}),
         });
       } catch (error) {
+        const message = (error as Error).message;
         this.deps.tracer.event({
           runId: this.deps.runId,
           phaseId: this.phaseId(failedPhase.name),
           type: 'error',
           name: 'replan proposal failed',
-          payload: { attempt, message: (error as Error).message },
+          payload: { actor: 'smith', attempt, message },
         });
+        previousIssues = [message];
+        continue;
       } finally {
         release();
       }
       if (this.cancelled) return false;
-      if (!amendment) {
-        this.traceRejectedAmendment(failedPhase, attempt, ['no valid amendment was proposed']);
-        continue;
+      if (!amendment || amendment.phases.length === 0) {
+        this.traceRejectedAmendment(failedPhase, attempt, [
+          amendment
+            ? 'Smith proposed no repair (empty tail); leaving the pipeline unchanged'
+            : 'no valid amendment was proposed',
+        ]);
+        return false;
       }
-
       const checked = this.checkAmendment(failedIndex, amendment);
       if (!checked.ok) {
-        this.traceRejectedAmendment(
-          failedPhase,
-          attempt,
-          checked.issues.map((issue) => `${issue.where}: ${issue.message}`),
-        );
+        const issues = checked.issues.map((issue) => `${issue.where}: ${issue.message}`);
+        this.traceRejectedAmendment(failedPhase, attempt, issues);
+        previousIssues = issues;
         continue;
       }
-
-      this.applyAmendment(
-        failedIndex,
-        failedPhase,
-        amendment,
-        attempt,
-        checked.pipeline,
-        checked.warnings,
-        evidence,
-      );
+      try {
+        this.applyAmendment(
+          failedIndex,
+          failedPhase,
+          amendment,
+          attempt,
+          checked.pipeline,
+          checked.warnings,
+          evidence,
+        );
+      } catch (error) {
+        const message = (error as Error).message;
+        this.traceRejectedAmendment(failedPhase, attempt, [message]);
+        previousIssues = [message];
+        continue;
+      }
       return true;
     }
     return false;
@@ -680,6 +858,44 @@ export class Executor {
       .filter((gate) => gate.phaseId === phaseId);
     if (gates.length) parts.push(`Gates: ${JSON.stringify(gates)}`);
     return parts.filter(Boolean).join('\n\n').slice(-6000);
+  }
+
+  private allowedModelAppointments(): AllowedModelAppointment[] {
+    const seen = new Map<string, AllowedModelAppointment>();
+    const push = (model: string | undefined, effort: ReasoningEffort | undefined): void => {
+      if (!model || model === 'inherit') return;
+      const reasoningEffort = effort ?? this.deps.defaultReasoningEffort ?? 'medium';
+      const key = `${model}|${reasoningEffort}`;
+      if (!seen.has(key)) seen.set(key, { model, reasoningEffort });
+    };
+    if (this.plan) {
+      for (const phase of this.plan.pipeline.phases) {
+        if (phase.kind !== 'agent') continue;
+        push(phase.model, phase.reasoningEffort);
+      }
+    } else {
+      for (const phase of this.pipeline.phases) {
+        if (phase.kind !== 'agent') continue;
+        const agent = this.agents.find((candidate) => candidate.name === phase.agent);
+        if (phase.model && phase.model !== 'inherit') {
+          push(phase.model, phase.reasoningEffort ?? agent?.reasoningEffort);
+        } else if (agent) {
+          const resolved = resolveAgentExecution(agent, {
+            model: this.deps.defaultModel,
+            reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
+          });
+          push(resolved.model, phase.reasoningEffort ?? resolved.reasoningEffort);
+        }
+      }
+      if (this.deps.defaultModel && this.deps.defaultModel !== 'inherit') {
+        push(this.deps.defaultModel, this.deps.defaultReasoningEffort ?? 'medium');
+      }
+    }
+    return [...seen.values()];
+  }
+
+  private allowedModelIds(): string[] {
+    return [...new Set(this.allowedModelAppointments().map((entry) => entry.model))];
   }
 
   private checkAmendment(
@@ -707,7 +923,6 @@ export class Executor {
         })),
       );
     }
-
     const prefix = this.pipeline.phases.slice(0, failedIndex);
     const immutableNames = new Set(prefix.map((phase) => phase.name));
     for (const phase of amendment.phases) {
@@ -719,20 +934,39 @@ export class Executor {
         });
       }
     }
-
     const pipeline = { ...this.pipeline, phases: [...prefix, ...amendment.phases] };
     const agents = [...this.agents, ...amendment.agents];
     const commandNames = this.deps.project.commands.map((command) => command.name);
+    const allowedIds = this.allowedModelIds();
+    const modelIssues =
+      allowedIds.length > 0
+        ? phaseModelIssues(amendment.phases, allowedIds, failedIndex)
+        : amendment.phases.flatMap((phase, offset): ValidationIssue[] => {
+            if (phase.kind !== 'agent') return [];
+            const where = `phases[${offset + failedIndex}] ${phase.name}`;
+            const missing: ValidationIssue[] = [];
+            if (!phase.model || phase.model === 'inherit') {
+              missing.push({
+                level: 'error',
+                where,
+                message: 'an agent phase must name its own model rather than inheriting one',
+              });
+            }
+            if (!phase.reasoningEffort) {
+              missing.push({
+                level: 'error',
+                where,
+                message: 'an agent phase must name its own reasoning effort',
+              });
+            }
+            return missing;
+          });
     issues.push(
       ...validatePipeline(pipeline, agents, commandNames, knownEnvelopes),
       ...preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
         scaffold: this.deps.project.scaffold === true,
       }),
-      // An amendment inherits the confirmed plan's explicit appointments: it
-      // may re-cast a phase onto any model that plan already reaches, but the
-      // engine has no catalog here, so anything else is refused rather than
-      // silently falling back to the install default.
-      ...phaseModelIssues(amendment.phases, this.confirmedModelIds(), failedIndex),
+      ...modelIssues,
       ...generatedCompositionIssues(
         { phases: amendment.phases },
         amendment.agents,
@@ -749,15 +983,6 @@ export class Executor {
     return { ok: true, pipeline, warnings: uniqueIssues(issues) };
   }
 
-  /** The models the operator confirmed on the plan card, in plan order. */
-  private confirmedModelIds(): string[] {
-    const ids = new Set<string>();
-    for (const phase of this.plan?.pipeline.phases ?? []) {
-      if (phase.kind === 'agent' && phase.model && phase.model !== 'inherit') ids.add(phase.model);
-    }
-    return [...ids];
-  }
-
   private applyAmendment(
     failedIndex: number,
     failedPhase: PhaseDef,
@@ -768,13 +993,24 @@ export class Executor {
     evidence: string,
   ): void {
     const previousTail = this.pipeline.phases.slice(failedIndex);
-    const queuedIds = previousTail.slice(1).map((phase) => this.phaseId(phase.name));
-    const plan: GeneratedRunPlan = {
-      ...this.plan!,
-      pipeline,
-      agents: [...this.plan!.agents, ...amendment.agents],
-      warnings: uniqueIssues([...this.plan!.warnings, ...warnings]),
-    };
+    const queuedIds: string[] = [];
+    for (const phase of previousTail.slice(1)) {
+      const id = this.phaseIds.get(phase.name);
+      if (!id) continue;
+      const status = this.deps.tracer.phase(id)?.status;
+      if (status === 'running') {
+        throw new Error(`cannot replace phase ${id}: it is still running`);
+      }
+      if (status === 'queued') queuedIds.push(id);
+    }
+    const plan: GeneratedRunPlan | null = this.plan
+      ? {
+          ...this.plan,
+          pipeline,
+          agents: [...this.plan.agents, ...amendment.agents],
+          warnings: uniqueIssues([...this.plan.warnings, ...warnings]),
+        }
+      : null;
     const ids = this.deps.tracer.amendRun({
       runId: this.deps.runId,
       failedPhaseId: this.phaseId(failedPhase.name),
@@ -788,13 +1024,14 @@ export class Executor {
       after: amendment.phases.map((phase) => phase.name),
       newPhases: amendment.phases,
       engineer: this.deps.engineer,
+      agents: amendment.agents,
     });
-
     for (const phase of previousTail) {
       this.phaseIds.delete(phase.name);
       this.envelopes.delete(phase.name);
       this.commandResults.delete(phase.name);
       this.feedback.delete(phase.name);
+      this.recoveryNotes.delete(phase.name);
     }
     for (const [name, id] of ids) this.phaseIds.set(name, id);
     this.agents.push(...amendment.agents);
