@@ -31,7 +31,7 @@ export default tseslint.config(
       '.foundry-worktrees/**',
       '.codegraph',
       // Generated / vendor-ish; not hand-edited.
-      'package-lock.json',
+      'pnpm-lock.yaml',
       // Plain Node ESM helpers without a TS project service.
       'scripts/**/*.mjs',
       '.factory/skills/**/*.mjs',

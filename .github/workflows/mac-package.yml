@@ -14,8 +14,8 @@ on:
       - 'assets/**'
       - 'scripts/**'
       - 'package.json'
-      - 'package-lock.json'
-      - '.npmrc'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - 'electron.vite.config.ts'
       - 'electron-builder.yml'
       - 'tsconfig.json'
@@ -41,12 +41,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Set rolling release version
         # electron-updater only offers an update when latest-mac.yml's version
@@ -64,7 +70,14 @@ jobs:
             const [maj, min] = require('./package.json').version.split('.');
             maj + '.' + min + '.' + process.env.GITHUB_RUN_NUMBER
           ")
-          npm version "$NEW" --no-git-tag-version --allow-same-version
+          # pnpm has no `version --allow-same-version`, so stamp package.json
+          # directly with node instead of shelling out to the package manager.
+          NEW_VERSION="$NEW" node -e "
+            const fs = require('node:fs');
+            const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
+            pkg.version = process.env.NEW_VERSION;
+            fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
           echo "Version (local only): $PREV -> $NEW"
           echo "RELEASE_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
 
@@ -110,10 +123,10 @@ jobs:
             exit 1
           fi
 
-      - name: Install npm dependencies
+      - name: Install dependencies
         run: |
           set -euo pipefail
-          npm ci
+          pnpm install --frozen-lockfile
           # better-sqlite3 needs the electron ABI; package rebuilds it, but
           # fail early if the binding is missing after install scripts.
           test -d node_modules/electron
@@ -134,16 +147,16 @@ jobs:
           /usr/bin/xcrun --find notarytool
           /usr/bin/xcrun --find stapler
           node -v
-          npm -v
+          pnpm -v
 
-          npm run build
-          npm run icons
+          pnpm run build
+          pnpm run icons
           # extraResources copies resources/bridge into the app, and
           # mac.binaries then codesigns Contents/Resources/bridge/cli-proxy-api.
           # Without the fetch that path does not exist and signing fails.
-          npm run fetch:bridge
+          pnpm run fetch:bridge
           test -x resources/bridge/cli-proxy-api
-          npx electron-builder --mac --arm64 --publish never
+          pnpm exec electron-builder --mac --arm64 --publish never
           APP="dist/mac-arm64/Foundry.app"
           test -d "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"

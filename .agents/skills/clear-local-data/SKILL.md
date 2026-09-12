@@ -26,7 +26,7 @@ Do not retype the wipe. Execute the skill script and report its output.
 bash .agents/skills/clear-local-data/scripts/clear-local-data.sh
 ```
 
-Pass `--dev` only if the user is resetting the `npm run dev` build as well. That
+Pass `--dev` only if the user is resetting the `pnpm run dev` build as well. That
 wipes `~/Library/Application Support/Electron/foundry` (not the shared
 `Electron/` directory).
 

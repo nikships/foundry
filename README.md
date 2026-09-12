@@ -159,7 +159,7 @@ Failed runs keep their worktree so you can open it, learn, and discard deliberat
 4. Pick a pipeline (or fork one into your own shape) and hit run
 5. Watch the waterfall, inspect any phase, merge when you're happy
 
-No `npm ci`. No setup script. Just download and build.
+No `pnpm install`. No setup script. Just download and build.
 
 ## Philosophy
 

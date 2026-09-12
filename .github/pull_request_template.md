@@ -4,7 +4,7 @@
 
 ## How verified
 
-- [ ] `npm run check` (typecheck, lint, format, knip, coverage, build, css, docs, audit)
+- [ ] `pnpm run check` (typecheck, lint, format, knip, coverage, build, css, docs, audit)
 - [ ] CI green on this PR
 
 <!-- If any gate could not run in your environment, say which and why — do not

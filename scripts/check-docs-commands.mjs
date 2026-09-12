@@ -8,18 +8,18 @@
 //
 // It is deliberately STATIC: it parses command references and asserts the
 // referenced target exists. It never executes a documented command, so prose,
-// GUI-only commands (`npm run dev`), and platform-specific packaging
-// (`npm run package`) are safe to reference and are validated by existence only.
+// GUI-only commands (`pnpm run dev`), and platform-specific packaging
+// (`pnpm run package`) are safe to reference and are validated by existence only.
 //
 // Checks
-//   A  every `npm run <script>` referenced in docs/Makefile/workflows exists
+//   A  every `pnpm run <script>` referenced in docs/Makefile/workflows exists
 //   B  every `make <target>` referenced in docs exists in the Makefile
 //   C  the core commands an agent needs are documented in the root AGENTS.md
-//   D  every step composed into `npm run check` is named in the root AGENTS.md
+//   D  every step composed into `pnpm run check` is named in the root AGENTS.md
 //   E  every package.json script is documented somewhere, or explicitly internal
 //   F  every `scripts/<file>` referenced in docs or package.json exists on disk
 //
-// Usage: node scripts/check-docs-commands.mjs   (npm run check:docs)
+// Usage: node scripts/check-docs-commands.mjs   (pnpm run check:docs)
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
@@ -41,7 +41,7 @@ const MARKDOWN_DOCS = [
   ...findNestedAgentDocs('apps/desktop/src'),
 ];
 
-/** Non-markdown files that also invoke npm scripts and can therefore go stale. */
+/** Non-markdown files that also invoke pnpm scripts and can therefore go stale. */
 const COMMAND_SOURCES = ['Makefile', ...findWorkflows()];
 
 /**
@@ -50,28 +50,40 @@ const COMMAND_SOURCES = ['Makefile', ...findWorkflows()];
  * iterating. Keep this list small — it is the floor, not an index.
  */
 const CORE_COMMANDS = [
-  'npm ci',
-  'npm run check',
-  'npm run typecheck',
-  'npm run lint',
-  'npm run format:check',
-  'npm test',
-  'npm run build',
+  'pnpm install --frozen-lockfile',
+  'pnpm run check',
+  'pnpm run typecheck',
+  'pnpm run lint',
+  'pnpm run format:check',
+  'pnpm test',
+  'pnpm run build',
 ];
 
 /**
  * Scripts that intentionally have no prose entry.
- *   icons        — an implementation detail of `npm run package`, never run alone
+ *   icons        — an implementation detail of `pnpm run package`, never run alone
  *   engine:demo  — a local scratch harness for engine work, not part of any gate
  * Anything else that is undocumented is drift and fails check E.
  */
 const INTERNAL_SCRIPTS = new Set(['icons', 'engine:demo']);
 
 /**
- * npm subcommands that are not repository scripts, so `npm <x>` references to
+ * pnpm subcommands that are not repository scripts, so `pnpm <x>` references to
  * them must not be treated as missing scripts.
  */
-const NPM_BUILTINS = new Set(['ci', 'install', 'test', 'audit', 'ping', 'run', 'exec', 'version']);
+const PNPM_BUILTINS = new Set([
+  'install',
+  'add',
+  'remove',
+  'update',
+  'audit',
+  'exec',
+  'dlx',
+  'run',
+  'test',
+  'version',
+  'approve-builds',
+]);
 
 const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
 const scripts = pkg.scripts ?? {};
@@ -85,7 +97,7 @@ function fail(location, message, hint) {
 // ── Collect command references ──────────────────────────────────────────────
 
 /** @type {{script: string, location: string}[]} */
-const npmRunRefs = [];
+const pnpmRunRefs = [];
 /** @type {{target: string, location: string}[]} */
 const makeRefs = [];
 /** @type {{path: string, location: string}[]} */
@@ -120,7 +132,7 @@ for (const [name, body] of Object.entries(scripts)) {
  * Pull command references out of one file.
  *
  * For markdown we scan fenced code blocks AND inline code spans, because the
- * docs legitimately use both ("Run `npm run format` to fix."). For plain files
+ * docs legitimately use both ("Run `pnpm run format` to fix."). For plain files
  * (Makefile, workflows) we scan every non-comment line.
  */
 function collectFromText(text, docPath, { markdown }) {
@@ -141,29 +153,29 @@ function collectFromText(text, docPath, { markdown }) {
     }
 
     if (/^\s*#/.test(rawLine)) return;
-    // YAML prose fields ("- name: Install npm dependencies") are not commands.
+    // YAML prose fields ("- name: Install pnpm dependencies") are not commands.
     if (/^\s*-?\s*(?:name|description|title):/.test(rawLine)) return;
     collectFromLine(rawLine, location);
   });
 }
 
 function collectFromLine(line, location) {
-  // Strip trailing shell comments so `npm run check   # mirrors ci.yml` parses.
+  // Strip trailing shell comments so `pnpm run check   # mirrors ci.yml` parses.
   const command = line.replace(/#.*$/, '');
 
-  for (const match of command.matchAll(/\bnpm\s+run\s+([\w:.-]+)/g)) {
-    npmRunRefs.push({ script: match[1], location });
+  for (const match of command.matchAll(/\bpnpm\s+run\s+([\w:.-]+)/g)) {
+    pnpmRunRefs.push({ script: match[1], location });
   }
 
-  // `npm test`, `npm ci`, ... — flag anything that is neither a builtin nor a script.
-  for (const match of command.matchAll(/\bnpm\s+(?!run\b)([\w:.-]+)/g)) {
+  // `pnpm test`, `pnpm ci`, ... — flag anything that is neither a builtin nor a script.
+  for (const match of command.matchAll(/\bpnpm\s+(?!run\b)([\w:.-]+)/g)) {
     const word = match[1];
-    if (NPM_BUILTINS.has(word) || word.startsWith('-')) continue;
+    if (PNPM_BUILTINS.has(word) || word.startsWith('-')) continue;
     if (!(word in scripts)) {
       fail(
         location,
-        `unknown npm subcommand or script: \`npm ${word}\``,
-        'Use `npm run <script>` for repository scripts, or fix the command.',
+        `unknown pnpm subcommand or script: \`pnpm ${word}\``,
+        'Use `pnpm run <script>` for repository scripts, or fix the command.',
       );
     }
   }
@@ -179,12 +191,12 @@ function collectFromLine(line, location) {
   }
 }
 
-// ── A: referenced npm scripts exist ────────────────────────────────────────
-for (const { script, location } of npmRunRefs) {
+// ── A: referenced pnpm scripts exist ────────────────────────────────────────
+for (const { script, location } of pnpmRunRefs) {
   if (script in scripts) continue;
   fail(
     location,
-    `unknown npm script: \`npm run ${script}\``,
+    `unknown pnpm script: \`pnpm run ${script}\``,
     `package.json defines no "${script}" script. Update the doc, or add the script.`,
   );
 }
@@ -214,13 +226,13 @@ for (const command of CORE_COMMANDS) {
 // ── D: the documented gate matches the real `check` script ────────────────
 const checkScript = scripts.check ?? '';
 if (!checkScript) {
-  fail('package.json', 'no "check" script defined', 'The repository gate is `npm run check`.');
+  fail('package.json', 'no "check" script defined', 'The repository gate is `pnpm run check`.');
 } else {
   for (const step of checkSteps(checkScript)) {
     if (rootAgents.includes(step)) continue;
     fail(
       'AGENTS.md',
-      `\`npm run check\` runs \`${step}\`, but the root AGENTS.md never mentions it`,
+      `\`pnpm run check\` runs \`${step}\`, but the root AGENTS.md never mentions it`,
       'Document the new gate step so agents know what must pass before submitting.',
     );
   }
@@ -234,11 +246,12 @@ const allDocText = MARKDOWN_DOCS.filter((p) => existsSync(join(repoRoot, p)))
 for (const name of Object.keys(scripts)) {
   if (INTERNAL_SCRIPTS.has(name)) continue;
   const documented =
-    allDocText.includes(`npm run ${name}`) || (name === 'test' && allDocText.includes('npm test'));
+    allDocText.includes(`pnpm run ${name}`) ||
+    (name === 'test' && allDocText.includes('pnpm test'));
   if (documented) continue;
   fail(
     'AGENTS.md',
-    `undocumented npm script: \`npm run ${name}\``,
+    `undocumented pnpm script: \`pnpm run ${name}\``,
     `Document it, or add "${name}" to INTERNAL_SCRIPTS in scripts/check-docs-commands.mjs with a reason.`,
   );
 }
@@ -263,7 +276,7 @@ if (problems.length > 0) {
 }
 
 console.log(
-  `check-docs-commands: ok (${npmRunRefs.length} npm, ${makeRefs.length} make, ` +
+  `check-docs-commands: ok (${pnpmRunRefs.length} pnpm, ${makeRefs.length} make, ` +
     `${scriptFileRefs.length} script refs across ${MARKDOWN_DOCS.length} docs + ` +
     `${COMMAND_SOURCES.length} command sources)`,
 );
@@ -273,10 +286,10 @@ console.log(
 /** Split a composed `check` script into the individual gates it runs. */
 function checkSteps(script) {
   const steps = new Set();
-  for (const match of script.matchAll(/\bnpm\s+run\s+([\w:.-]+)/g))
-    steps.add(`npm run ${match[1]}`);
-  for (const match of script.matchAll(/\bnpm\s+(?!run\b)([\w:.-]+)/g)) {
-    if (NPM_BUILTINS.has(match[1])) steps.add(`npm ${match[1]}`);
+  for (const match of script.matchAll(/\bpnpm\s+run\s+([\w:.-]+)/g))
+    steps.add(`pnpm run ${match[1]}`);
+  for (const match of script.matchAll(/\bpnpm\s+(?!run\b)([\w:.-]+)/g)) {
+    if (PNPM_BUILTINS.has(match[1])) steps.add(`pnpm ${match[1]}`);
   }
 
   // The concurrent runner keeps the complete gate in one explicit, static
@@ -286,7 +299,7 @@ function checkSteps(script) {
     const runner = readFileSync(join(repoRoot, 'scripts/run-check.mjs'), 'utf8');
     const checkList = runner.match(/const checks = \[([\s\S]*?)\];/);
     if (checkList) {
-      for (const match of checkList[1].matchAll(/'([\w:.-]+)'/g)) steps.add(`npm run ${match[1]}`);
+      for (const match of checkList[1].matchAll(/'([\w:.-]+)'/g)) steps.add(`pnpm run ${match[1]}`);
     }
   }
 
@@ -335,7 +348,7 @@ function findNestedAgentDocs(root) {
   }
 }
 
-/** Workflow files, which invoke npm scripts and drift when scripts are renamed. */
+/** Workflow files, which invoke pnpm scripts and drift when scripts are renamed. */
 function findWorkflows() {
   const dir = join(repoRoot, '.github/workflows');
   if (!existsSync(dir) || !statSync(dir).isDirectory()) return [];

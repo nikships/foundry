@@ -21,8 +21,8 @@ Menu commands are one-way `foundryMenu` subscriptions, not invoke channels.
 ## Validation
 
 ```bash
-npx vitest run apps/desktop/tests/main/ipc/ipc-surface.test.ts
-npx vitest run apps/desktop/tests/main/ipc/ipc-clone.test.ts
+pnpm exec vitest run apps/desktop/tests/main/ipc/ipc-surface.test.ts
+pnpm exec vitest run apps/desktop/tests/main/ipc/ipc-clone.test.ts
 ```
 
 Surface tests verify that every IPC constant has a wrapper and payloads survive `structuredClone`.

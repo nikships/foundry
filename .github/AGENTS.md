@@ -12,7 +12,7 @@ GitHub workflows own CI, security checks, and signed release automation.
 - Required checks are `verify`, `android`, and `actionlint`. E2E remains informational.
 - Keep `codeql.yml` and `dependency-review.yml` separate from the main CI workflow.
 
-`npm run check` is the canonical local pre-submit gate; do not duplicate its command chain in nested guides.
+`pnpm run check` is the canonical local pre-submit gate; do not duplicate its command chain in nested guides.
 
 ## Packaging
 

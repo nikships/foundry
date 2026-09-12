@@ -11,7 +11,7 @@ on:
       - 'scripts/**'
       - 'assets/**'
       - 'package.json'
-      - 'package-lock.json'
+      - 'pnpm-lock.yaml'
       - 'electron.vite.config.ts'
       - 'electron-builder.yml'
       - '*.config.*'
@@ -45,50 +45,56 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: File size guardrails
-        run: npm run check:files
+        run: pnpm run check:files
 
       - name: Duplicate code
-        run: npm run check:duplicate
+        run: pnpm run check:duplicate
 
       - name: Format
-        run: npm run format:check
+        run: pnpm run format:check
 
       - name: Documented commands
         # Static check that the commands in AGENTS.md / README / Makefile /
-        # workflows still resolve to real npm scripts and make targets.
-        run: npm run check:docs
+        # workflows still resolve to real pnpm scripts and make targets.
+        run: pnpm run check:docs
 
       - name: Dead code (knip)
-        run: npm run knip
+        run: pnpm run knip
 
       - name: Test
         # Coverage thresholds live in vitest.config.ts, so the local gate
-        # (npm run check) and CI enforce exactly the same floor.
-        run: npm run test:coverage
+        # (pnpm run check) and CI enforce exactly the same floor.
+        run: pnpm run test:coverage
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Dependency audit
         # Fails on high/critical only so moderate noise does not block PRs.
-        run: npm run audit:deps
+        run: pnpm run audit:deps
 
   # ── Android unit tests ─────────────────────────────────────────────────────
   android:
@@ -132,7 +138,7 @@ jobs:
 
   # ── Electron UI smoke (advisory) ───────────────────────────────────────────
   # Playwright launches the built app against isolated fixtures. Needs a real
-  # macOS window server, so it is NOT part of `npm run check` and is not a
+  # macOS window server, so it is NOT part of `pnpm run check` and is not a
   # required status check. Promote once the flake rate is known.
   e2e:
     name: e2e
@@ -142,21 +148,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Electron UI smoke
-        run: npm run test:e2e
+        run: pnpm run test:e2e
 
       - name: Upload Playwright artifacts
         if: always()
