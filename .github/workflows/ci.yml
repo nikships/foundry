@@ -19,10 +19,11 @@ on:
       - '.githooks/**'
       - '.jscpd.json'
       - '.github/workflows/**'
-  # No paths filter here, on purpose. verify, android, and actionlint are required checks
-  # on main, and a required check that never starts is never satisfied: a PR
-  # touching only docs or assets is then blocked forever, and even an admin
-  # merge is refused. All required jobs are cheap enough to run on every PR.
+  # No paths filter here, on purpose. static, verify, android, and actionlint
+  # are required checks on main, and a required check that never starts is
+  # never satisfied: a PR touching only docs or assets is then blocked forever,
+  # and even an admin merge is refused. All required jobs are cheap enough to
+  # run on every PR.
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -36,10 +37,13 @@ defaults:
     shell: bash
 
 jobs:
-  # ── Quality gates (types / lint / format / dead code / tests / build / audit)
-  verify:
-    name: verify
-    runs-on: macos-26
+  # ── Static gates (types / lint / format / dead code / build / audit) ──────
+  # These only read source and write ignored output dirs. They do not need
+  # Darwin, and running them here leaves the macOS runner free for Vitest.
+  # Linux also keeps `cache: pnpm`: store tarball restore is a net win there.
+  static:
+    name: static
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -85,10 +89,8 @@ jobs:
       - name: Dead code (knip)
         run: pnpm run knip
 
-      - name: Test
-        # Coverage thresholds live in vitest.config.ts, so the local gate
-        # (pnpm run check) and CI enforce exactly the same floor.
-        run: pnpm run test:coverage
+      - name: CSS collisions
+        run: pnpm run check:css
 
       - name: Build
         run: pnpm run build
@@ -96,6 +98,39 @@ jobs:
       - name: Dependency audit
         # Fails on high/critical only so moderate noise does not block PRs.
         run: pnpm run audit:deps
+
+  # ── Coverage suite ─────────────────────────────────────────────────────────
+  # Vitest uses real Git scratch repos and exercises macOS PATH resolution.
+  # Keep it on macos-26 so the required gate matches the product OS.
+  verify:
+    name: verify
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        # No `version:` input: the packageManager field in package.json is the
+        # single pin, and action-setup errors if both are set.
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Setup Node
+        # No `cache: pnpm` on macOS: hosted tarball restore was slower than a
+        # cold `pnpm install --frozen-lockfile` (~37s restore vs ~33s install).
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        # Coverage thresholds live in vitest.config.ts, so the local gate
+        # (pnpm run check) and CI enforce exactly the same floor.
+        run: pnpm run test:coverage
 
   # ── Android unit tests ─────────────────────────────────────────────────────
   android:
@@ -157,11 +192,10 @@ jobs:
           run_install: false
 
       - name: Setup Node
+        # No `cache: pnpm` on macOS: see the verify job.
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install
         run: pnpm install --frozen-lockfile

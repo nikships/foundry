@@ -49,11 +49,11 @@ jobs:
           run_install: false
 
       - name: Setup Node
+        # No `cache: pnpm` on macOS: hosted tarball restore was slower than a
+        # cold `pnpm install --frozen-lockfile`. Linux CI jobs still cache.
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Set rolling release version
         # electron-updater only offers an update when latest-mac.yml's version
