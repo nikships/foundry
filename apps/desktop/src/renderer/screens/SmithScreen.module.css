@@ -113,16 +113,28 @@
   flex: none;
   display: flex;
   align-items: flex-end;
-  gap: var(--s3);
+  gap: var(--s2);
   padding-top: var(--s3);
   border-top: 1px solid var(--line-faint);
 }
 
+/*
+ * At rest the composer is one bar: a single text line sized to the same 34px
+ * height as the Send button (20px line + 2×6px padding + 2px border), so the
+ * box and the button read as one aligned control instead of mismatched ones.
+ * field-sizing grows the box with the draft up to the six-line cap while the
+ * button rides its bottom edge.
+ */
 .input {
   flex: 1;
+  min-width: 0;
   resize: none;
-  min-height: 44px;
+  field-sizing: content;
+  min-height: 34px;
   max-height: 160px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  line-height: 20px;
 }
 
 .composerActions {
