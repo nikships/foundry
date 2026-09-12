@@ -8,14 +8,22 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import * as os from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../helpers/tmp.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
 import { Tracer } from '../../../src/main/trace/tracer.js';
 import { Executor } from '../../../src/main/engine/executor.js';
 import { continueDetail, continueEligibility } from '../../../src/main/engine/continue-run.js';
-import { CompanionHost, lanAddress, lanInterface } from '../../../src/main/companion/host.js';
+import {
+  CompanionHost,
+  isTailscaleAddress,
+  tailscaleAddress,
+  lanAddress,
+  lanInterface,
+} from '../../../src/main/companion/host.js';
 import { PairingSecrets, PAIRING_SECRET_TTL_MS } from '../../../src/main/companion/pairing.js';
 import { DeviceStore, LAST_SEEN_DEBOUNCE_MS } from '../../../src/main/companion/devices.js';
 import { defaultProject } from '../../../src/main/store/projects.js';
@@ -54,6 +62,12 @@ import type {
 } from '../../../src/shared/types.js';
 import { makeFakeGh, type FakeGh } from '../../helpers/fake-gh.js';
 import { ScriptedAgent, type ScriptedAgentOptions } from '../../helpers/scripted-transport.js';
+
+vi.mock('node:os', { spy: true });
+
+// macOS needs an explicit alias for 127.0.0.2; use an assigned local interface
+// there. Requests still stay on this machine and never contact another host.
+const secondBind = process.platform === 'darwin' ? lanAddress()! : '127.0.0.2';
 
 function sh(cwd: string, argv: string[]): string {
   try {
@@ -351,7 +365,7 @@ interface Harness {
   changes: string[];
   settings: () => AppSettings;
   /** A second host over the same support dir: what a relaunch looks like. */
-  relaunch: () => CompanionHost;
+  relaunch: (tailscaleHost?: string) => CompanionHost;
 }
 
 let h: Harness;
@@ -391,7 +405,7 @@ beforeEach(async () => {
     team: { id: 'team-foundry', name: 'Foundry' },
     state: { id: 'backlog', name: 'Backlog', type: 'backlog' },
   };
-  const makeHost = (): CompanionHost =>
+  const makeHost = (tailscaleHost?: string): CompanionHost =>
     new CompanionHost({
       supportDir: support,
       projects: () => [project],
@@ -487,6 +501,7 @@ beforeEach(async () => {
         },
       },
       bindHost: '127.0.0.1',
+      ...(tailscaleHost ? { tailscaleHost } : {}),
       gh: { bin: gh.bin },
     });
   const host = makeHost();
@@ -510,6 +525,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await h.host.stop();
+  vi.mocked(os.networkInterfaces).mockReset();
+  vi.restoreAllMocks();
 });
 
 async function pairPhone(name = 'Test Phone'): Promise<CompanionPairResult> {
@@ -1571,6 +1588,130 @@ describe('host lifecycle', () => {
     expect(res2.status).toBe(401);
     const err = (await res2.json()) as CompanionError;
     expect(err.error.code).toBe('pairing_invalid');
+  });
+});
+
+describe('Tailscale companion listener', () => {
+  it.each([
+    ['100.64.0.0', true],
+    ['100.127.255.255', true],
+    ['100.100.10.20', true],
+    ['100.63.255.255', false],
+    ['100.128.0.0', false],
+    ['192.168.1.2', false],
+    ['101.64.0.1', false],
+    ['100.64.256.1', false],
+    ['100.64.0', false],
+    ['::1', false],
+  ])('classifies %s as CGNAT: %s', (address, expected) => {
+    expect(isTailscaleAddress(address)).toBe(expected);
+  });
+
+  it('discovers CGNAT independent of adapter names without preferring it over LAN', () => {
+    const entry = (address: string, internal = false): os.NetworkInterfaceInfo => ({
+      address,
+      internal,
+      family: 'IPv4',
+      netmask: '255.255.255.0',
+      mac: '00:00:00:00:00:00',
+      cidr: null,
+    });
+    const interfaces = vi.mocked(os.networkInterfaces).mockReturnValue({
+      lo: [entry('100.64.0.1', true)],
+      unknown: undefined,
+      en9: [entry('100.88.0.1')],
+      en0: [entry('192.168.1.22')],
+    });
+    expect(tailscaleAddress()).toBe('100.88.0.1');
+    expect(lanInterface()).toMatchObject({ address: '192.168.1.22', usable: true });
+    interfaces.mockReturnValue({ utun4: [entry('100.64.0.2')] });
+    expect(tailscaleAddress()).toBe('100.64.0.2');
+    interfaces.mockReturnValue({ en0: [entry('192.168.1.22')], unknown: undefined });
+    expect(tailscaleAddress()).toBeNull();
+  });
+
+  it('shares pairing, authentication and revocation across two specific same-port binds', async () => {
+    await h.host.stop();
+    const host = h.relaunch(secondBind);
+    try {
+      const state = await host.start();
+      const lan = state.origin!;
+      const tail = state.tailscaleOrigin!;
+      expect(tail).toBe(`http://${secondBind}:${new URL(lan).port}`);
+      expect(await host.start()).toEqual(state);
+      const payload = host.pairingPayload()!;
+      expect(payload).toMatchObject({ origin: lan, origins: [lan, tail], protocolVersion: 6 });
+      expect((await fetch(`${tail}/v1/session`)).status).toBe(401);
+      const request = {
+        method: 'POST',
+        body: JSON.stringify({
+          protocolVersion: 6,
+          secret: payload.secret,
+          deviceName: 'Tailnet phone',
+        }),
+      };
+      const pairedResponse = await fetch(`${tail}/pair`, request);
+      expect(pairedResponse.status).toBe(200);
+      const paired = (await pairedResponse.json()) as CompanionPairResult;
+      expect((await fetch(`${lan}/pair`, request)).status).toBe(401);
+      const auth = { headers: { authorization: `Bearer ${paired.token}` } };
+      for (const origin of [lan, tail]) {
+        const session = await fetch(`${origin}/v1/session`, auth);
+        expect(session.status).toBe(200);
+        expect(await session.json()).toMatchObject({
+          desktopId: paired.desktopId,
+          protocolVersion: 6,
+        });
+      }
+      expect(host.unpair(paired.deviceId)).toBe(true);
+      expect((await fetch(`${tail}/v1/session`, auth)).status).toBe(401);
+      await host.stop();
+      expect(host.state()).toMatchObject({ running: false, origin: null, tailscaleOrigin: null });
+      expect(host.pairingPayload()).toBeNull();
+      for (const origin of [lan, tail])
+        await expect(fetch(`${origin}/v1/session`)).rejects.toThrow();
+      expect(await host.start()).toMatchObject({ origin: lan, tailscaleOrigin: tail });
+      expect((await fetch(`${tail}/pair`, request)).status).toBe(401);
+    } finally {
+      await host.stop();
+    }
+  });
+
+  it('does not discover a second interface for a pinned LAN test bind', () => {
+    expect(h.host.state().tailscaleOrigin).toBeNull();
+    expect(h.host.pairingPayload()?.origins).toEqual([h.origin()]);
+  });
+
+  it('does not bind or advertise the same address twice', async () => {
+    await h.host.stop();
+    const host = h.relaunch('127.0.0.1');
+    try {
+      const state = await host.start();
+      expect(state.tailscaleOrigin).toBe(state.origin);
+      expect(state.detail).toBeUndefined();
+      expect(host.pairingPayload()?.origins).toEqual([state.origin]);
+    } finally {
+      await host.stop();
+    }
+  });
+
+  it('keeps LAN working when the same Tailscale port is occupied', async () => {
+    const port = Number(new URL(h.origin()).port);
+    await h.host.stop();
+    const occupied = createServer();
+    await new Promise<void>((resolve) => occupied.listen(port, secondBind, resolve));
+    const host = h.relaunch(secondBind);
+    try {
+      const state = await host.start();
+      expect(state.running).toBe(true);
+      expect(state.tailscaleOrigin).toBeNull();
+      expect(state.detail).toContain('could not bind Tailscale');
+      expect(host.pairingPayload()?.origins).toEqual([state.origin]);
+      expect((await fetch(`${state.origin}/v1/session`)).status).toBe(401);
+    } finally {
+      await host.stop();
+      await new Promise<void>((resolve) => occupied.close(() => resolve()));
+    }
   });
 });
 

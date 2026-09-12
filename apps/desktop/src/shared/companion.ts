@@ -40,7 +40,7 @@ import type {
 } from './ipc-contract.js';
 
 /**
- * Bumped whenever a route, payload, or auth rule changes shape. The QR carries
+ * Bumped for incompatible route, payload, or auth changes (not optional additions). The QR carries
  * it so a phone knows before pairing, and the pair exchange enforces it so a
  * stale client gets a readable refusal instead of a half-working session.
  */
@@ -55,6 +55,8 @@ export interface CompanionPairingPayload {
   protocolVersion: number;
   /** The LAN origin the phone should call, e.g. `http://192.168.1.20:52810`. */
   origin: string;
+  /** Preferred connection order: LAN, then Tailscale. Absent on older v6 hosts. */
+  origins?: string[];
   /** Stable id of this desktop install, so a re-pair recognises the same Mac. */
   desktopId: string;
   /** The human name the phone shows: "Paired with ⟨desktopName⟩". */
@@ -328,6 +330,8 @@ export interface CompanionHostState {
   running: boolean;
   /** The origin the host is serving on, null while stopped. */
   origin: string | null;
+  /** Separately bound Tailscale origin, null when unavailable or stopped. */
+  tailscaleOrigin: string | null;
   protocolVersion: number;
   devices: CompanionDevice[];
   /**

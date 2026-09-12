@@ -51,6 +51,7 @@ class HttpCompanionRepository(
         deviceName: String
     ): Result<CompanionPairResult> = withContext(Dispatchers.IO) {
         try {
+            val origins = normalizeOrigins(payload.origins + payload.origin)
             val reqBody = json.encodeToString(
                 CompanionPairRequest.serializer(),
                 CompanionPairRequest(
@@ -60,46 +61,51 @@ class HttpCompanionRepository(
                 )
             ).toRequestBody(jsonMediaType)
 
-            val request = Request.Builder()
-                .url("${payload.origin}/pair")
-                .post(reqBody)
-                .build()
-
-            val response = client.newCall(request).execute()
-            val bodyString = response.body?.string().orEmpty()
-
-            if (!response.isSuccessful) {
-                val errorMsg = when (response.code) {
-                    401 -> "That code is expired or already used. Foundry shows a fresh one in Settings → Companion."
-                    409 -> "Protocol mismatch: Desktop is v${payload.protocolVersion}, Phone is v$COMPANION_PROTOCOL_VERSION. Update the older app."
-                    else -> "Pairing failed (HTTP ${response.code}): $bodyString"
+            for (origin in origins) {
+                ensureActive()
+                val request = Request.Builder().url("$origin/pair").post(reqBody).build()
+                try {
+                    client.newCall(request).execute().use { response ->
+                        val bodyString = response.body?.string().orEmpty()
+                        // A reachable host's rejection must not spend the secret again elsewhere.
+                        if (!response.isSuccessful) {
+                            val errorMsg = when (response.code) {
+                                401 -> "That code is expired or already used. Foundry shows a fresh one in Settings → Companion."
+                                409 -> "Protocol mismatch: Desktop is v${payload.protocolVersion}, Phone is v$COMPANION_PROTOCOL_VERSION. Update the older app."
+                                else -> "Pairing failed (HTTP ${response.code}): $bodyString"
+                            }
+                            return@withContext Result.failure(IOException(errorMsg))
+                        }
+                        val pairResult = json.decodeFromString(CompanionPairResult.serializer(), bodyString)
+                        val session = PairedSession(
+                            token = pairResult.token,
+                            desktopId = pairResult.desktopId,
+                            desktopName = pairResult.desktopName,
+                            hostOrigin = origin,
+                            pairedAt = java.time.Instant.now().toString(),
+                            protocolVersion = pairResult.protocolVersion,
+                            origins = origins
+                        )
+                        consecutiveFailures = 0
+                        reconnectJob?.cancel()
+                        _activeSession.value = session
+                        _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
+                        return@withContext Result.success(pairResult)
+                    }
+                } catch (_: IOException) {
+                    // Try the next advertised interface only on a transport failure.
                 }
-                return@withContext Result.failure(IOException(errorMsg))
             }
-
-            val pairResult = json.decodeFromString(CompanionPairResult.serializer(), bodyString)
-            val session = PairedSession(
-                token = pairResult.token,
-                desktopId = pairResult.desktopId,
-                desktopName = pairResult.desktopName,
-                hostOrigin = payload.origin,
-                pairedAt = java.time.Instant.now().toString(),
-                protocolVersion = pairResult.protocolVersion
-            )
-            consecutiveFailures = 0
-            reconnectJob?.cancel()
-            _activeSession.value = session
-            _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
-            Result.success(pairResult)
+            Result.failure(IOException("Found the code, but can't reach the desktop — connect this phone to the same Wi-Fi or Tailscale network."))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            val failure = if (e is IOException && e.message?.contains("Pairing failed") != true && e.message?.contains("That code is") != true && e.message?.contains("Protocol mismatch") != true) {
-                IOException("Found the code, but can't reach the desktop (${payload.origin}) — is this phone on the same Wi-Fi?")
-            } else {
-                e
-            }
-            Result.failure(failure)
+            Result.failure(e)
         }
     }
+
+    private fun normalizeOrigins(origins: List<String>): List<String> =
+        origins.map { it.trim().trimEnd('/') }.filter { it.isNotBlank() }.distinct()
 
     override suspend fun unpair() = withContext(Dispatchers.IO) {
         reconnectJob?.cancel()
@@ -177,23 +183,52 @@ class HttpCompanionRepository(
                 if (_activeSession.value == null) break
                 try {
                     val request = authenticatedRequestBuilder("/v1/session").get().build()
-                    val response = client.newCall(request).execute()
-                    if (response.isSuccessful) {
-                        consecutiveFailures = 0
-                        _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
-                        break
-                    } else if (response.code == 401) {
-                        handleUnauthorized()
-                        break
-                    } else {
-                        noteReconnectFailure(session)
+                    client.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            consecutiveFailures = 0
+                            _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
+                        } else if (response.code == 401) {
+                            handleUnauthorized()
+                        } else {
+                            noteReconnectFailure(session)
+                        }
                     }
-                } catch (_: Exception) {
+                } catch (_: IOException) {
+                    if (tryAlternateOrigins(session)) break
                     noteReconnectFailure(session)
                 }
                 backoffDelay = minOf(15000L, backoffDelay * 2)
             }
         }
+    }
+
+    private suspend fun tryAlternateOrigins(session: PairedSession): Boolean {
+        val origins = normalizeOrigins(listOf(session.hostOrigin) + session.origins)
+        for (origin in origins.filter { it != session.hostOrigin }) {
+            currentCoroutineContext().ensureActive()
+            if (_activeSession.value != session) return true
+            val request = Request.Builder().url("$origin/v1/session")
+                .header("Authorization", "Bearer ${session.token}").get().build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (_activeSession.value != session) return true
+                    if (response.code == 401) {
+                        handleUnauthorized()
+                        return true
+                    }
+                    if (response.isSuccessful) {
+                        val promoted = session.copy(hostOrigin = origin, origins = origins)
+                        _activeSession.value = promoted
+                        consecutiveFailures = 0
+                        _connectionStatus.value = ConnectionStatus.Connected(promoted.desktopName, origin)
+                        return true
+                    }
+                }
+            } catch (_: IOException) {
+                // Keep the token and the remaining origins for the next reconnect attempt.
+            }
+        }
+        return false
     }
 
     private fun Request.Builder.postJson(body: String = "{}"): Request.Builder =
@@ -495,6 +530,7 @@ class HttpCompanionRepository(
             reconnectJob?.cancel()
             reconnectJob = null
         } else {
+            if (_activeSession.value == null) return
             consecutiveFailures++
             _connectionStatus.value = ConnectionStatus.Offline(session.desktopName, session.hostOrigin)
             startAutoReconnect(session)
