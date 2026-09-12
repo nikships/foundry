@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FoundryGlyph } from '../../components/media/FoundryGlyph.js';
+import { Button } from '../../components/ui/Button.js';
 import { OnboardingProvider, useOnboarding } from './OnboardingContext.js';
 import { Stepper, type StepId } from './shared.js';
 import './onboarding.css';
@@ -11,7 +12,13 @@ const STEP_COMPONENTS: Record<StepId, React.LazyExoticComponent<React.ComponentT
   project: React.lazy(() => import('./ProjectScreen.js')),
 };
 
-function OnboardingShellInner(): React.JSX.Element {
+function OnboardingShellInner({
+  replay,
+  onExit,
+}: {
+  replay: boolean;
+  onExit?: () => void;
+}): React.JSX.Element {
   const { step, stepIndex, canLeaveDoctor, go, entered } = useOnboarding();
   const Active = STEP_COMPONENTS[step];
   return (
@@ -20,6 +27,19 @@ function OnboardingShellInner(): React.JSX.Element {
         <div className="ob-grid" />
       </div>
       <header className="ob-top">
+        {replay && onExit ? (
+          <div className="ob-exit">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onExit}
+              data-testid="onboarding-exit"
+            >
+              Exit intro
+            </Button>
+          </div>
+        ) : null}
         <div className="ob-brand" aria-hidden>
           <FoundryGlyph size={13} />
           <span>Foundry</span>
@@ -40,11 +60,20 @@ function OnboardingShellInner(): React.JSX.Element {
   );
 }
 
-export default function OnboardingShell({ onDone }: { onDone: () => void }): React.JSX.Element {
+export default function OnboardingShell({
+  onDone,
+  replay = false,
+  onExit,
+}: {
+  onDone: () => void;
+  /** True when a working install is walking the intro again. */
+  replay?: boolean;
+  onExit?: () => void;
+}): React.JSX.Element {
   const [stepIndex, setStepIndex] = useState(0);
   return (
     <OnboardingProvider stepIndex={stepIndex} setStepIndex={setStepIndex} onDone={onDone}>
-      <OnboardingShellInner />
+      <OnboardingShellInner replay={replay} onExit={onExit} />
     </OnboardingProvider>
   );
 }
