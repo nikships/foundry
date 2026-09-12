@@ -19,10 +19,11 @@ import { SMITH_MODEL_UNSET_LABEL } from '../view-models/smith-chat-view.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import { useSmithChat } from '../hooks/useSmithChat.js';
-import { SMITH_NO_PROVIDER_COPY } from '../view-models/smith-copy.js';
+import { SMITH_NO_PROVIDER_COPY, SMITH_USER_ACCESS_COPY } from '../view-models/smith-copy.js';
 import ModelPicker from '../components/common/ModelPicker.js';
 import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js';
 import SmithProposalCard, { type SmithNavTarget } from '../components/smith/SmithProposalCard.js';
+import SmithQuickPrompts from '../components/smith/SmithQuickPrompts.js';
 import SmithScopePicker from '../components/smith/SmithScopePicker.js';
 import SmithTranscript from '../components/smith/SmithTranscript.js';
 import { Button } from '../components/ui/Button.js';
@@ -152,6 +153,14 @@ export default function SmithScreen({
         </div>
       </header>
 
+      <SmithQuickPrompts
+        disabled={running || !!modelBlocked}
+        onPick={(prompt) => {
+          setDraft((prev) => prev || prompt);
+          inputRef.current?.focus();
+        }}
+      />
+
       <SmithTranscript
         entries={transcript}
         running={running}
@@ -164,7 +173,7 @@ export default function SmithScreen({
               {smithProject
                 ? `Ask Smith to inspect or operate ${smithProject.name}, including its checkout, entities, readiness, runs, and pull requests.`
                 : 'Ask Smith to inspect or manage Foundry across all projects. Project-specific actions use explicit project IDs.'}{' '}
-              Every privileged action waits on your approval here in the chat.
+              {SMITH_USER_ACCESS_COPY}
             </p>
             {models.length === 0 && <p className={styles.emptyHint}>{SMITH_NO_PROVIDER_COPY}</p>}
           </div>

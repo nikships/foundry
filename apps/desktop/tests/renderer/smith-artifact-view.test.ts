@@ -44,21 +44,27 @@ import {
   dataTableSummary,
   diagnosticsSummary,
   evidenceSummary,
+  formatAssignedWorkSummary,
   formatBytes,
   formatCellValue,
+  formatLinearIssueStatus,
   formatSettingValue,
   gateLabel,
   groupChecklistItems,
   groupJourneyCriteria,
+  isCredentialOperation,
   isJourneyPhaseLive,
   isActionableLink,
+  isOrchestratorOperation,
   isRenderableArtifact,
   isolationLabel,
   journeyActions,
   journeyMarkerVerdict,
   journeyNeedsContinue,
   journeySummary,
+  linearAssigneeLabel,
   occupancyStatus,
+  orchestratorStatusLabel,
   phaseWorkLabel,
   prChecksGlyph,
   prChecksLabel,
@@ -796,5 +802,54 @@ describe('compareEntities', () => {
     const [change] = compareEntities('agent', agent, next);
     expect(change!.after!.length).toBeLessThan(200);
     expect(change!.after).toMatch(/…$/);
+  });
+});
+
+describe('user-level access receipts', () => {
+  const issue = {
+    identifier: 'FOU-123',
+    title: 'Fix login',
+    state: { id: 's1', name: 'In Progress', type: 'started' as const },
+    team: { id: 't1', name: 'Foundry' },
+    updatedAt: '2026-09-01T00:00:00.000Z',
+  };
+
+  it('formats one status line with state, type, team, and recency', () => {
+    expect(formatLinearIssueStatus(issue)).toBe(
+      'FOU-123: Fix login — In Progress (started) · Foundry · updated 2026-09-01T00:00:00.000Z',
+    );
+  });
+
+  it('names the assignee or falls back for older snapshots', () => {
+    expect(linearAssigneeLabel({ name: 'Ada' })).toBe('Ada');
+    expect(linearAssigneeLabel(null)).toBe('Unassigned');
+    expect(linearAssigneeLabel(undefined)).toBe('Unassigned');
+  });
+
+  it('summarizes an assigned-work browse as a receipt line', () => {
+    expect(formatAssignedWorkSummary([])).toBe('No assigned tickets.');
+    expect(formatAssignedWorkSummary([{ identifier: 'FOU-1' }])).toBe('1 assigned ticket: FOU-1');
+    expect(formatAssignedWorkSummary([{ identifier: 'FOU-1' }, { identifier: 'FOU-2' }])).toBe(
+      '2 assigned tickets: FOU-1, FOU-2',
+    );
+  });
+
+  it('labels every orchestrator proposal status without jargon', () => {
+    expect(orchestratorStatusLabel('generating')).toBe('Generating plan');
+    expect(orchestratorStatusLabel('ready')).toBe('Ready for review');
+    expect(orchestratorStatusLabel('failed')).toBe('Planning failed');
+    expect(orchestratorStatusLabel('cancelled')).toBe('Cancelled');
+    expect(orchestratorStatusLabel('accepted')).toMatch(/run created/i);
+    expect(orchestratorStatusLabel('discarded')).toBe('Discarded');
+  });
+
+  it('detects orchestrator and credential operations for confirmation styling', () => {
+    expect(isOrchestratorOperation('orchestrator_accept')).toBe(true);
+    expect(isOrchestratorOperation('orchestrator_get')).toBe(true);
+    expect(isOrchestratorOperation('linear_issues')).toBe(false);
+    expect(isCredentialOperation('gemini_live_set_api_key')).toBe(true);
+    expect(isCredentialOperation('linear_set_api_key')).toBe(true);
+    expect(isCredentialOperation('set_api_key')).toBe(true);
+    expect(isCredentialOperation('gemini_live_state')).toBe(false);
   });
 });

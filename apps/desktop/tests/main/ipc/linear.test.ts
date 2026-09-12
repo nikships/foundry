@@ -61,6 +61,7 @@ describe('Linear IPC validation', () => {
     const { handlers, issues, issue, workflowStates } = setup();
     const browse = handlers.get(IPC.linearIssues) as (
       query: string,
+      options?: { assigned?: boolean },
     ) => Promise<LinearIssueSnapshot[]>;
     const detail = handlers.get(IPC.linearIssue) as (
       issueId: string,
@@ -70,7 +71,7 @@ describe('Linear IPC validation', () => {
     ) => Promise<LinearWorkflowState[]>;
 
     await browse('  FOU-190  ');
-    expect(issues).toHaveBeenCalledWith('FOU-190');
+    expect(issues).toHaveBeenCalledWith('FOU-190', { assignedOnly: false });
     expect(() => browse('x'.repeat(201))).toThrow('200 characters or fewer');
     await expect(detail('  issue-id  ')).rejects.toThrow('not used');
     expect(issue).toHaveBeenCalledWith('issue-id');
@@ -78,6 +79,29 @@ describe('Linear IPC validation', () => {
     await states('  team-id  ');
     expect(workflowStates).toHaveBeenCalledWith('team-id');
     expect(() => states('')).toThrow('valid Linear team ID');
+  });
+
+  it('forwards assigned filtering and defaults invalid options to false', async () => {
+    const { handlers, issues } = setup();
+    const browse = handlers.get(IPC.linearIssues) as (
+      query: string,
+      options?: { assigned?: boolean },
+    ) => Promise<LinearIssueSnapshot[]>;
+
+    await browse('FOU-190', { assigned: true });
+    expect(issues).toHaveBeenLastCalledWith('FOU-190', { assignedOnly: true });
+
+    await browse('FOU-190', { assigned: false });
+    expect(issues).toHaveBeenLastCalledWith('FOU-190', { assignedOnly: false });
+
+    await browse('FOU-190');
+    expect(issues).toHaveBeenLastCalledWith('FOU-190', { assignedOnly: false });
+
+    await browse('  my work  ', undefined);
+    expect(issues).toHaveBeenLastCalledWith('my work', { assignedOnly: false });
+
+    await browse('FOU-190', 'yes' as unknown as { assigned?: boolean });
+    expect(issues).toHaveBeenLastCalledWith('FOU-190', { assignedOnly: false });
   });
 
   it('rejects malformed start input without touching run dependencies', async () => {

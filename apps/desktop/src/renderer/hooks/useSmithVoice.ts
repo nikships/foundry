@@ -11,7 +11,13 @@
  * (Live API function calling is synchronous, a Smith turn is not); the
  * settled answer arrives later over `smith-progress`, gets folded into a
  * short text, and is injected back into the live session so the voice model
- * can narrate it.
+ * can narrate it. Full user-level access (orchestrator prompts, assigned
+ * Linear work + status, saved pipeline runs, context refresh, voice-key
+ * state) needs no new voice tool: the operator asks aloud, the model calls
+ * `smith_work` with the same capability phrasing as the text chips, and the
+ * one proposal queue confirms every privileged step. A proposal that needs a
+ * secret is never approved by voice — the masked desktop card owns the key.
+ *
  *
  * All state is refs inside one `useRef` bundle plus `useState` only for what
  * the overlay renders, so reconnects and view changes never remount the
@@ -37,6 +43,7 @@ import {
   proposalSummary,
   settledAnswerText,
   settledWorkPrompt,
+  voiceSecretRefusal,
   VOICE_TOOL_NAMES,
   voiceToolDeclarations,
   workStartedResult,
@@ -202,6 +209,12 @@ export function useSmithVoice(): {
         const proposals = (await api.smith.proposalsList()).filter((p) => p.projectId === scopeId);
         if (!current()) return { error: 'Voice session ended.' };
         if (proposals.length === 0) return { error: 'no proposal is waiting' };
+        // Aired secrets would land in transcripts and model context. Voice
+        // may reject a key proposal, but approving one must happen in the
+        // masked desktop card, which is the only place the value is typed.
+        if (approved && proposals[0].type === 'action' && proposals[0].secretRequest) {
+          return { error: voiceSecretRefusal() };
+        }
         if (proposals[0].id !== readProposalRef.current)
           return {
             error: 'Read the current proposal aloud and ask for confirmation before answering it.',

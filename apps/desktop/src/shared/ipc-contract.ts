@@ -706,8 +706,13 @@ export interface FoundryApi {
     setApiKey(apiKey: string): Promise<LinearActionResult>;
     test(): Promise<LinearActionResult>;
     clearApiKey(): Promise<LinearActionResult>;
-    /** Empty query browses recent accessible issues; text filters key/title. */
-    issues(query: string): Promise<LinearIssueSnapshot[]>;
+    /**
+     * Empty query browses recent accessible issues; text filters key/title.
+     * `assigned:true` limits the browse to issues assigned to the viewer
+     * (the operator's own current work). The flag is optional so existing
+     * single-argument callers keep working unchanged.
+     */
+    issues(query: string, options?: { assigned?: boolean }): Promise<LinearIssueSnapshot[]>;
     /** Loads the selected issue with bounded comments and other planning evidence. */
     issue(issueId: string): Promise<LinearIssueSnapshot>;
     workflowStates(teamId: string): Promise<LinearWorkflowState[]>;

@@ -10,8 +10,19 @@ import type { SmithChatEntry, SmithTranscriptEntry } from '@shared/ipc-contract.
 import type { ModelInfo } from '@shared/types.js';
 import {
   describeScreen,
+  extractOrchestratorPlanId,
   groupTranscript,
+  hasOrchestratorPlanId,
+  needsMaskedSecret,
+  smithAssignedWorkPrompt,
+  smithConfirmationHint,
+  smithLinearPipelineRunPrompt,
   smithModelLabel,
+  smithOrchestratorFollowUpPrompt,
+  smithOrchestratorPlanPrompt,
+  smithPipelineRunPrompt,
+  smithTicketStatusPrompt,
+  SMITH_QUICK_PROMPTS,
 } from '@renderer/view-models/smith-chat-view.js';
 
 function entry(
@@ -130,5 +141,72 @@ describe('describeScreen', () => {
       route: 'settings',
       entity: { kind: 'settings', id: 'models' },
     });
+  });
+});
+
+describe('smith user-level quick prompts', () => {
+  it('covers every named capability: assigned work, ticket status, plans, pipelines', () => {
+    const ids = SMITH_QUICK_PROMPTS.map((item) => item.id);
+    for (const id of [
+      'assigned-work',
+      'ticket-status',
+      'orchestrator-plan',
+      'orchestrator-list',
+      'pipeline-run',
+      'linear-pipeline-run',
+      'refresh-context',
+      'voice-key-state',
+    ] as const) {
+      expect(ids).toContain(id);
+    }
+    for (const item of SMITH_QUICK_PROMPTS) {
+      expect(item.label.trim().length).toBeGreaterThan(0);
+      expect(item.prompt.trim().length).toBeGreaterThan(0);
+      expect(item.hint.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it('phrases assigned work so the tool routes to the viewer filter', () => {
+    expect(smithAssignedWorkPrompt()).toMatch(/assigned to me/i);
+    expect(smithAssignedWorkPrompt('FOU')).toMatch(/assigned to me/i);
+    expect(smithAssignedWorkPrompt('FOU')).toContain('FOU');
+  });
+
+  it('builds ticket, plan, and pipeline prompts with their ids attached', () => {
+    expect(smithTicketStatusPrompt('FOU-123')).toContain('FOU-123');
+    expect(smithOrchestratorPlanPrompt('fix login')).toContain('fix login');
+    expect(smithPipelineRunPrompt('ship-it', 'roll out')).toContain('ship-it');
+    expect(smithPipelineRunPrompt('ship-it', 'roll out')).toContain('roll out');
+    expect(smithLinearPipelineRunPrompt('ship-it', 'FOU-123')).toContain('FOU-123');
+    expect(smithOrchestratorFollowUpPrompt('plan-abc123', 'prefer X')).toContain('plan-abc123');
+  });
+});
+
+describe('orchestrator plan id plumbing', () => {
+  it('pulls the plan handle out of Smith reply text', () => {
+    expect(extractOrchestratorPlanId('Your plan plan-a1b2c3d4e5f6 is ready.')).toBe(
+      'plan-a1b2c3d4e5f6',
+    );
+    expect(hasOrchestratorPlanId('nothing here')).toBe(false);
+    expect(hasOrchestratorPlanId('Check plan-0123456789ab any time.')).toBe(true);
+    expect(extractOrchestratorPlanId('no handle')).toBeNull();
+  });
+});
+
+describe('smith confirmations and receipts', () => {
+  it('explains the cost and exactly-once rule before a plan runs', () => {
+    expect(smithConfirmationHint('orchestrator_plan')).toMatch(/agent turn/i);
+    expect(smithConfirmationHint('orchestrator_accept')).toMatch(/exactly once/i);
+    expect(smithConfirmationHint('orchestrator_discard')).toMatch(/destructive/i);
+    expect(smithConfirmationHint('orchestrator_cancel')).toMatch(/remains/i);
+    expect(smithConfirmationHint('start')).toMatch(/approval/i);
+  });
+
+  it('sends key values only through the masked approval card', () => {
+    expect(needsMaskedSecret('gemini_live_set_api_key')).toBe(true);
+    expect(needsMaskedSecret('linear_set_api_key')).toBe(true);
+    expect(needsMaskedSecret('set_api_key')).toBe(true);
+    expect(needsMaskedSecret('orchestrator_plan')).toBe(false);
+    expect(smithConfirmationHint('gemini_live_set_api_key')).toMatch(/masked/i);
   });
 });

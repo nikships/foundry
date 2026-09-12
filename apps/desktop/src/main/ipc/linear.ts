@@ -32,11 +32,20 @@ export function register(ctx: Ctx, handle: Handle): void {
   });
   handle(IPC.linearTest, (): Promise<LinearActionResult> => ctx.linear.test());
   handle(IPC.linearClearApiKey, (): LinearActionResult => ctx.linear.clearApiKey());
-  handle(IPC.linearIssues, (query: string): Promise<LinearIssueSnapshot[]> => {
-    const parsed = z.string().trim().max(200).safeParse(query);
-    if (!parsed.success) throw new Error('Linear issue search must be 200 characters or fewer');
-    return ctx.linear.issues(parsed.data);
-  });
+  handle(
+    IPC.linearIssues,
+    (query: string, options?: { assigned?: boolean }): Promise<LinearIssueSnapshot[]> => {
+      const parsed = z.string().trim().max(200).safeParse(query);
+      if (!parsed.success) throw new Error('Linear issue search must be 200 characters or fewer');
+      const parsedOptions = z
+        .object({ assigned: z.boolean().optional(), assignedOnly: z.boolean().optional() })
+        .safeParse(options ?? {});
+      const assignedOnly = parsedOptions.success
+        ? (parsedOptions.data.assignedOnly ?? parsedOptions.data.assigned ?? false)
+        : false;
+      return ctx.linear.issues(parsed.data, { assignedOnly });
+    },
+  );
   handle(IPC.linearIssue, (issueId: string): Promise<LinearIssueSnapshot> => {
     const parsed = shortString.safeParse(issueId);
     if (!parsed.success) throw new Error('A valid Linear issue ID is required');

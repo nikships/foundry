@@ -743,6 +743,8 @@ export interface LinearIssueSnapshot {
   updatedAt: string;
   team: { id: string; name: string };
   state: LinearWorkflowState;
+  /** Assignee when Linear returned one; null when unassigned; omitted on older snapshots. */
+  assignee?: { id: string; name: string } | null;
   /** Present when Linear returned labels; omitted on older snapshots. */
   labels?: string[];
   /** Parent issue when this ticket is a sub-issue. */
