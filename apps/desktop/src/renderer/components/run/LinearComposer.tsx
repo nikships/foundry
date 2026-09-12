@@ -21,6 +21,7 @@ import type { LinearConnectionState } from '@shared/ipc-contract.js';
 import { api } from '../../api.js';
 import { useOrchestratorPlan } from '../../hooks/useOrchestratorPlan.js';
 import { useApp } from '../../stores/app.js';
+import { primaryEnterShortcut } from '../../utils/keyboard.js';
 import { safeGetItem, safeSetItem } from '../../utils/local-store.js';
 import PanelTranscript from '../readiness/PanelTranscript.js';
 import PipelineRibbon from '../pipeline/PipelineRibbon.js';
@@ -657,7 +658,7 @@ export default function LinearComposer({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!active || !issue || !(event.metaKey || event.ctrlKey) || event.key !== 'Enter') return;
+      if (!active || !issue || !primaryEnterShortcut(event, event.target)) return;
       event.preventDefault();
       primaryActionRef.current();
     };

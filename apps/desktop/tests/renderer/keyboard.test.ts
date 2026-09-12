@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   designTabShortcut,
   isEditableTarget,
+  primaryEnterShortcut,
   settingsSearchShortcut,
   tablistStep,
   viewShortcut,
@@ -134,5 +135,30 @@ describe('isEditableTarget', () => {
     expect(isEditableTarget({ tagName: 'BUTTON' })).toBe(false);
     expect(isEditableTarget(null)).toBe(false);
     expect(isEditableTarget({})).toBe(false);
+  });
+});
+
+describe('primaryEnterShortcut', () => {
+  it('answers ⌘↵ and Ctrl+Enter outside text fields', () => {
+    expect(primaryEnterShortcut(chord('Enter', { metaKey: true }), { tagName: 'BUTTON' })).toBe(
+      true,
+    );
+    expect(primaryEnterShortcut(chord('Enter', { ctrlKey: true }), null)).toBe(true);
+  });
+
+  it('ignores ⌘↵ inside editable targets so plan chat can send without starting', () => {
+    expect(primaryEnterShortcut(chord('Enter', { metaKey: true }), { tagName: 'TEXTAREA' })).toBe(
+      false,
+    );
+    expect(primaryEnterShortcut(chord('Enter', { ctrlKey: true }), { tagName: 'INPUT' })).toBe(
+      false,
+    );
+  });
+
+  it('ignores bare Enter and chords with Alt', () => {
+    expect(primaryEnterShortcut(chord('Enter'), { tagName: 'BUTTON' })).toBe(false);
+    expect(
+      primaryEnterShortcut(chord('Enter', { metaKey: true, altKey: true }), { tagName: 'BUTTON' }),
+    ).toBe(false);
   });
 });

@@ -68,6 +68,15 @@ export function isEditableTarget(target: unknown): boolean {
 }
 
 /**
+ * Window-level ⌘/Ctrl+Enter for a primary action such as starting a Linear
+ * run. Text fields own Enter (and ⌘Enter) themselves, so this is false when
+ * the event originated in an editable target.
+ */
+export function primaryEnterShortcut(e: ShortcutKey, target: unknown): boolean {
+  return hasModifier(e) && e.key === 'Enter' && !isEditableTarget(target);
+}
+
+/**
  * Next tab index for a tablist, per the ARIA pattern:
  * Left/Right (or Up/Down for vertical) move with wrap-around, Home/End jump.
  * Null means "not ours" so the caller lets the event fall through.
