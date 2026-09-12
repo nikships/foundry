@@ -12,7 +12,8 @@ data class CompanionPairingPayload(
     val desktopId: String = "",
     val desktopName: String = "",
     val secret: String,
-    val expiresAt: String = ""
+    val expiresAt: String = "",
+    val origins: List<String> = emptyList()
 )
 
 @Serializable
@@ -1091,7 +1092,8 @@ data class PairedSession(
     val desktopName: String,
     val hostOrigin: String,
     val pairedAt: String,
-    val protocolVersion: Int = COMPANION_PROTOCOL_VERSION
+    val protocolVersion: Int = COMPANION_PROTOCOL_VERSION,
+    val origins: List<String> = emptyList()
 )
 
 sealed interface ConnectionStatus {

@@ -46,6 +46,11 @@ Tests must not call a model or network. Engine tests use real Git temp repositor
 
 Amp orbs set `/etc/gitconfig` to sign every commit with the Amp-managed key (`commit.gpgsign=true` → `amp-sign-commit`). That helper cannot sign any other identity, so a `git commit` in a repo with a repo-local `user.email` — every engine scratch repo — fails with "No signing key is available for this commit". The vitest setup (`apps/desktop/tests/helpers/setup-tmp.ts`) sets `GIT_CONFIG_NOSYSTEM=1` for all suites, which makes the scratch repos ignore the system git config; this is why plain `npm test` passes in an orb without touching signing for real checkouts. Don't disable signing globally to work around this.
 
+### Orb test caveats
+
+- `apps/desktop/tests/main/system/env.test.ts` can intermittently fail in an orb with `/bin/bash: line 1: agent-only-tool: command not found`, while passing standalone and locally. Recheck it standalone; do not “fix” product environment code without evidence of a product bug.
+- Never run concurrent `npm run check` or coverage jobs in one checkout: Vitest shares `coverage/.tmp`, and overlapping jobs corrupt its temporary coverage files.
+
 ## Commands
 
 All commands run from the repository root.
