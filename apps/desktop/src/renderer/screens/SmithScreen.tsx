@@ -135,7 +135,7 @@ export default function SmithScreen({
             size="sm"
             variant="ghost"
             onClick={() => void newChat()}
-            title="New chat — wipes the conversation and starts fresh"
+            title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
             aria-label="New chat"
             data-testid="smith-new-chat"
           >

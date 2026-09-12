@@ -165,7 +165,7 @@ export default function SmithBubble({
             <span className={styles.headSpacer} />
             <HeadAction
               onClick={() => void newChat()}
-              title="New chat — wipes the conversation and starts fresh"
+              title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
               label="New chat"
               testId="smith-bubble-new-chat"
             >
