@@ -23,6 +23,7 @@ import { useOrchestratorPlan } from '../../hooks/useOrchestratorPlan.js';
 import { useApp } from '../../stores/app.js';
 import { primaryEnterShortcut } from '../../utils/keyboard.js';
 import { safeGetItem, safeSetItem } from '../../utils/local-store.js';
+import { linearComposerSelectionForProject } from '../../view-models/linear-composer-view.js';
 import PanelTranscript from '../readiness/PanelTranscript.js';
 import PipelineRibbon from '../pipeline/PipelineRibbon.js';
 import { Button } from '../ui/Button.js';
@@ -392,6 +393,11 @@ export default function LinearComposer({
   const searchGenerationRef = useRef(0);
   const issueRef = useRef<LinearIssueSnapshot | null>(null);
   const primaryActionRef = useRef<() => void>(() => undefined);
+  const composerProjectIdRef = useRef(projectId);
+  // Proposals this composer submitted. Discard/cancel below only ever
+  // touches an owned proposal — a Runs-composer proposal generating in
+  // parallel is never replaced or cancelled from here (FOU-349).
+  const ownedPlansRef = useRef(new Set<string>());
   issueRef.current = issue;
 
   const pipeline = useMemo(
@@ -509,10 +515,28 @@ export default function LinearComposer({
     };
   }, [issue, settings?.linearStatusMapping]);
 
-  // Proposals this composer submitted. Discard/cancel below only ever
-  // touches an owned proposal — a Runs-composer proposal generating in
-  // parallel is never replaced or cancelled from here (FOU-349).
-  const ownedPlansRef = useRef(new Set<string>());
+  // Sidebar project switches do not remount this composer. Drop the
+  // selected issue so Start cannot bind project B to project A's issue.
+  // Do not discard durable proposals (FOU-349).
+  useEffect(() => {
+    const next = linearComposerSelectionForProject(composerProjectIdRef.current, projectId);
+    if (!next) return;
+    composerProjectIdRef.current = projectId;
+    searchGenerationRef.current += 1;
+    ownedPlansRef.current = new Set();
+    setQuery(next.query);
+    setIssues(next.issues);
+    setActiveIndex(next.activeIndex);
+    setIssue(next.issue);
+    setMappingOpen(next.mappingOpen);
+    setShowMappingErrors(next.showMappingErrors);
+    setSearching(next.searching);
+    setEvidenceLoading(next.evidenceLoading);
+    setSearchError(next.searchError);
+    setStartIssues(next.startIssues);
+    setPlanStartIssues(next.planStartIssues);
+  }, [projectId]);
+
   const ownSelectedPlanId =
     orchestrator.selectedPlanId && ownedPlansRef.current.has(orchestrator.selectedPlanId)
       ? orchestrator.selectedPlanId
