@@ -21,6 +21,7 @@ import {
 import { api, plain } from '../../api.js';
 import { useApp } from '../../stores/app.js';
 import { addField as appendField } from '../../view-models/custom-fields.js';
+import { commitCustomEnvelopeName } from '../../view-models/envelope-name.js';
 import CustomFieldsEditor from '../project/CustomFieldsEditor.js';
 import { Field, TextInput } from '../ui/Field.js';
 import { Button } from '../ui/Button.js';
@@ -458,25 +459,31 @@ export default function EnvelopesEditor({
 
   const commitName = (): void => {
     if (!draft || !isNew) return;
-    const next = nameDraft
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^[^a-z]+/, '')
-      .replace(/_+/g, '_')
-      .replace(/^_|_$/g, '');
-    if (!next) {
+    const result = commitCustomEnvelopeName(
+      nameDraft,
+      draft.name,
+      envelopes.map((e) => e.name),
+    );
+    if (result.status === 'empty') {
       setNameDraft(draft.name);
       return;
     }
-    if (next === draft.name) {
-      setNameDraft(next);
+    if (result.status === 'unchanged') {
+      setNameDraft(result.name);
       return;
     }
-    setDraft({ ...draft, name: next });
-    setNameDraft(next);
-    setSelection({ kind: 'custom', name: next, isNew: true });
-    lastSyncedRef.current = next;
+    if (result.status === 'collision') {
+      setNameDraft(draft.name);
+      setActionError(
+        `A report named “${result.name}” already exists. Open that report to edit it, or pick a different name.`,
+      );
+      return;
+    }
+    setActionError('');
+    setDraft({ ...draft, name: result.name });
+    setNameDraft(result.name);
+    setSelection({ kind: 'custom', name: result.name, isNew: true });
+    lastSyncedRef.current = result.name;
   };
 
   const addField = (): void => {
