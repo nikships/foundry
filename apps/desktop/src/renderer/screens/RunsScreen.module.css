@@ -212,8 +212,10 @@
 }
 
 .composer-controls > :first-child {
+  /* auto basis so wrap uses content width. `flex: 1` (basis 0%) let the
+     picker shrink under Plan run and overflow the primary CTA. */
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
 }
 
 .plan-button {

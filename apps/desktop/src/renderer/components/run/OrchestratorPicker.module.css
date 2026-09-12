@@ -1,5 +1,7 @@
 .picker {
   display: flex;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--s4);
@@ -31,13 +33,14 @@
 }
 .controls {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--s2);
-  flex: none;
+  flex-wrap: wrap;
 }
 .model {
-  min-width: 180px;
+  min-width: min(180px, 100%);
 }
 .effort {
-  min-width: 96px;
+  min-width: min(96px, 100%);
 }
