@@ -201,7 +201,7 @@ export default function SmithScreen({
                 ? `Ask Smith anything about ${smithProject.name}…`
                 : 'Ask Smith to manage Foundry across all projects…'
           }
-          rows={2}
+          rows={1}
           aria-label="Message Smith"
           disabled={!!modelBlocked}
           data-testid="smith-input"
