@@ -10,7 +10,7 @@
  * renders inline at the transcript's tail, where the conversation produced it.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
 import type { SmithReceiptLink } from '@shared/types.js';
 import { modelChoiceBlock } from '@shared/model-choice.js';
@@ -19,6 +19,7 @@ import { SMITH_MODEL_UNSET_LABEL } from '../view-models/smith-chat-view.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import { useSmithChat } from '../hooks/useSmithChat.js';
+import { useSmithChatUI } from '../stores/smith-chat-ui.js';
 import { SMITH_NO_PROVIDER_COPY, SMITH_USER_ACCESS_COPY } from '../view-models/smith-copy.js';
 import ModelPicker from '../components/common/ModelPicker.js';
 import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js';
@@ -26,6 +27,8 @@ import SmithProposalCard, { type SmithNavTarget } from '../components/smith/Smit
 import SmithQuickPrompts from '../components/smith/SmithQuickPrompts.js';
 import SmithScopePicker from '../components/smith/SmithScopePicker.js';
 import SmithTranscript from '../components/smith/SmithTranscript.js';
+import SmithModeBar from '../components/smith/SmithModeBar.js';
+import SmithVoicePanel from '../components/smith/SmithVoicePanel.js';
 import { Button } from '../components/ui/Button.js';
 import styles from './SmithScreen.module.css';
 
@@ -44,12 +47,15 @@ export default function SmithScreen({
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
+  const { mode, state: voiceState, draft, setDraft } = useSmithChatUI();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
   const { state, send, cancel, newChat, setModel, setReasoningEffort } = useSmithChat(scopeId);
   const { models, refresh: refreshModels } = useAgentModels();
-  const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    if (mode === 'text') inputRef.current?.focus();
+  }, [mode]);
 
   const running = state?.running ?? false;
   const transcript = useMemo(() => state?.transcript ?? [], [state?.transcript]);
@@ -88,7 +94,7 @@ export default function SmithScreen({
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
     }
@@ -138,6 +144,7 @@ export default function SmithScreen({
             title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
             aria-label="New chat"
             data-testid="smith-new-chat"
+            disabled={running || voiceState.status === 'live' || voiceState.status === 'connecting'}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
               <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.3" />
@@ -152,87 +159,98 @@ export default function SmithScreen({
           </Button>
         </div>
       </header>
-
-      <SmithQuickPrompts
-        disabled={running || !!modelBlocked}
-        onPick={(prompt) => {
-          setDraft((prev) => prev || prompt);
-          inputRef.current?.focus();
-        }}
-      />
-
-      <SmithTranscript
-        entries={transcript}
-        running={running}
-        onOpenInspector={onOpenInspector}
-        {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
-        emptyState={
-          <div className={styles.emptyState}>
-            <h2 className={styles.emptyTitle}>Smith</h2>
-            <p>
-              {smithProject
-                ? `Ask Smith to inspect or operate ${smithProject.name}, including its checkout, entities, readiness, runs, and pull requests.`
-                : 'Ask Smith to inspect or manage Foundry across all projects. Project-specific actions use explicit project IDs.'}{' '}
-              {SMITH_USER_ACCESS_COPY}
-            </p>
-            {models.length === 0 && <p className={styles.emptyHint}>{SMITH_NO_PROVIDER_COPY}</p>}
-          </div>
-        }
-        tail={
-          <SmithProposalCard
-            projectId={scopeId}
-            onCompleted={onCompleted}
-            onRequestChanges={(prefill) => {
-              setDraft((prev) => prev || prefill);
-              inputRef.current?.focus();
-            }}
-          />
-        }
-      />
-
-      {state?.error && (
-        <div className={styles.errorBanner} role="alert">
-          {state.error}
-        </div>
-      )}
-
-      <footer className={styles.composer}>
-        <textarea
-          ref={inputRef}
-          className={`textarea ${styles.input}`}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={
-            modelBlocked
-              ? 'Select a model to start the conversation…'
-              : smithProject
-                ? `Ask Smith anything about ${smithProject.name}…`
-                : 'Ask Smith to manage Foundry across all projects…'
-          }
-          rows={1}
-          aria-label="Message Smith"
-          disabled={!!modelBlocked}
-          data-testid="smith-input"
-        />
-        <div className={styles.composerActions}>
-          {running ? (
-            <Button onClick={() => void cancel()} data-testid="smith-cancel">
-              Stop
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              disabled={!draft.trim() || !!modelBlocked}
-              title={modelBlocked ?? undefined}
-              onClick={submit}
-              data-testid="smith-send"
-            >
-              Send
-            </Button>
+      <SmithModeBar />
+      {mode === 'voice' ? (
+        <SmithVoicePanel expanded />
+      ) : (
+        <>
+          {transcript.length === 0 && (
+            <SmithQuickPrompts
+              disabled={running || !!modelBlocked}
+              onPick={(prompt) => {
+                setDraft((prev) => prev || prompt);
+                inputRef.current?.focus();
+              }}
+            />
           )}
-        </div>
-      </footer>
+
+          <SmithTranscript
+            key={scopeId ?? 'global'}
+            entries={transcript}
+            running={running}
+            onOpenInspector={onOpenInspector}
+            {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
+            emptyState={
+              <div className={styles.emptyState}>
+                <h2 className={styles.emptyTitle}>Smith</h2>
+                <p>
+                  {smithProject
+                    ? `Ask Smith to inspect or operate ${smithProject.name}, including its checkout, entities, readiness, runs, and pull requests.`
+                    : 'Ask Smith to inspect or manage Foundry across all projects. Project-specific actions use explicit project IDs.'}{' '}
+                  {SMITH_USER_ACCESS_COPY}
+                </p>
+                {models.length === 0 && (
+                  <p className={styles.emptyHint}>{SMITH_NO_PROVIDER_COPY}</p>
+                )}
+              </div>
+            }
+            tail={
+              <SmithProposalCard
+                projectId={scopeId}
+                onCompleted={onCompleted}
+                onRequestChanges={(prefill) => {
+                  setDraft((prev) => prev || prefill);
+                  inputRef.current?.focus();
+                }}
+              />
+            }
+          />
+
+          {state?.error && (
+            <div className={styles.errorBanner} role="alert">
+              {state.error}
+            </div>
+          )}
+
+          <footer className={styles.composer}>
+            <textarea
+              ref={inputRef}
+              className={`textarea ${styles.input}`}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={
+                modelBlocked
+                  ? 'Select a model to start the conversation…'
+                  : smithProject
+                    ? `Ask Smith anything about ${smithProject.name}…`
+                    : 'Ask Smith to manage Foundry across all projects…'
+              }
+              rows={1}
+              aria-label="Message Smith"
+              disabled={!!modelBlocked}
+              data-testid="smith-input"
+            />
+            <div className={styles.composerActions}>
+              {running ? (
+                <Button onClick={() => void cancel()} data-testid="smith-cancel">
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  disabled={!draft.trim() || !!modelBlocked}
+                  title={modelBlocked ?? undefined}
+                  onClick={submit}
+                  data-testid="smith-send"
+                >
+                  Send
+                </Button>
+              )}
+            </div>
+          </footer>
+        </>
+      )}
     </div>
   );
 }

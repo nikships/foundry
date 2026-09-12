@@ -12,6 +12,7 @@ import { useAgentSounds } from './hooks/useAgentSounds.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
 import { useOrchestratorPlan } from './hooks/useOrchestratorPlan.js';
 import { AppProvider, useApp } from './stores/app.js';
+import { SmithChatUIProvider } from './stores/smith-chat-ui.js';
 import {
   MENU_DESIGN_TABS,
   MENU_VIEWS,
@@ -34,7 +35,6 @@ const OnboardingShell = lazy(() => import('./screens/onboarding/OnboardingShell.
 const NewProjectWizard = lazy(() => import('./components/project/NewProjectWizard.js'));
 const SmithScreen = lazy(() => import('./screens/SmithScreen.js'));
 const SmithBubble = lazy(() => import('./components/smith/SmithBubble.js'));
-const SmithVoiceOverlay = lazy(() => import('./components/smith/SmithVoiceOverlay.js'));
 
 /**
  * The line a finished check should show. An unpackaged build and a real
@@ -399,113 +399,104 @@ function AppInner(): React.JSX.Element {
   }
 
   return (
-    <div className={styles.shell}>
-      <div className={styles.titlebar}>
-        {ready && !needsOnboarding && (
-          <div className={styles.wordmark} aria-hidden>
-            <FoundryGlyph size={13} />
-            <span className={styles.wordmarkText}>Foundry</span>
+    <SmithChatUIProvider
+      screenContext={liveScreenContext}
+      openSettings={() => openSettingsPane('integrations')}
+    >
+      <div className={styles.shell}>
+        <div className={styles.titlebar}>
+          {ready && !needsOnboarding && (
+            <div className={styles.wordmark} aria-hidden>
+              <FoundryGlyph size={13} />
+              <span className={styles.wordmarkText}>Foundry</span>
+            </div>
+          )}
+        </div>
+
+        {needsOnboarding ? (
+          <Suspense fallback={<ScreenFallback />}>
+            <OnboardingShell
+              onDone={finishOnboarding}
+              replay={replayingIntro}
+              onExit={replayingIntro ? exitIntro : undefined}
+            />
+          </Suspense>
+        ) : ready ? (
+          <>
+            <Sidebar
+              view={view}
+              openRunId={openRunId}
+              onNavigate={go}
+              onAddProject={addProject}
+              onNewProject={newProject}
+              onOpenSettings={openSettingsPane}
+              onOpenInspector={openInspector}
+              onOpenProposal={openProposal}
+              onOpenSmith={openSmith}
+              inspectorRunId={inspectorRunId}
+            />
+            <div className={styles.sidebarDivider} aria-hidden />
+            <main
+              className={styles.content}
+              data-testid="app-view"
+              data-view={openRunId && view === 'runs' ? 'run-detail' : view}
+              data-open-run={openRunId || undefined}
+              data-design-tab={view === 'design' ? designTab : undefined}
+              data-settings-pane={view === 'settings' ? settingsPane : undefined}
+            >
+              <div key={`${view}:${openRunId}`} className={styles.screenHost}>
+                <Suspense fallback={<ScreenFallback />}>{renderMain()}</Suspense>
+              </div>
+            </main>
+          </>
+        ) : (
+          <ScreenFallback />
+        )}
+
+        {/*
+         * The Smith mini chat: a launcher docked in the titlebar band on other
+         * screens, hidden when already viewing the dedicated Smith screen.
+         */}
+        {ready && !needsOnboarding && view !== 'smith' && (
+          <Suspense fallback={null}>
+            <SmithBubble
+              screenContext={liveScreenContext}
+              onExpand={openSmith}
+              onCompleted={(target) => void onSmithCompleted(target)}
+              onOpenInspector={openInspector}
+              onOpenReceiptLink={openReceiptLink}
+            />
+          </Suspense>
+        )}
+        {creatingProject && (
+          <Suspense fallback={null}>
+            <NewProjectWizard
+              onClose={() => setCreatingProject(false)}
+              onCreated={projectCreated}
+            />
+          </Suspense>
+        )}
+        <ConfirmModal />
+        {showBanner && (
+          <UpdateBanner
+            status={updateStatus}
+            onDownload={() => void api.updater.download()}
+            onRestart={() => void api.updater.quitAndInstall()}
+            onRetry={() => void handleUpdateRetry()}
+            onDismiss={handleUpdateDismiss}
+          />
+        )}
+        {toast && (
+          <div
+            className={cx(styles.toast, toastLeaving && styles.toastLeaving)}
+            role="status"
+            aria-live="polite"
+          >
+            {toast}
           </div>
         )}
       </div>
-
-      {needsOnboarding ? (
-        <Suspense fallback={<ScreenFallback />}>
-          <OnboardingShell
-            onDone={finishOnboarding}
-            replay={replayingIntro}
-            onExit={replayingIntro ? exitIntro : undefined}
-          />
-        </Suspense>
-      ) : ready ? (
-        <>
-          <Sidebar
-            view={view}
-            openRunId={openRunId}
-            onNavigate={go}
-            onAddProject={addProject}
-            onNewProject={newProject}
-            onOpenSettings={openSettingsPane}
-            onOpenInspector={openInspector}
-            onOpenProposal={openProposal}
-            onOpenSmith={openSmith}
-            inspectorRunId={inspectorRunId}
-          />
-          <div className={styles.sidebarDivider} aria-hidden />
-          <main
-            className={styles.content}
-            data-testid="app-view"
-            data-view={openRunId && view === 'runs' ? 'run-detail' : view}
-            data-open-run={openRunId || undefined}
-            data-design-tab={view === 'design' ? designTab : undefined}
-            data-settings-pane={view === 'settings' ? settingsPane : undefined}
-          >
-            <div key={`${view}:${openRunId}`} className={styles.screenHost}>
-              <Suspense fallback={<ScreenFallback />}>{renderMain()}</Suspense>
-            </div>
-          </main>
-        </>
-      ) : (
-        <ScreenFallback />
-      )}
-
-      {/*
-       * The Smith mini chat: a launcher docked in the titlebar band on other
-       * screens, hidden when already viewing the dedicated Smith screen.
-       */}
-      {ready && !needsOnboarding && view !== 'smith' && (
-        <Suspense fallback={null}>
-          <SmithBubble
-            screenContext={liveScreenContext}
-            onExpand={openSmith}
-            onCompleted={(target) => void onSmithCompleted(target)}
-            onOpenInspector={openInspector}
-            onOpenReceiptLink={openReceiptLink}
-          />
-        </Suspense>
-      )}
-      {/*
-       * Smith's voice layer: mounted on every screen, including Smith's own,
-       * so a live voice session survives navigation. Renders as a fullscreen
-       * takeover on the dedicated Smith screen and a popover on other screens.
-       * The single mount (no key) ensures audio and UI state survive navigation
-       * and the popover<->fullscreen transition.
-       */}
-      {ready && !needsOnboarding && (
-        <Suspense fallback={null}>
-          <SmithVoiceOverlay
-            screenContext={liveScreenContext}
-            onOpenSmith={openSmith}
-            onOpenSettings={openSettingsPane}
-            variant={view === 'smith' ? 'fullscreen' : 'popover'}
-          />
-        </Suspense>
-      )}
-      {creatingProject && (
-        <Suspense fallback={null}>
-          <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />
-        </Suspense>
-      )}
-      <ConfirmModal />
-      {showBanner && (
-        <UpdateBanner
-          status={updateStatus}
-          onDownload={() => void api.updater.download()}
-          onRestart={() => void api.updater.quitAndInstall()}
-          onRetry={() => void handleUpdateRetry()}
-          onDismiss={handleUpdateDismiss}
-        />
-      )}
-      {toast && (
-        <div
-          className={cx(styles.toast, toastLeaving && styles.toastLeaving)}
-          role="status"
-          aria-live="polite"
-        >
-          {toast}
-        </div>
-      )}
-    </div>
+    </SmithChatUIProvider>
   );
 }
 

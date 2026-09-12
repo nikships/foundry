@@ -9,6 +9,11 @@ import { describe, expect, it } from 'vitest';
 import type { SmithChatEntry, SmithTranscriptEntry } from '@shared/ipc-contract.js';
 import type { ModelInfo } from '@shared/types.js';
 import {
+  smithActivityItems,
+  smithActivityStatus,
+  smithToolSummary,
+} from '@renderer/view-models/smith-activity-view.js';
+import {
   describeScreen,
   extractOrchestratorPlanId,
   groupTranscript,
@@ -70,6 +75,61 @@ describe('groupTranscript', () => {
     ]);
     expect(groups).toHaveLength(1);
     expect(groups[0]!.entries.map((row) => row.id)).toEqual(['a', 'c']);
+  });
+});
+
+describe('Smith activity display', () => {
+  const tool: SmithChatEntry = {
+    id: 'tool',
+    source: 'smith',
+    kind: 'tool',
+    toolKind: 'command',
+    text: 'pnpm test\n' + 'output\n'.repeat(500),
+    at: 0,
+  };
+
+  it('folds adjacent tools and notes without hiding replies or errors', () => {
+    const items = smithActivityItems([
+      tool,
+      entry('note', 'smith', 'note'),
+      entry('reply', 'smith'),
+      entry('error', 'smith', 'error'),
+      { ...tool, id: 'next' },
+    ]);
+    expect(items.map((item) => item.kind)).toEqual(['activity', 'entry', 'entry', 'activity']);
+    expect(items[0]).toMatchObject({ id: 'tool', entries: [tool, { id: 'note' }] });
+    expect(smithActivityItems([])).toEqual([]);
+  });
+
+  it('distinguishes active, complete, failed, and stopped work', () => {
+    expect(smithActivityStatus([tool], true)).toEqual({
+      active: true,
+      failed: false,
+      label: 'Working · 1 tool',
+    });
+    expect(smithActivityStatus([{ ...tool, done: true }], true).label).toBe(
+      'Work complete · 1 tool',
+    );
+    expect(smithActivityStatus([tool], false).label).toBe('Work stopped · 1 tool');
+    expect(smithActivityStatus([{ ...tool, failed: true }], false)).toEqual({
+      active: false,
+      failed: true,
+      label: 'Work failed · 1 tool',
+    });
+    expect(smithActivityStatus([tool, { ...tool, id: 'next' }], true).label).toBe(
+      'Working · 2 tools',
+    );
+    expect(smithActivityStatus([], true).label).toBe('Notes');
+  });
+
+  it('bounds summaries but preserves full tool output', () => {
+    expect(smithToolSummary(tool)).toBe('pnpm test');
+    expect(tool.text.length).toBeGreaterThan(2000);
+    expect(smithToolSummary({ ...tool, text: 'x'.repeat(200) })).toHaveLength(101);
+    expect(smithToolSummary({ ...tool, text: '{"large":"payload"}' })).toBe('command details');
+    expect(smithToolSummary({ ...tool, text: '[1,2]' })).toBe('command details');
+    expect(smithToolSummary({ ...tool, toolKind: undefined, text: '' })).toBe('Tool details');
+    expect(smithToolSummary({ ...tool, kind: 'note', text: '' })).toBe('Work notes');
   });
 });
 

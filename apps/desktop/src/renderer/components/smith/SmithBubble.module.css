@@ -88,10 +88,10 @@
 /* ── Popover ────────────────────────────────────────────────────────────── */
 
 .popover {
-  width: min(420px, calc(100vw - 48px));
+  width: min(480px, calc(100vw - 48px));
   /* Hangs below the launcher, whose bottom edge sits at titlebar-h/2 + 32 + s2
      = 50px; --s5 keeps the same breathing room at the window's bottom edge. */
-  height: min(560px, calc(100vh - 50px - var(--s5)));
+  height: min(680px, calc(100vh - 50px - var(--s5)));
   display: flex;
   flex-direction: column;
   border-radius: var(--r-xl);
@@ -241,5 +241,29 @@
   resize: none;
   min-height: 34px;
   max-height: 110px;
+  field-sizing: content;
   font-size: var(--text-sm);
+}
+
+.voiceDot {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  border: 2px solid var(--bg-base);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover,
+  .badgeProposal,
+  .errorBanner {
+    animation: none;
+  }
+  .launcher,
+  .headAction {
+    transition: none;
+  }
 }

@@ -42,18 +42,6 @@ export function groupTranscript(entries: SmithTranscriptEntry[]): SmithTranscrip
 }
 
 /**
- * Tool-row icons, same vocabulary as the detection and readiness panels so
- * the transcripts cannot drift apart visually.
- */
-export const SMITH_TOOL_ICON: Record<string, string> = {
-  command: '⚙',
-  read: '◇',
-  edit: '✎',
-  search: '⌕',
-  other: '·',
-};
-
-/**
  * Closed-face copy for the Smith header's model picker when nothing is chosen.
  *
  * Deliberately an instruction rather than a value. The old copy named a

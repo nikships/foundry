@@ -583,6 +583,17 @@ project.
 - Launcher popover: `smith-bubble-input/-send/-cancel`, `smith-bubble-expand`
   opens the full screen (carrying context about where you were),
   `smith-bubble-close`.
+- Select `smith-mode-text` or `smith-mode-voice` inside either chat view.
+  Voice uses the same conversation. It does not open another window or overlay.
+  `smith-voice-panel` contains the orb, captions, connection state, and audio controls.
+  Changing modes keeps the draft and voice connection. The mode bar shows the
+  microphone state and an End button while voice is connected.
+  Closing the popover keeps voice connected. The Smith launcher shows its state.
+  Starting voice uses the microphone and Gemini. Do not start it without permission.
+- Tool and note groups use `smith-activity`. Active tool groups open automatically
+  and collapse when work ends. Open a tool row to read its output.
+  Output has a separate scroll area. Scrolling up stops automatic scrolling;
+  Latest message returns to the end. New chat is disabled during work or voice.
 - Entity writes arrive as an inline `smith-proposal-card` at the transcript
   tail showing create/overwrite plus the full definition; answer with
   `smith-proposal-approve` / `smith-proposal-reject`. Approving saves the
