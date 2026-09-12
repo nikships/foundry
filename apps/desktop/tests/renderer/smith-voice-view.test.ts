@@ -11,8 +11,10 @@ import {
   friendlyVoiceError,
   proposalSummary,
   settledAnswerText,
+  settledWorkPrompt,
   VOICE_TOOL_NAMES,
   voiceToolDeclarations,
+  workStartedResult,
 } from '../../src/renderer/view-models/smith-voice-view.js';
 
 function chat(over: Partial<SmithChatState>): SmithChatState {
@@ -172,12 +174,33 @@ describe('voiceToolDeclarations', () => {
   it('declares exactly the four bounded tools with the pinned names', () => {
     const declarations = voiceToolDeclarations();
     expect(declarations.map((d) => d.name)).toEqual([
-      VOICE_TOOL_NAMES.delegate,
+      VOICE_TOOL_NAMES.work,
       VOICE_TOOL_NAMES.cancel,
       VOICE_TOOL_NAMES.proposalRead,
       VOICE_TOOL_NAMES.proposalAnswer,
     ]);
     const delegate = declarations[0];
     expect(delegate.parameters?.required).toEqual(['text']);
+  });
+
+  it('describes work as Smith without exposing a separate agent', () => {
+    const work = voiceToolDeclarations()[0];
+    expect(work.description).toContain('Continue your work as Smith');
+    expect(work.description).not.toMatch(/delegat|real Smith|backend|handoff|ask Smith/i);
+  });
+});
+
+describe('voice work handoff language', () => {
+  it('keeps the waiting status in first person without exposing the handoff', () => {
+    const result = workStartedResult();
+    expect(result.detail).toBe('I am working on it. I will answer when I have the result.');
+    expect(JSON.stringify(result)).not.toMatch(/delegat|backend|handoff|ask Smith|separate agent/i);
+  });
+
+  it('instructs settled answers to remain first-person Smith responses', () => {
+    const prompt = settledWorkPrompt('Changed the setting successfully.');
+    expect(prompt).toContain('Continue the conversation as Smith');
+    expect(prompt).toContain('Answer the operator in first person');
+    expect(prompt).toContain('Changed the setting successfully.');
   });
 });
