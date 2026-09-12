@@ -30,7 +30,10 @@ internal class SmithVoiceAudio(
     private var writtenFrames = 0L
     private data class Slice(val endFrame: Long, val amplitude: Float)
     private val slices = ArrayDeque<Slice>()
-    private val queue = Channel<Pair<Int, ByteArray>>(250)
+    private val queue = Channel<Pair<Int, ByteArray>>(Channel.UNLIMITED)
+    // Trailing byte held when a chunk ends mid-sample so only complete 2-byte
+    // 16-bit samples are queued. Guarded by lock.
+    private var pendingByte: Byte? = null
     @Volatile var level = 0f
         private set
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
@@ -127,10 +130,30 @@ internal class SmithVoiceAudio(
     }
 
     fun enqueue(bytes: ByteArray): Boolean = synchronized(lock) {
-        if (bytes.size % 2 != 0) return@synchronized false
-        // 20 ms packets, at most five seconds buffered. Fail rather than silently drop speech.
-        for (offset in bytes.indices step 960) {
-            if (!queue.trySend(epoch to bytes.copyOfRange(offset, minOf(offset + 960, bytes.size))).isSuccess) {
+        if (closed) return@synchronized false
+        // Prepend a byte held from an odd-length chunk so only complete 2-byte
+        // 16-bit samples are queued; hold a new trailing byte when still odd.
+        val held = pendingByte
+        pendingByte = null
+        val combined = if (held != null) {
+            val merged = ByteArray(bytes.size + 1)
+            merged[0] = held
+            bytes.copyInto(merged, 1)
+            merged
+        } else {
+            bytes
+        }
+        val evenSize = combined.size - (combined.size % 2)
+        if (evenSize < combined.size) {
+            pendingByte = combined[combined.size - 1]
+        }
+        if (evenSize == 0) return@synchronized true
+        val aligned = if (evenSize == combined.size) combined else combined.copyOf(evenSize)
+        // 20 ms packets buffered without a real-time cap so synthesis bursts
+        // and network jitter play through instead of aborting the session.
+        for (offset in 0 until evenSize step 960) {
+            val end = minOf(offset + 960, evenSize)
+            if (!queue.trySend(epoch to aligned.copyOfRange(offset, end)).isSuccess) {
                 return@synchronized false
             }
         }
@@ -140,6 +163,7 @@ internal class SmithVoiceAudio(
     fun interrupt() = synchronized(lock) {
         epoch++
         while (queue.tryReceive().isSuccess) Unit
+        pendingByte = null
         player?.let { it.pause(); it.flush(); it.play() }
         writtenFrames = 0L
         slices.clear()
@@ -154,6 +178,7 @@ internal class SmithVoiceAudio(
         queue.close()
         synchronized(lock) {
             epoch++
+            pendingByte = null
             level = 0f
             slices.clear()
             echo?.release()
