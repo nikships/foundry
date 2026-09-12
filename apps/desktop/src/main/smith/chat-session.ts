@@ -151,6 +151,10 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+function cancelledOutcome(): SmithTurnOutcome {
+  return { text: '', usage: null, reason: 'cancelled', interrupted: true };
+}
+
 function visibleTranscript(entries: SmithTranscriptEntry[]): SmithTranscriptEntry[] {
   return entries.flatMap((entry) => {
     if (entry.kind !== 'text') return [{ ...entry }];
@@ -210,6 +214,12 @@ export class SmithChatSession {
   private reasoningEffortOverride: ReasoningEffort | null = null;
   private turnActive = false;
   private cancelRequested = false;
+  /**
+   * Bumped on New chat so a turn that is still settling cannot write into the
+   * wiped transcript, persist the old pointer, or clear a successor turn's
+   * `running` flag. Transport event handlers capture the value at open.
+   */
+  private generation = 0;
   private lastError: string | null = null;
   private transcript: SmithTranscriptEntry[] = [];
   private readonly customTools: ToolDefinition[];
@@ -289,23 +299,25 @@ export class SmithChatSession {
   /** One user message: opens the session lazily, answers when the turn settles. */
   async send(text: string, ctx: SmithTurnContext = {}): Promise<SmithTurnOutcome> {
     if (this.turnActive) throw new Error('a Smith turn is already running');
+    const generation = this.generation;
     this.turnActive = true;
     this.cancelRequested = false;
     this.lastError = null;
     this.push({ kind: 'text', text, source: 'operator' });
     let started: AgentTransport | null = null;
     try {
-      await this.ensureStarted();
+      if (this.generation !== generation) return cancelledOutcome();
+      await this.ensureStarted(generation);
+      if (this.generation !== generation) return cancelledOutcome();
       started = this.transport;
       if (!started) throw new Error('smith chat session is not open');
       // Cancel can arrive while the lazy session is still opening, before
       // there is a transport to interrupt. Do not start a paid turn after it.
-      if (this.cancelRequested) {
-        return { text: '', usage: null, reason: 'cancelled', interrupted: true };
-      }
+      if (this.cancelRequested) return cancelledOutcome();
       const result = await started.send(text, {
         ...(ctx.screen ? { systemPrompt: screenContextBlock(ctx.screen) } : {}),
       });
+      if (this.generation !== generation) return cancelledOutcome();
       return {
         text: result.text,
         usage: result.usage,
@@ -313,18 +325,12 @@ export class SmithChatSession {
         interrupted: result.interrupted,
       };
     } catch (e) {
+      if (this.generation !== generation) throw e;
       this.lastError = errorMessage(e);
       this.push({ kind: 'error', text: this.lastError, source: 'smith' });
       throw e;
     } finally {
-      this.turnActive = false;
-      // A model or effort switch made during this turn dropped the session
-      // without closing it, so the answer could finish. Dispose it here, or
-      // the successor opens alongside a live one that nothing holds.
-      const orphaned = this.transport !== started ? started : null;
-      this.persistState();
-      this.emit();
-      if (orphaned) await orphaned.close().catch(() => undefined);
+      await this.settleTurn(generation, started);
     }
   }
 
@@ -339,20 +345,29 @@ export class SmithChatSession {
    * Wipe the conversation and start fresh: the live session is disposed and
    * the pointer cleared, so the next message opens a brand-new session file.
    *
+   * A turn in flight is cancelled first. Nulling the transport without
+   * interrupting it left Stop as a no-op (`cancel` interrupts
+   * `this.transport`) and let the orphaned answer stream into the empty chat.
+   *
    * The effort override goes with it. It belongs to the conversation being
    * wiped, so a new chat opens at the install default — which is what
    * Settings → Smith calls itself.
    */
   async newChat(): Promise<void> {
+    this.generation += 1;
+    this.cancelRequested = true;
     const transport = this.transport;
     this.transport = null;
+    this.turnActive = false;
     this.sessionId = null;
     this.transcript = [];
     this.lastError = null;
     this.reasoningEffortOverride = null;
     this.persistState();
     this.emit();
-    if (transport) await transport.close();
+    if (!transport) return;
+    await transport.interrupt().catch(() => undefined);
+    await transport.close().catch(() => undefined);
   }
 
   /**
@@ -444,8 +459,23 @@ export class SmithChatSession {
     if (transport && !this.turnActive) await transport.close();
   }
 
+  /**
+   * Finish this send's bookkeeping only when New chat has not superseded it.
+   * A model or effort switch made during this turn dropped the session
+   * without closing it, so the answer could finish. Dispose that orphan here,
+   * or the successor opens alongside a live one that nothing holds.
+   */
+  private async settleTurn(generation: number, started: AgentTransport | null): Promise<void> {
+    if (this.generation !== generation) return;
+    this.turnActive = false;
+    const orphaned = this.transport !== started ? started : null;
+    this.persistState();
+    this.emit();
+    if (orphaned) await orphaned.close().catch(() => undefined);
+  }
+
   /** Started lazily: a project whose Smith is never opened costs nothing. */
-  private async ensureStarted(): Promise<void> {
+  private async ensureStarted(generation: number): Promise<void> {
     if (this.transport?.alive) return;
     const projectId = scopeProjectId(this.deps.scope);
     const transport = this.deps.transport({
@@ -457,10 +487,12 @@ export class SmithChatSession {
       customTools: this.customTools,
       onPermission: (ask) => this.decide(ask),
       onEvent: (event) => {
+        if (this.generation !== generation) return;
         this.absorbTranscript(event);
         this.deps.onEvent?.(event);
       },
       onModelWarning: (warning) => {
+        if (this.generation !== generation) return;
         this.push({ kind: 'note', text: warning.slice(0, MAX_WARNING_TEXT), source: 'smith' });
         this.deps.onModelWarning?.(warning);
       },
@@ -469,11 +501,16 @@ export class SmithChatSession {
       await transport.start(this.sessionId);
     } catch (e) {
       await transport.close().catch(() => undefined);
+      if (this.generation !== generation) return;
       // The "pick a model" gate is an instruction to the operator, not a
       // failure to report. Wrapping it in session-start noise would bury the
       // one sentence that says what to do about it.
       if (e instanceof ModelNotChosen) throw e;
       throw new Error(`smith chat session start failed: ${errorMessage(e)}`);
+    }
+    if (this.generation !== generation) {
+      await transport.close().catch(() => undefined);
+      return;
     }
     this.transport = transport;
     this.sessionId = transport.id;

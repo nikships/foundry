@@ -227,6 +227,52 @@ describe('new chat', () => {
     };
     expect(state.sessionId).toBeNull();
   });
+
+  it('cancels a turn in flight rather than orphaning it into the next chat', async () => {
+    const h = harness({ turns: ['ghost answer', 'fresh answer'], stallOnTurns: [0] });
+    const parked = h.session.send('long question');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(h.session.snapshot().running).toBe(true);
+
+    await h.session.newChat();
+    expect(h.session.snapshot()).toMatchObject({ running: false, error: null });
+    expect(h.session.snapshot().transcript).toEqual([]);
+    expect(h.session.currentSessionId).toBeNull();
+    // Stop has nothing to interrupt: the snapshot already reports idle.
+    await expect(h.session.cancel()).resolves.toBeUndefined();
+
+    // Late text from the disposed turn must not populate the wiped transcript.
+    h.scripted.finishStall();
+    expect(h.session.snapshot().transcript).toEqual([]);
+
+    // The next message must not hit "already running": New chat settled the
+    // flag even though the abandoned send promise has not resolved yet.
+    const next = h.session.send('fresh start');
+    const abandoned = await parked;
+    expect(abandoned.interrupted).toBe(true);
+    expect((await next).text).toBe('fresh answer');
+    expect(h.session.currentSessionId).toBe('s2');
+    expect(h.session.snapshot().transcript.map((row) => rowText(row))).toEqual([
+      'fresh start',
+      'fresh answer',
+    ]);
+  });
+
+  it('skips the paid turn when New chat arrives during a lazy open', async () => {
+    const scripted = new ScriptedAgent(['after'], [], [], { handshakeDelayMs: 80 });
+    const h = harness({ scripted });
+    const parked = h.session.send('hello');
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await h.session.newChat();
+    const result = await parked;
+    expect(result.interrupted).toBe(true);
+    expect(h.scripted.turnRequests).toHaveLength(0);
+    expect(h.session.snapshot().transcript).toEqual([]);
+
+    const next = await h.session.send('fresh');
+    expect(next.text).toBe('after');
+    expect(h.scripted.turnRequests).toHaveLength(1);
+  });
 });
 
 describe('model selection', () => {
