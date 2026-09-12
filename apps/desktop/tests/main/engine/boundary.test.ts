@@ -95,6 +95,13 @@ describe('write boundary semantics', () => {
     expect(isAllowed('src/a.ts', writes)).toBe(false);
   });
 
+  it('an empty pattern matches no real path, so a blank allowlist denies every write', () => {
+    expect(matchesPattern('src/a.ts', '')).toBe(false);
+    expect(matchesPattern('README.md', '')).toBe(false);
+    expect(isAllowed('src/a.ts', [''])).toBe(false);
+    expect(isAllowed('README.md', [''])).toBe(false);
+  });
+
   it('protection beats an explicit allow', () => {
     expect(isAllowed('.git/config', ['.git/'])).toBe(false);
   });

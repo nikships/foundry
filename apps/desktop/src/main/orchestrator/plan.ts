@@ -26,7 +26,7 @@ import {
 import { BUILTIN_PIPELINES } from '@shared/builtin-pipelines.js';
 import { jsonSchemaWithoutDialect } from '@shared/zod-json-schema.js';
 import { pipelineSchema, validate as validatePipeline } from '../store/pipelines.js';
-import { validate as validateAgent } from '../store/roster.js';
+import { validate as validateAgent, writeBoundarySchema } from '../store/roster.js';
 import { GATE_DESCRIPTIONS } from '../engine/gates.js';
 import { preflightForRun } from '../engine/preflight.js';
 import type { OutputFormat } from '../pi/transport.js';
@@ -258,7 +258,7 @@ export const synthesizedAgentSchema = z
     purpose: z.string().min(1),
     systemPrompt: z.string().min(1),
     userPrompt: z.string().min(1),
-    writes: z.array(z.string()).nullable(),
+    writes: writeBoundarySchema,
     envelope: z.string().min(1),
     reasoningEffort: z.enum(REASONING_EFFORTS).optional(),
     toolProfile: z.enum(['full', 'read-only']).optional(),

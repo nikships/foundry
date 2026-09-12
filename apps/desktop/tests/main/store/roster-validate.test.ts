@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { validate } from '../../../src/main/store/roster.js';
+import { tempDir } from '../../helpers/tmp.js';
+import { RosterStore, validate } from '../../../src/main/store/roster.js';
 import { resolveAgentExecution, type AgentDef } from '../../../src/shared/types.js';
 
 const base: AgentDef = {
@@ -50,6 +51,34 @@ describe('roster.validate', () => {
   it('accepts either tool profile', () => {
     expect(validate({ ...base, toolProfile: 'full' })).toEqual([]);
     expect(validate({ ...base, toolProfile: 'read-only' })).toEqual([]);
+  });
+
+  it('rejects an empty write-boundary pattern so a blank row cannot fail every write', () => {
+    const issues = validate({ ...base, writes: [''] });
+    expect(issues.some((i) => i.where === 'writes.0')).toBe(true);
+    expect(issues.some((i) => i.message.includes('empty'))).toBe(true);
+    expect(issues.every((i) => i.level === 'error')).toBe(true);
+  });
+
+  it('rejects a whitespace-only write-boundary pattern', () => {
+    const issues = validate({ ...base, writes: ['src/**', '   '] });
+    expect(issues.some((i) => i.where === 'writes.1')).toBe(true);
+    expect(issues.every((i) => i.level === 'error')).toBe(true);
+  });
+
+  it('still accepts unrestricted, read-only, and a real allowlist', () => {
+    expect(validate({ ...base, writes: null })).toEqual([]);
+    expect(validate({ ...base, writes: [] })).toEqual([]);
+    expect(validate({ ...base, writes: ['src/**', 'docs/'] })).toEqual([]);
+  });
+
+  it('does not persist a blank allowlist row', () => {
+    const roster = new RosterStore(tempDir('foundry-roster-writes-'));
+    const result = roster.save({ ...base, name: 'blank_writer', writes: [''] });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected save to fail');
+    expect(result.issues.some((i) => i.where === 'writes.0')).toBe(true);
+    expect(roster.get('blank_writer')).toBeNull();
   });
 
   it('rejects a tool profile it cannot honour rather than widening it', () => {
