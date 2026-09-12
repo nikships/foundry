@@ -4,7 +4,19 @@ import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
 
-type Ctx = Pick<AppContext, 'settings' | 'broadcast' | 'applyTheme'>;
+type Ctx = Pick<AppContext, 'settings' | 'projects' | 'roster' | 'broadcast' | 'applyTheme'>;
+
+function resetHiddenAgentModels(ctx: Ctx, hiddenModelIds: readonly string[]): void {
+  ctx.roster.resetHiddenModelPins(hiddenModelIds);
+  for (const project of ctx.projects.list()) {
+    if (ctx.roster.hasProjectCopy(project.id)) {
+      ctx.roster.resetHiddenModelPins(hiddenModelIds, {
+        projectId: project.id,
+        ownRoster: true,
+      });
+    }
+  }
+}
 
 export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.settingsGet, () => ctx.settings.get());
@@ -15,6 +27,9 @@ export function register(ctx: Ctx, handle: Handle): void {
         ok: false,
         issues: result.issues.map((m) => ({ level: 'error', where: 'settings', message: m })),
       };
+    }
+    if (patch.hiddenModelIds !== undefined) {
+      resetHiddenAgentModels(ctx, result.settings.hiddenModelIds);
     }
     ctx.applyTheme(result.settings.theme);
     notifySettings(ctx);

@@ -1229,6 +1229,9 @@ class CompanionViewModel(
         }
     }
 
+    fun createSmithVoiceController(context: android.content.Context, projectId: String) =
+        com.foundry.companion.voice.SmithVoiceController(context, repository, projectId.takeIf { it.isNotBlank() })
+
     fun loadSmith(projectId: String = _uiState.value.selectedProjectId) {
         viewModelScope.launch {
             val scope = projectId.takeIf { it.isNotBlank() }

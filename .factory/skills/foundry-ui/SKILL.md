@@ -97,6 +97,13 @@ routinely masquerade as an environment blocker:
 Variants:
 
 ```bash
+# Dogfood instance with inference preconfigured (Meta Muse Spark 1.3
+# Contributor as the only model; seed prints any keys still missing their
+# one-time entry in Settings — Meta under Providers, Gemini under
+# Integrations → Smith voice mode; saved keys persist in the state dir):
+npm run dogfood
+agent-browser --session dogfood connect 9251   # named session = second app
+
 # Isolated instance with fresh state (triggers Onboarding, bypasses the
 # single-instance lock, leaves real state untouched):
 ./node_modules/.bin/electron . --remote-debugging-port=9251 \

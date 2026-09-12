@@ -27,6 +27,8 @@ import type {
 } from './types.js';
 import type {
   EventPage,
+  GeminiLiveConnectionState,
+  GeminiLiveToken,
   LinearConnectionState,
   LinearStartRunInput,
   OrchestratorAcceptResult,
@@ -299,6 +301,9 @@ export interface CompanionRoutes {
    * `projectId` query omitted (or empty) is the global conversation.
    */
   'GET /v1/smith': { response: SmithChatState };
+  /** Optional voice capability; older hosts return 404. The stored API key never crosses LAN. */
+  'GET /v1/smith/voice': { response: GeminiLiveConnectionState };
+  'POST /v1/smith/voice/token': { request: CompanionSmithScopeRequest; response: GeminiLiveToken };
   'POST /v1/smith/send': { request: CompanionSmithSendRequest; response: SmithChatState };
   'POST /v1/smith/cancel': { request: CompanionSmithScopeRequest; response: SmithChatState };
   'POST /v1/smith/new': { request: CompanionSmithScopeRequest; response: SmithChatState };

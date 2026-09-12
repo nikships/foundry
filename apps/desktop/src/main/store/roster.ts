@@ -281,6 +281,24 @@ export class RosterStore {
     return copy;
   }
 
+  /**
+   * A hidden model cannot remain pinned to an agent. Reset only the model to
+   * `inherit`: enabling all-default inheritance would also replace the agent's
+   * independently configured reasoning effort.
+   */
+  resetHiddenModelPins(
+    hiddenModelIds: readonly string[],
+    opts: { projectId?: string; ownRoster?: boolean } = {},
+  ): AgentDef[] {
+    const store = this.storeFor(opts);
+    const current = store.read();
+    const hidden = new Set(hiddenModelIds);
+    if (!current.some((agent) => hidden.has(agent.model))) return current;
+    return store.write(
+      current.map((agent) => (hidden.has(agent.model) ? { ...agent, model: 'inherit' } : agent)),
+    );
+  }
+
   resetToBuiltins(): AgentDef[] {
     return this.appStore.write(BUILTIN_AGENTS.map((a) => ({ ...a })));
   }

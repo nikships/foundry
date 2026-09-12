@@ -42,6 +42,10 @@ Do not launch the app for small fixes. For substantial UI changes, use the `foun
 
 Tests must not call a model or network. Engine tests use real Git temp repositories with `apps/desktop/tests/helpers/scripted-transport.ts`; do not mock Git. Do not run Android builds or tests in an orb, rely on the CI Android job there.
 
+### Orbs force commit signing (test environment quirk)
+
+Amp orbs set `/etc/gitconfig` to sign every commit with the Amp-managed key (`commit.gpgsign=true` → `amp-sign-commit`). That helper cannot sign any other identity, so a `git commit` in a repo with a repo-local `user.email` — every engine scratch repo — fails with "No signing key is available for this commit". The vitest setup (`apps/desktop/tests/helpers/setup-tmp.ts`) sets `GIT_CONFIG_NOSYSTEM=1` for all suites, which makes the scratch repos ignore the system git config; this is why plain `npm test` passes in an orb without touching signing for real checkouts. Don't disable signing globally to work around this.
+
 ## Commands
 
 All commands run from the repository root.
@@ -69,6 +73,7 @@ All commands run from the repository root.
 | Full local gate            | `npm run check`                                           |
 | Fetch Bridge               | `npm run fetch:bridge`                                    |
 | Refresh model intelligence | `npm run fetch:intelligence` (`-- --check` verifies only) |
+| Dogfood seed / launch      | `npm run dogfood:seed`; `npm run dogfood`                 |
 | Package signed macOS app   | `npm run package`                                         |
 
 Vitest accepts a file or name filter, for example:

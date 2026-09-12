@@ -302,6 +302,38 @@ export type SmithTranscriptEntry = SmithChatEntry | SmithArtifactEntry;
  * The complete renderer-facing state for one project's chat. Every read and
  * push receives a fresh transcript array, never the session's live one.
  */
+/**
+ * Connection state for Smith's live voice layer, the same shape as Linear's:
+ * a `keySet` pill plus a human sentence. The key itself never crosses.
+ */
+export interface GeminiLiveConnectionState {
+  keySet: boolean;
+  detail: string;
+}
+
+export interface GeminiLiveActionResult {
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * What the voice layer needs to open the live session: a short-lived
+ * ephemeral token minted from the stored key, the model id, and the persona
+ * system instruction main composed. The stored API key never appears here.
+ */
+export interface GeminiLiveToken {
+  /** Opaque single-use token; the renderer presents it as the Live API key. */
+  token: string;
+  /** The Live API model the session must connect to. */
+  model: string;
+  /**
+   * The persona text installed as the session's system instruction, including
+   * the delegation-tool descriptions. Pinned here so the renderer and the
+   * token's own config cannot drift.
+   */
+  systemInstruction: string;
+}
+
 export interface SmithChatState {
   /** Absent for the global “All projects” conversation. */
   projectId?: string;
@@ -864,6 +896,22 @@ export interface FoundryApi {
     /** Approve or reject the pending proposal, unblocking Smith's tool call. */
     answerProposal(id: string, answer: SmithProposalAnswer): Promise<SmithProposalAnswerResult>;
   };
+  /**
+   * Smith's live voice layer. The stored Gemini key never crosses this seam:
+   * the renderer connects to the Live API with a short-lived ephemeral token
+   * minted here, and real work goes back through `smithVoice.delegate` into
+   * the same chat session the Smith UI drives.
+   */
+  geminiLive: {
+    state(): Promise<GeminiLiveConnectionState>;
+    setApiKey(apiKey: string): Promise<GeminiLiveActionResult>;
+    clearApiKey(): Promise<GeminiLiveActionResult>;
+    /**
+     * Mints a fresh ephemeral Live API token; one call per live session
+     * connection. The stored key never crosses this seam.
+     */
+    mintToken(): Promise<GeminiLiveToken | { error: string }>;
+  };
   companion: {
     /** Host status plus the paired devices. Starts nothing. */
     state(): Promise<CompanionHostState>;
@@ -1070,6 +1118,10 @@ export const IPC = {
   smithSetReasoningEffort: 'smith:setReasoningEffort',
   smithProposalsList: 'smith:proposalsList',
   smithAnswerProposal: 'smith:answerProposal',
+  geminiLiveState: 'gemini-live:state',
+  geminiLiveSetApiKey: 'gemini-live:setApiKey',
+  geminiLiveClearApiKey: 'gemini-live:clearApiKey',
+  geminiLiveMintToken: 'gemini-live:mintToken',
   companionState: 'companion:state',
   companionStart: 'companion:start',
   companionStop: 'companion:stop',
