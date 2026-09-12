@@ -4,9 +4,15 @@ import type {
   AgentDef,
   PhaseDef,
   PhaseKind,
+  PipelineCanvas,
   PipelineCanvasPoint,
   PipelineDef,
 } from '@shared/types.js';
+
+type NamedPhase = Pick<PhaseDef, 'name'>;
+
+/** Downward shift when a duplicate-name card would otherwise sit on another. */
+export const DUPLICATE_CANVAS_OFFSET_Y = 240;
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
@@ -243,6 +249,90 @@ export function formatClock(date: Date): string {
 /** The starting position for a node that has not been positioned by an operator. */
 export function defaultCanvasPosition(index: number): PipelineCanvasPoint {
   return { x: 96 + index * 352, y: 168 };
+}
+
+function duplicateCanvasKey(index: number, name: string): string {
+  return `${index}:${name}`;
+}
+
+function nameIsUnique(phases: readonly NamedPhase[], name: string): boolean {
+  let seen = false;
+  for (const phase of phases) {
+    if (phase.name !== name) continue;
+    if (seen) return false;
+    seen = true;
+  }
+  return seen;
+}
+
+/**
+ * Persistence key for a canvas card. Valid pipelines key by unique phase
+ * name; duplicate-name drafts (a save-blocking error) qualify by index so
+ * two cards never share a React key, pointer target, or stored point.
+ */
+export function canvasNodeKey(phases: readonly NamedPhase[], index: number): string {
+  const name = phases[index]?.name ?? '';
+  return nameIsUnique(phases, name) ? name : duplicateCanvasKey(index, name);
+}
+
+/**
+ * Board point for one phase. Later duplicates ignore the shared name key so
+ * they stay at their default slot (or a vertical offset if that slot is
+ * already occupied by the first occupant).
+ */
+export function canvasNodePosition(
+  phases: readonly NamedPhase[],
+  index: number,
+  nodes: Record<string, PipelineCanvasPoint> | undefined,
+): PipelineCanvasPoint {
+  const fallback = defaultCanvasPosition(index);
+  const name = phases[index]?.name ?? '';
+  const key = canvasNodeKey(phases, index);
+  const firstIndex = phases.findIndex((phase) => phase.name === name);
+  const stored =
+    nodes?.[key] ??
+    nodes?.[duplicateCanvasKey(index, name)] ??
+    (firstIndex === index ? nodes?.[name] : undefined);
+  const point = { ...fallback, ...stored };
+  if (stored || firstIndex < 0 || firstIndex === index) return point;
+  const firstStored =
+    nodes?.[canvasNodeKey(phases, firstIndex)] ??
+    nodes?.[duplicateCanvasKey(firstIndex, name)] ??
+    nodes?.[name];
+  const firstPoint = { ...defaultCanvasPosition(firstIndex), ...firstStored };
+  if (point.x === firstPoint.x && point.y === firstPoint.y) {
+    return { x: point.x, y: point.y + DUPLICATE_CANVAS_OFFSET_Y };
+  }
+  return point;
+}
+
+/** Fill a canvas point for every phase, using index-qualified keys on collisions. */
+export function canvasForPhases(
+  phases: readonly NamedPhase[],
+  canvas: PipelineCanvas | undefined,
+): PipelineCanvas {
+  const nodes = { ...canvas?.nodes };
+  for (let index = 0; index < phases.length; index += 1) {
+    const key = canvasNodeKey(phases, index);
+    nodes[key] ??= canvasNodePosition(phases, index, nodes);
+  }
+  return { ...canvas, nodes };
+}
+
+/** Move or drop one canvas point. No-op when `fromKey` is missing. */
+export function retargetCanvasNode(
+  canvas: PipelineCanvas | undefined,
+  fromKey: string,
+  toKey: string | null,
+): PipelineCanvas | undefined {
+  const nodes = canvas?.nodes;
+  if (!fromKey || !nodes?.[fromKey]) return canvas;
+  if (toKey === fromKey) return canvas;
+  const next = { ...nodes };
+  const point = next[fromKey];
+  delete next[fromKey];
+  if (toKey !== null && point) next[toKey] = point;
+  return { ...canvas, nodes: next };
 }
 
 /** A complete, schema-valid pipeline the workbench can persist on first create. */

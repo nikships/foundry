@@ -19,8 +19,9 @@ import type {
 } from '@shared/types.js';
 import { KIND_LABEL, phaseKindColor } from '../../utils/derive.js';
 import {
+  canvasNodeKey,
+  canvasNodePosition,
   commandText,
-  defaultCanvasPosition,
   gateNames,
   issuePhaseIndex,
   phaseEnvelopeChip,
@@ -56,7 +57,8 @@ type Interaction =
       pointerId: number;
       startX: number;
       startY: number;
-      name: string;
+      index: number;
+      key: string;
       point: { x: number; y: number };
       viewport: Viewport;
       moved: boolean;
@@ -165,7 +167,7 @@ function NodeCard({
 
   return (
     <article
-      data-pipeline-node={phase.name}
+      data-pipeline-node={String(index)}
       data-testid={`pipeline-phase-${phase.name}`}
       className={cx(
         styles.node,
@@ -299,7 +301,7 @@ export default function PipelineCanvas({
   const boardRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const interaction = useRef<Interaction | null>(null);
-  const ignoredClick = useRef<string | null>(null);
+  const ignoredClick = useRef<number | null>(null);
   const [state, setState] = useState<CanvasState>(() => canvasState(canvas));
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -322,11 +324,7 @@ export default function PipelineCanvas({
   const currentPipeline = pipelines?.find((p) => p.id === selectedPipelineId);
 
   const positions = useMemo(
-    () =>
-      phases.map((phase, index) => ({
-        ...defaultCanvasPosition(index),
-        ...state.nodes[phase.name],
-      })),
+    () => phases.map((_, index) => canvasNodePosition(phases, index, state.nodes)),
     [phases, state.nodes],
   );
 
@@ -345,7 +343,7 @@ export default function PipelineCanvas({
       return {
         nodes: {
           ...state.nodes,
-          [active.name]: { x: active.point.x + deltaX, y: active.point.y + deltaY },
+          [active.key]: { x: active.point.x + deltaX, y: active.point.y + deltaY },
         },
         viewport: state.viewport,
       };
@@ -361,15 +359,16 @@ export default function PipelineCanvas({
       const node = target?.closest<HTMLElement>('[data-pipeline-node]');
       boardRef.current.setPointerCapture(event.pointerId);
 
-      if (node?.dataset.pipelineNode) {
-        const index = phases.findIndex((phase) => phase.name === node.dataset.pipelineNode);
-        if (index < 0) return;
+      if (node?.dataset.pipelineNode != null && node.dataset.pipelineNode !== '') {
+        const index = Number(node.dataset.pipelineNode);
+        if (!Number.isInteger(index) || index < 0 || index >= phases.length) return;
         interaction.current = {
           kind: 'node',
           pointerId: event.pointerId,
           startX: event.clientX,
           startY: event.clientY,
-          name: node.dataset.pipelineNode,
+          index,
+          key: canvasNodeKey(phases, index),
           point: positions[index]!,
           viewport: state.viewport,
           moved: false,
@@ -411,23 +410,20 @@ export default function PipelineCanvas({
       interaction.current = null;
       if (!active.moved) {
         if (active.kind === 'node') {
-          const index = phases.findIndex((phase) => phase.name === active.name);
-          if (index >= 0) {
-            ignoredClick.current = active.name;
-            onSelectPhase(index);
-          }
+          ignoredClick.current = active.index;
+          onSelectPhase(active.index);
         }
         return;
       }
 
       if (active.kind === 'node') {
-        ignoredClick.current = active.name;
+        ignoredClick.current = active.index;
         commit(nextNodeState(active, event));
         return;
       }
       commit({ nodes: state.nodes, viewport: panFrom(active, event) });
     },
-    [commit, nextNodeState, onSelectPhase, phases, state.nodes],
+    [commit, nextNodeState, onSelectPhase, state.nodes],
   );
 
   const zoomAt = useCallback(
@@ -501,8 +497,8 @@ export default function PipelineCanvas({
     };
   }, [isEmpty]);
 
-  const shouldIgnoreClick = useCallback((name: string): boolean => {
-    if (ignoredClick.current !== name) return false;
+  const shouldIgnoreClick = useCallback((index: number): boolean => {
+    if (ignoredClick.current !== index) return false;
     ignoredClick.current = null;
     return true;
   }, []);
@@ -567,7 +563,7 @@ export default function PipelineCanvas({
               <path d="M 0 0 L 10 5 L 0 10 z" className={styles.arrowHead} />
             </marker>
           </defs>
-          {phases.slice(0, -1).map((phase, index) => {
+          {phases.slice(0, -1).map((_, index) => {
             const source = positions[index]!;
             const target = positions[index + 1]!;
             const sourceX = source.x + NODE_WIDTH;
@@ -577,7 +573,7 @@ export default function PipelineCanvas({
             const bend = Math.max(76, Math.min(180, Math.abs(targetX - sourceX) * 0.42));
             return (
               <path
-                key={`${phase.name}-${phases[index + 1]!.name}`}
+                key={`edge-${index}`}
                 d={`M ${sourceX} ${sourceY} C ${sourceX + bend} ${sourceY}, ${targetX - bend} ${targetY}, ${targetX} ${targetY}`}
                 className={styles.edge}
                 markerEnd="url(#pipeline-arrow)"
@@ -588,7 +584,7 @@ export default function PipelineCanvas({
 
         {phases.map((phase, index) => (
           <NodeCard
-            key={phase.name}
+            key={canvasNodeKey(phases, index)}
             phase={phase}
             index={index}
             position={positions[index]!}
@@ -597,7 +593,7 @@ export default function PipelineCanvas({
             onMove={(delta) => onMovePhase(index, delta)}
             canMoveLater={index < phases.length - 1}
             onRemove={() => onRemovePhase(index)}
-            shouldIgnoreClick={() => shouldIgnoreClick(phase.name)}
+            shouldIgnoreClick={() => shouldIgnoreClick(index)}
             agentColor={agentColor}
             agentEnvelope={agentEnvelope}
             issues={issues}

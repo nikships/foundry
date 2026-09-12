@@ -10,8 +10,12 @@ import {
   applyPipelineDraftPatch,
   bindPhaseAgent,
   blankPhase,
+  canvasForPhases,
+  canvasNodeKey,
+  canvasNodePosition,
   commandText,
   defaultCanvasPosition,
+  DUPLICATE_CANVAS_OFFSET_Y,
   formatClock,
   gateNames,
   generatePipelineId,
@@ -21,6 +25,7 @@ import {
   phaseComposition,
   phaseEnvelopeChip,
   pipelineFlowEquals,
+  retargetCanvasNode,
 } from '@renderer/view-models/pipeline-view.js';
 
 describe('pipeline-view', () => {
@@ -369,6 +374,82 @@ describe('pipeline-view', () => {
         now: 99,
       });
       expect(draft.name).toBe('New Pipeline 2');
+    });
+  });
+
+  describe('canvas node identity', () => {
+    const unique = [{ name: 'plan' }, { name: 'build' }, { name: 'review' }];
+
+    it('keys unique names as the phase name', () => {
+      expect(canvasNodeKey(unique, 0)).toBe('plan');
+      expect(canvasNodeKey(unique, 1)).toBe('build');
+    });
+
+    it('qualifies keys when two phases share a name', () => {
+      const dup = [{ name: 'plan' }, { name: 'plan' }, { name: 'review' }];
+      expect(canvasNodeKey(dup, 0)).toBe('0:plan');
+      expect(canvasNodeKey(dup, 1)).toBe('1:plan');
+      expect(canvasNodeKey(dup, 2)).toBe('review');
+    });
+
+    it('places unique names at stored or default points', () => {
+      expect(canvasNodePosition(unique, 1, { build: { x: 10, y: 20 } })).toEqual({
+        x: 10,
+        y: 20,
+      });
+      expect(canvasNodePosition(unique, 0, {})).toEqual(defaultCanvasPosition(0));
+    });
+
+    it('does not stack duplicate-name cards on the shared name key', () => {
+      const dup = [{ name: 'build' }, { name: 'build' }];
+      const nodes = { build: defaultCanvasPosition(0) };
+      const first = canvasNodePosition(dup, 0, nodes);
+      const second = canvasNodePosition(dup, 1, nodes);
+      expect(first).toEqual(defaultCanvasPosition(0));
+      expect(second).toEqual(defaultCanvasPosition(1));
+      expect(first).not.toEqual(second);
+    });
+
+    it('keeps both cards reachable after renaming onto an existing name', () => {
+      const before = [{ name: 'build' }, { name: 'review' }];
+      const after = [{ name: 'build' }, { name: 'build' }];
+      const canvas = {
+        nodes: { build: defaultCanvasPosition(0), review: defaultCanvasPosition(1) },
+      };
+      const next = retargetCanvasNode(canvas, canvasNodeKey(before, 1), canvasNodeKey(after, 1));
+      const first = canvasNodePosition(after, 0, next?.nodes);
+      const second = canvasNodePosition(after, 1, next?.nodes);
+      expect(first).toEqual(defaultCanvasPosition(0));
+      expect(second).toEqual(defaultCanvasPosition(1));
+    });
+
+    it('offsets a later duplicate when its default equals the shared point', () => {
+      const dup = [{ name: 'build' }, { name: 'build' }];
+      const nodes = { build: defaultCanvasPosition(1) };
+      const first = canvasNodePosition(dup, 0, nodes);
+      const second = canvasNodePosition(dup, 1, nodes);
+      expect(first).toEqual(defaultCanvasPosition(1));
+      expect(second).toEqual({
+        x: defaultCanvasPosition(1).x,
+        y: defaultCanvasPosition(1).y + DUPLICATE_CANVAS_OFFSET_Y,
+      });
+    });
+
+    it('fills an index-qualified slot so a drag of one duplicate cannot move the other', () => {
+      const dup = [{ name: 'build' }, { name: 'build' }];
+      const filled = canvasForPhases(dup, { nodes: { build: { x: 1, y: 2 } } });
+      expect(filled.nodes?.['1:build']).toEqual(defaultCanvasPosition(1));
+      expect(canvasNodePosition(dup, 0, filled.nodes)).toEqual({ x: 1, y: 2 });
+      expect(canvasNodePosition(dup, 1, filled.nodes)).toEqual(defaultCanvasPosition(1));
+    });
+
+    it('drops one occupant without moving the remaining unique card', () => {
+      const before = [{ name: 'build' }, { name: 'build' }];
+      const canvas = canvasForPhases(before, {
+        nodes: { '0:build': { x: 1, y: 2 }, '1:build': { x: 3, y: 4 } },
+      });
+      const next = retargetCanvasNode(canvas, canvasNodeKey(before, 1), null);
+      expect(canvasNodePosition([{ name: 'build' }], 0, next?.nodes)).toEqual({ x: 1, y: 2 });
     });
   });
 
