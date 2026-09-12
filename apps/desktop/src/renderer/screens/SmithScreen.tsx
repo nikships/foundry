@@ -144,7 +144,7 @@ export default function SmithScreen({
             title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
             aria-label="New chat"
             data-testid="smith-new-chat"
-            disabled={running || voiceState.status === 'live' || voiceState.status === 'connecting'}
+            disabled={voiceState.status === 'live' || voiceState.status === 'connecting'}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
               <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.3" />

@@ -179,7 +179,7 @@ export default function SmithBubble({
               title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
               label="New chat"
               testId="smith-bubble-new-chat"
-              disabled={running || voiceConnected}
+              disabled={voiceConnected}
             >
               <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.3" />
               <path

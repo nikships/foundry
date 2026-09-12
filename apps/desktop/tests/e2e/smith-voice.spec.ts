@@ -256,6 +256,16 @@ test('voice: stays inside Smith chat across modes and navigation', async () => {
     expect((await tracks(window)).every((track) => track.state === 'ended')).toBe(true);
     await window.getByTestId('smith-mode-voice').click();
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
+    await window.getByTestId('smith-voice-start').click();
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
+    await window.getByTestId('smith-bubble-close').click();
+    await window.getByTestId('nav-settings').click();
+    await window.getByTestId('settings-tab-app').click();
+    await window.getByTestId('settings-replay-intro').click();
+    await expect(window.getByTestId('smith-bubble')).toBeHidden();
+    await expect
+      .poll(async () => (await tracks(window)).every((track) => track.state === 'ended'))
+      .toBe(true);
   } finally {
     await app.close();
   }

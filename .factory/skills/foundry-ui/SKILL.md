@@ -593,7 +593,8 @@ project.
 - Tool and note groups use `smith-activity`. Active tool groups open automatically
   and collapse when work ends. Open a tool row to read its output.
   Output has a separate scroll area. Scrolling up stops automatic scrolling;
-  Latest message returns to the end. New chat is disabled during work or voice.
+  Latest message returns to the end. New chat cancels an active text turn;
+  it is disabled while voice is connected. Opening Replay intro stops voice.
 - Entity writes arrive as an inline `smith-proposal-card` at the transcript
   tail showing create/overwrite plus the full definition; answer with
   `smith-proposal-approve` / `smith-proposal-reject`. Approving saves the

@@ -400,6 +400,7 @@ function AppInner(): React.JSX.Element {
 
   return (
     <SmithChatUIProvider
+      enabled={ready && !needsOnboarding}
       screenContext={liveScreenContext}
       openSettings={() => openSettingsPane('integrations')}
     >

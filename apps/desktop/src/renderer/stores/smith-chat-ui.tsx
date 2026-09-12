@@ -21,10 +21,12 @@ export function useSmithChatUI(): SmithChatUIContextValue {
 
 export function SmithChatUIProvider({
   children,
+  enabled,
   screenContext,
   openSettings,
 }: {
   children: React.ReactNode;
+  enabled: boolean;
   screenContext: SmithScreenContext;
   openSettings: () => void;
 }): React.JSX.Element {
@@ -39,8 +41,11 @@ export function SmithChatUIProvider({
     }));
   };
   const [mode, setMode] = useState<'text' | 'voice'>('text');
-  const { setScreenContext } = voice;
+  const { setScreenContext, stop } = voice;
   useEffect(() => setScreenContext(screenContext), [screenContext, setScreenContext]);
+  useEffect(() => {
+    if (!enabled) stop();
+  }, [enabled, stop]);
 
   return (
     <SmithChatUIContext.Provider
