@@ -40,4 +40,19 @@ describe('onboarding', () => {
     expect(emptyState).toContain('CREW.map');
     expect(emptyState).toContain('Create your first agent');
   });
+
+  it('replays the intro in-session so an expired credential cannot trap the operator', () => {
+    const settingsScreen = read('screens/SettingsScreen.tsx');
+    const app = read('App.tsx');
+    expect(settingsScreen).not.toContain('onboarded: false');
+    expect(settingsScreen).toContain('onReplayIntro');
+    expect(settingsScreen).toContain('data-testid="settings-replay-intro"');
+    expect(app).toContain('replayingIntro');
+    expect(app).toContain('!settings.onboarded || replayingIntro');
+    expect(app).toContain('onReplayIntro={replayIntro}');
+    expect(app).toContain('replay={replayingIntro}');
+    expect(shell).toContain('data-testid="onboarding-exit"');
+    expect(shell).toContain('Exit intro');
+    expect(shell).toContain('replay && onExit');
+  });
 });

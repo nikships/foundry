@@ -361,6 +361,7 @@ export default function SettingsScreen({
   pane: initialPane,
   onPaneChange,
   onNewProject,
+  onReplayIntro,
   paletteNonce = 0,
 }: {
   pane: string;
@@ -368,6 +369,8 @@ export default function SettingsScreen({
   onPaneChange?: (pane: SettingsPaneId) => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
+  /** Replay the cinematic intro in-session without clearing persisted setup. */
+  onReplayIntro?: () => void;
   /** Bumped by the app shell's ⌘K chord; each bump opens the search palette. */
   paletteNonce?: number;
 }): React.JSX.Element {
@@ -659,11 +662,8 @@ export default function SettingsScreen({
       }
     },
   );
-  const replayIntro = async (): Promise<void> => {
-    await runAppAction(async () => {
-      await api.settings.patch({ onboarded: false });
-      await refreshAll();
-    });
+  const replayIntro = (): void => {
+    onReplayIntro?.();
   };
   const addProject = async (): Promise<void> => {
     await runAppAction(async () => {
@@ -2615,13 +2615,18 @@ export default function SettingsScreen({
                           <Button size="sm" onClick={() => setPaneLive('providers')}>
                             Manage providers
                           </Button>
-                          <Button size="sm" onClick={() => void replayIntro()}>
+                          <Button
+                            size="sm"
+                            data-testid="settings-replay-intro"
+                            onClick={replayIntro}
+                          >
                             Replay intro
                           </Button>
                         </div>
                         <p className={styles.hint}>
                           Replay intro walks the cinematic onboarding again: agents, providers,
-                          environment checks, and your first project.
+                          environment checks, and your first project. Exit at any time — setup stays
+                          complete, and quitting does not send you back.
                         </p>
                       </Section>
                     </>

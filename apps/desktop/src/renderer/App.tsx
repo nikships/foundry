@@ -87,13 +87,19 @@ function AppInner(): React.JSX.Element {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ stage: 'idle' });
   const [updateDismissedKey, setUpdateDismissedKey] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  /**
+   * Session-only replay of the cinematic intro. Must not persist
+   * `onboarded: false` — that would trap a working install behind first-run
+   * gates after quit, including when a credential has since expired.
+   */
+  const [replayingIntro, setReplayingIntro] = useState(false);
   /** True during the toast's exit animation, before it unmounts. */
   const [toastLeaving, setToastLeaving] = useState(false);
   const toastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastGoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevStageRef = useRef<UpdateStatus['stage']>('idle');
 
-  const needsOnboarding = ready && settings != null && !settings.onboarded;
+  const needsOnboarding = ready && settings != null && (!settings.onboarded || replayingIntro);
   const bannerKey = `${updateStatus.stage}:${updateStatus.version ?? ''}`;
   const showBanner = updateStatus.stage !== 'idle' && updateDismissedKey !== bannerKey;
 
@@ -273,8 +279,17 @@ function AppInner(): React.JSX.Element {
 
   const finishOnboarding = async (): Promise<void> => {
     await api.settings.patch({ onboarded: true });
+    setReplayingIntro(false);
     await refreshAll();
   };
+
+  const replayIntro = useCallback((): void => {
+    setReplayingIntro(true);
+  }, []);
+
+  const exitIntro = useCallback((): void => {
+    setReplayingIntro(false);
+  }, []);
 
   // Escape walks back up one level: run detail → the runs list.
   const escapeBack = useCallback((): void => {
@@ -376,6 +391,7 @@ function AppInner(): React.JSX.Element {
             pane={settingsPane}
             onPaneChange={setSettingsPane}
             onNewProject={newProject}
+            onReplayIntro={replayIntro}
             paletteNonce={settingsPaletteNonce}
           />
         );
@@ -395,7 +411,11 @@ function AppInner(): React.JSX.Element {
 
       {needsOnboarding ? (
         <Suspense fallback={<ScreenFallback />}>
-          <OnboardingShell onDone={finishOnboarding} />
+          <OnboardingShell
+            onDone={finishOnboarding}
+            replay={replayingIntro}
+            onExit={replayingIntro ? exitIntro : undefined}
+          />
         </Suspense>
       ) : ready ? (
         <>

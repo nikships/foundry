@@ -55,6 +55,11 @@
   background: var(--bg-void);
   -webkit-app-region: drag;
 }
+.ob-exit {
+  grid-column: 1;
+  justify-self: start;
+  -webkit-app-region: no-drag;
+}
 .ob-brand {
   grid-column: 2;
   display: flex;
