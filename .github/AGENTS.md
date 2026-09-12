@@ -5,11 +5,12 @@ GitHub workflows own CI, security checks, and signed release automation.
 ## CI
 
 - `ci.yml` runs on every pull request to `main` without path filtering. This is required so required checks are never left pending.
-- `verify` uses Node 22 on `macos-26` and runs the repository static checks, coverage suite, build, and dependency audit.
+- `static` uses Node 22 on Ubuntu and runs the repository static checks, build, CSS collision check, and dependency audit. It caches the pnpm store.
+- `verify` uses Node 22 on `macos-26` and runs only the coverage suite. macOS jobs skip the pnpm store cache because tarball restore was slower than a cold install.
 - `android` runs `:app:testDebugUnitTest` with JDK 21 on Ubuntu.
 - `actionlint` uses 1.7.12 or newer so `macos-26` is recognized.
 - `e2e` builds and tests Electron with isolated fixtures. It is advisory and uploads Playwright artifacts on failure.
-- Required checks are `verify`, `android`, and `actionlint`. E2E remains informational.
+- Required checks are `static`, `verify`, `android`, and `actionlint`. E2E remains informational.
 - Keep `codeql.yml` and `dependency-review.yml` separate from the main CI workflow.
 
 `pnpm run check` is the canonical local pre-submit gate; do not duplicate its command chain in nested guides.
