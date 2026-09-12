@@ -270,7 +270,7 @@ function GeminiLiveSection({
   );
 
   return (
-    <Section label="Gemini Live" note="The voice layer in front of the Smith chat.">
+    <Section label="Gemini Live" note="Speak with the same Smith you use in chat.">
       <div className={styles.providerCard} data-testid="gemini-live-integration">
         <div className={styles.providerHead}>
           <h3>Smith voice mode</h3>
@@ -281,10 +281,10 @@ function GeminiLiveSection({
           </span>
         </div>
         <p className={styles.settingsLead}>
-          Voice mode speaks with Gemini&rsquo;s live model and delegates every real task to the
-          Smith chat on the model you chose there. The encrypted key uses this Mac&rsquo;s
-          credential storage and never enters settings.json or a transcript; the live session
-          connects with a short-lived token minted from it.
+          Voice mode speaks with Gemini&rsquo;s live model while your chosen Smith model handles the
+          same continuous conversation and work. The encrypted key uses this Mac&rsquo;s credential
+          storage and never enters settings.json or a transcript; the live session connects with a
+          short-lived token minted from it.
         </p>
         <Field
           label="API key"

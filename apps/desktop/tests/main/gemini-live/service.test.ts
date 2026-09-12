@@ -18,7 +18,7 @@ vi.mock('electron', () => ({
 }));
 
 const { GeminiLiveCredentialStore } = await import('../../../src/main/gemini-live/credentials.js');
-const { GeminiLiveService, GEMINI_LIVE_MODEL } =
+const { GeminiLiveService, GEMINI_LIVE_MODEL, voiceSystemInstruction } =
   await import('../../../src/main/gemini-live/service.js');
 type GeminiLiveServiceInstance = InstanceType<typeof GeminiLiveService>;
 
@@ -65,6 +65,16 @@ describe('GeminiLiveCredentialStore', () => {
 });
 
 describe('GeminiLiveService', () => {
+  it('pins one first-person Smith identity and forbids exposing internal handoffs', () => {
+    const instruction = voiceSystemInstruction();
+    expect(instruction).toContain('You are Smith');
+    expect(instruction).toContain('one identity and one continuous first-person conversation');
+    expect(instruction).toContain('briefly say something natural');
+    expect(instruction).toContain('Never say you need to delegate, ask Smith, hand this off');
+    expect(instruction).not.toContain('front-end over the real Smith');
+    expect(instruction).not.toContain('You do not do the work yourself');
+  });
+
   it('reports unset state until a key is saved, and never echoes the key', async () => {
     const { service } = store();
     expect(service.state()).toMatchObject({ keySet: false });
@@ -91,7 +101,7 @@ describe('GeminiLiveService', () => {
     if ('error' in minted) return;
     expect(minted.token).toBe('tokens/ephemeral-1');
     expect(minted.model).toBe(GEMINI_LIVE_MODEL);
-    expect(minted.systemInstruction).toContain('smith_delegate');
+    expect(minted.systemInstruction).toContain('smith_work');
     expect(JSON.stringify(minted)).not.toContain('AIza_real_secret_value');
   });
 
