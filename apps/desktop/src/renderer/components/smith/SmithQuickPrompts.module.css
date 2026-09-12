@@ -1,0 +1,14 @@
+.quick {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.label {
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+}

@@ -73,6 +73,7 @@ interface RawIssue {
   updatedAt?: unknown;
   team?: { id?: unknown; name?: unknown } | null;
   state?: { id?: unknown; name?: unknown; type?: unknown } | null;
+  assignee?: { id?: unknown; name?: unknown } | null;
   labels?: { nodes?: { name?: unknown }[] | null } | null;
   parent?: { identifier?: unknown; title?: unknown } | null;
   comments?: {
@@ -90,6 +91,7 @@ const ISSUE_SUMMARY_FIELDS = `
   updatedAt
   team { id name }
   state { id name type }
+  assignee { id name }
 `;
 
 const ISSUE_FIELDS = `
@@ -115,6 +117,24 @@ const SEARCH_ISSUES_QUERY = `
     issues(first: 25, filter: { or: [
       { identifier: { containsIgnoreCase: $query } },
       { title: { containsIgnoreCase: $query } }
+    ] }) { nodes { ${ISSUE_SUMMARY_FIELDS} } }
+  }
+`;
+const ASSIGNED_RECENT_QUERY = `
+  query LinearAssignedRecent {
+    issues(first: 25, filter: { assignee: { isMe: { eq: true } } }) {
+      nodes { ${ISSUE_SUMMARY_FIELDS} }
+    }
+  }
+`;
+const ASSIGNED_SEARCH_QUERY = `
+  query LinearAssignedIssues($query: String!) {
+    issues(first: 25, filter: { and: [
+      { assignee: { isMe: { eq: true } } },
+      { or: [
+        { identifier: { containsIgnoreCase: $query } },
+        { title: { containsIgnoreCase: $query } }
+      ] }
     ] }) { nodes { ${ISSUE_SUMMARY_FIELDS} } }
   }
 `;
@@ -160,10 +180,21 @@ export class LinearClient {
     return data.issue ? parseIssue(data.issue) : null;
   }
 
-  async issues(query = ''): Promise<LinearIssueSnapshot[]> {
+  async issues(
+    query = '',
+    options: { assignedOnly?: boolean; assigned?: boolean } = {},
+  ): Promise<LinearIssueSnapshot[]> {
     const trimmed = query.trim();
+    const assignedOnly = options.assignedOnly ?? options.assigned ?? false;
+    const gqlQuery = assignedOnly
+      ? trimmed
+        ? ASSIGNED_SEARCH_QUERY
+        : ASSIGNED_RECENT_QUERY
+      : trimmed
+        ? SEARCH_ISSUES_QUERY
+        : RECENT_ISSUES_QUERY;
     const data = await this.request<{ issues?: { nodes?: RawIssue[] } }>(
-      trimmed ? SEARCH_ISSUES_QUERY : RECENT_ISSUES_QUERY,
+      gqlQuery,
       trimmed ? { query: trimmed } : {},
     );
     if (!Array.isArray(data.issues?.nodes)) {
@@ -318,11 +349,20 @@ function parseIssue(issue: RawIssue): LinearIssueSnapshot {
       name: stringField(issue.state?.name, 'issue.state.name'),
       type: stringField(issue.state?.type, 'issue.state.type'),
     },
+    assignee: parseAssignee(issue.assignee),
     labels: parseLabels(issue.labels),
     parent: parseParent(issue.parent),
     comments,
     commentsTruncated,
   };
+}
+
+function parseAssignee(assignee: RawIssue['assignee']): LinearIssueSnapshot['assignee'] {
+  if (!assignee) return null;
+  const id = typeof assignee.id === 'string' ? assignee.id : '';
+  const name = typeof assignee.name === 'string' ? assignee.name.trim() : '';
+  if (!id || !name) return null;
+  return { id, name };
 }
 
 function parseLabels(labels: RawIssue['labels']): string[] {

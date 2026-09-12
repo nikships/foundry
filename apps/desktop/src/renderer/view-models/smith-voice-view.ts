@@ -32,7 +32,7 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
     {
       name: VOICE_TOOL_NAMES.work,
       description:
-        'Continue your work as Smith using the operator-selected model. Use for anything that reads or changes Foundry: runs, pipelines, agents, projects, files, settings, or questions about app state. Begins the work and returns a working status; wait for the completion result before stating an outcome.',
+        'Continue your work as Smith using the operator-selected model. Use for anything that reads or changes Foundry: runs, pipelines, agents, projects, files, settings, orchestrator planning prompts, assigned Linear tickets and their status, saved pipeline runs, project context refreshes, the Live Voice key state, or questions about app state. Begins the work and returns a working status; wait for the completion result before stating an outcome. When the result names an orchestrator plan ID, narrate the ID and offer to check its status. Never speak a secret aloud: a proposal that needs a key is completed in the masked card in the app.',
       parameters: {
         type: Type.OBJECT,
         properties: {
@@ -171,14 +171,100 @@ export function settledWorkPrompt(result: string): string {
   ].join('\n');
 }
 
+/**
+ * Where a voice approval of a key proposal must go. Spoken secrets would
+ * land in transcripts and model context; the masked desktop card keeps the
+ * value inside the approval answer main consumes once and never echoes.
+ */
+export const VOICE_SECRET_REDIRECT =
+  'Enter the requested key in the masked card in the app; do not speak it aloud.';
+
+/** The voice dispatch table's refusal when asked to approve a key proposal. */
+export function voiceSecretRefusal(): string {
+  return `This proposal needs a secret. ${VOICE_SECRET_REDIRECT}`;
+}
+
 /** A bounded, spoken summary of the one pending proposal for the voice model. */
 export function proposalSummary(proposals: SmithProposal[]): string {
   if (proposals.length === 0) return 'No proposal is waiting.';
   const p = proposals[0];
   if (p.type === 'action') {
-    return `One action proposal is waiting: ${p.title}. Summary: ${p.summary}. Risk level: ${p.risk}.`;
+    const base = `One action proposal is waiting: ${p.title}. Summary: ${p.summary}. Risk level: ${p.risk}.`;
+    return p.secretRequest ? `${base} ${VOICE_SECRET_REDIRECT}` : base;
   }
   return `One proposal is waiting: it would ${p.mode} the ${p.kind} "${p.name}"${
     p.overwrites ? ', overwriting the existing definition' : ''
   }. Its full details are on the card in the app.`;
+}
+
+// ── Full user-level access over voice ──────────────────────────────────────
+//
+// Voice declares no domain tools: every capability below routes through
+// `smith_work` into the same Smith session the text composer drives, so the
+// same proposal queue (read via `smith_proposal_read`, answered via
+// `smith_proposal_answer`) confirms every privileged step in both surfaces.
+
+/** Spoken entry points that route through `smith_work`, mirroring the text chips. */
+export interface SmithVoiceCapabilityPrompt {
+  id: 'assigned-work' | 'ticket-status' | 'orchestrator-plan' | 'pipeline-run';
+  /** What the operator can say. */
+  utterance: string;
+  /** The self-contained `smith_work` text the utterance becomes. */
+  workText: string;
+}
+
+/** Example utterances the overlay can hint at; the model hears them as work text. */
+export const SMITH_VOICE_CAPABILITY_PROMPTS: ReadonlyArray<SmithVoiceCapabilityPrompt> = [
+  {
+    id: 'assigned-work',
+    utterance: 'What is assigned to me?',
+    workText: "What's assigned to me in Linear? Show my current tickets with their status.",
+  },
+  {
+    id: 'ticket-status',
+    utterance: 'What is the status of ticket FOU-123?',
+    workText: 'Check Linear ticket FOU-123 and report its status.',
+  },
+  {
+    id: 'orchestrator-plan',
+    utterance: 'Start planning a fix for my ticket.',
+    workText: 'Start an orchestrator plan for the described change.',
+  },
+  {
+    id: 'pipeline-run',
+    utterance: 'Run the ship-it pipeline.',
+    workText: 'Run the requested saved pipeline.',
+  },
+];
+
+/**
+ * Builds the self-contained `smith_work` text for a spoken capability
+ * request, with the operator's detail filled in. The result names the
+ * orchestrator plan id convention (`plan-<hex>`) implicitly: when settled
+ * text names one, the declaration instructs the model to narrate the id and
+ * offer a status check rather than claim an outcome.
+ */
+export function voiceCapabilityWorkText(
+  id: SmithVoiceCapabilityPrompt['id'],
+  detail?: string,
+): string {
+  const trimmed = detail?.trim();
+  switch (id) {
+    case 'assigned-work':
+      return trimmed
+        ? `What's assigned to me in Linear? Show my current tickets with their status. Filter: ${trimmed}.`
+        : "What's assigned to me in Linear? Show my current tickets with their status.";
+    case 'ticket-status':
+      return trimmed
+        ? `Check Linear ticket ${trimmed} and report its status (state, team, and what it means).`
+        : 'Check the requested Linear ticket and report its status.';
+    case 'orchestrator-plan':
+      return trimmed
+        ? `Start an orchestrator plan for: ${trimmed}`
+        : 'Start an orchestrator plan for the described change.';
+    case 'pipeline-run':
+      return trimmed
+        ? `Run the requested saved pipeline: ${trimmed}.`
+        : 'Run the requested saved pipeline.';
+  }
 }

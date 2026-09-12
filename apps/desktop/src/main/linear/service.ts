@@ -51,8 +51,11 @@ export class LinearService {
     return { ok: true, detail: 'Linear API key removed.' };
   }
 
-  issues(query: string): Promise<LinearIssueSnapshot[]> {
-    return this.client().issues(query);
+  issues(
+    query: string,
+    options?: { assignedOnly?: boolean; assigned?: boolean },
+  ): Promise<LinearIssueSnapshot[]> {
+    return this.client().issues(query, options);
   }
 
   async issue(id: string): Promise<LinearIssueSnapshot> {

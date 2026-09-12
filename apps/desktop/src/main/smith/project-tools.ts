@@ -41,6 +41,7 @@ export const SMITH_PROJECT_OPERATIONS = [
   'scope_copies',
   'base_inspect',
   'base_sync',
+  'refresh_context',
 ] as const;
 
 type ProjectOperation = (typeof SMITH_PROJECT_OPERATIONS)[number];
@@ -133,6 +134,8 @@ const ACTIONS: Partial<Record<ProjectOperation, ActionSpec>> = {
     args: [{ name: 'path', kind: 'string' }],
   },
   base_sync: { channel: IPC.projectsBaseSync, risk: 'git', args: PROJECT_ID },
+  // Rebuilds the repository fact card run agents receive as context.
+  refresh_context: { channel: IPC.projectsRefreshContext, risk: 'write', args: PROJECT_ID },
 };
 
 function readArg(params: unknown, arg: ArgSpec): unknown {
@@ -155,7 +158,7 @@ export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_projects',
     label: 'Smith projects',
     description:
-      'Inspect and manage Foundry projects. Operations: list, show(projectId), add, github_account, choose_parent, create_github(input), save(project), remove/export(projectId), try_command(projectId,argv), sniff_commands/ask_commands(projectId), cancel_detection/detection(detectionId), setup_get/save/sniff/try/ask(projectId,script?), setup_progress/setup_cancel(setupId), check/scope_copies/base_inspect/base_sync(projectId), reveal(path).',
+      'Inspect and manage Foundry projects. Operations: list, show(projectId), add, github_account, choose_parent, create_github(input), save(project), remove/export(projectId), try_command(projectId,argv), sniff_commands/ask_commands(projectId), cancel_detection/detection(detectionId), setup_get/save/sniff/try/ask(projectId,script?), setup_progress/setup_cancel(setupId), check/scope_copies/base_inspect/base_sync/refresh_context(projectId), reveal(path). refresh_context rebuilds the repository fact card run agents receive.',
     parameters: {
       type: 'object',
       properties: {

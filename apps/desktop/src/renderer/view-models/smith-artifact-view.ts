@@ -40,6 +40,8 @@ import type {
   ReadinessJourneyCriterion,
   ReadinessJourneyDef,
   ReadinessPhase,
+  LinearIssueSnapshot,
+  ProposalStatus,
   SettingsDiffDef,
   SmithActionReceipt,
   SmithArtifact,
@@ -882,4 +884,63 @@ export function compareEntities(
   }
   if (kind === 'pipeline') return comparePipelines(previous as PipelineDef, next as PipelineDef);
   return compareEnvelopes(previous as EnvelopeDef, next as EnvelopeDef);
+}
+
+// ── Full user-level access: Linear work + orchestrator receipts ─────────────
+//
+// Smith reports assigned tickets and orchestrator proposals as transcript
+// text plus action receipts; these helpers give that text one consistent
+// shape in both the chat transcript and the voice narration. They mirror the
+// shared Linear status line deliberately: the renderer must render persisted
+// snapshots (including ones written before `assignee` existed) without
+// importing main.
+
+/** One status line for an issue: key, title, workflow state + type, team, recency. */
+export function formatLinearIssueStatus(
+  issue: Pick<LinearIssueSnapshot, 'identifier' | 'title' | 'state' | 'team' | 'updatedAt'>,
+): string {
+  return `${issue.identifier}: ${issue.title} — ${issue.state.name} (${issue.state.type}) · ${issue.team.name} · updated ${issue.updatedAt}`;
+}
+
+/** Who holds the ticket, tolerating snapshots written before `assignee` existed. */
+export function linearAssigneeLabel(assignee: { name: string } | null | undefined): string {
+  return assignee?.name?.trim() ? assignee.name : 'Unassigned';
+}
+
+/** Compact receipt line for an assigned-work browse: count plus ticket keys. */
+export function formatAssignedWorkSummary(
+  issues: ReadonlyArray<Pick<LinearIssueSnapshot, 'identifier'>>,
+): string {
+  if (issues.length === 0) return 'No assigned tickets.';
+  const keys = issues.map((issue) => issue.identifier).join(', ');
+  const unit = issues.length === 1 ? 'assigned ticket' : 'assigned tickets';
+  return `${issues.length} ${unit}: ${keys}`;
+}
+
+/** Operator-facing label for an orchestrator proposal's durable status. */
+export function orchestratorStatusLabel(status: ProposalStatus): string {
+  switch (status) {
+    case 'generating':
+      return 'Generating plan';
+    case 'ready':
+      return 'Ready for review';
+    case 'failed':
+      return 'Planning failed';
+    case 'cancelled':
+      return 'Cancelled';
+    case 'accepted':
+      return 'Accepted — run created';
+    case 'discarded':
+      return 'Discarded';
+  }
+}
+
+/** True for the seven `smith_runs` orchestrator operations. */
+export function isOrchestratorOperation(operation: string): boolean {
+  return operation.startsWith('orchestrator_');
+}
+
+/** True when approving means typing a secret into the masked approval card. */
+export function isCredentialOperation(operation: string): boolean {
+  return operation === 'set_api_key' || operation.endsWith('_set_api_key');
 }

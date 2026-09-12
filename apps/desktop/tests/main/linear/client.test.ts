@@ -164,12 +164,90 @@ describe('LinearClient', () => {
       expect(request.query).not.toContain('comments(first: 20');
       expect(request.query).not.toContain('labels { nodes { name } }');
       expect(request.query).not.toContain('parent { identifier title }');
+      expect(request.query).toContain('assignee { id name }');
       return response({ data: { issues: { nodes: [rawIssue] } } });
     });
     const client = new LinearClient({ apiKey: 'secret', transport, retries: 0 });
 
     await expect(client.issues('FOU-190')).resolves.toMatchObject([
-      { id: rawIssue.id, title: rawIssue.title, comments: [] },
+      { id: rawIssue.id, title: rawIssue.title, comments: [], assignee: null },
     ]);
+  });
+
+  it('parses assignee identity and defaults to null when unassigned', async () => {
+    const withAssignee = new LinearClient({
+      apiKey: 'secret',
+      transport: async () =>
+        response({
+          data: { issue: { ...rawIssue, assignee: { id: 'user-1', name: 'Nikhil' } } },
+        }),
+      retries: 0,
+    });
+    await expect(withAssignee.issue('FOU-190')).resolves.toMatchObject({
+      assignee: { id: 'user-1', name: 'Nikhil' },
+    });
+
+    const nullAssignee = new LinearClient({
+      apiKey: 'secret',
+      transport: async () => response({ data: { issue: { ...rawIssue, assignee: null } } }),
+      retries: 0,
+    });
+    await expect(nullAssignee.issue('FOU-190')).resolves.toMatchObject({ assignee: null });
+
+    const missingAssignee = new LinearClient({
+      apiKey: 'secret',
+      transport: async () => response({ data: { issue: rawIssue } }),
+      retries: 0,
+    });
+    await expect(missingAssignee.issue('FOU-190')).resolves.toMatchObject({ assignee: null });
+
+    const incompleteAssignee = new LinearClient({
+      apiKey: 'secret',
+      transport: async () =>
+        response({ data: { issue: { ...rawIssue, assignee: { id: '', name: '  ' } } } }),
+      retries: 0,
+    });
+    await expect(incompleteAssignee.issue('FOU-190')).resolves.toMatchObject({
+      assignee: null,
+    });
+  });
+
+  it('filters assigned work with isMe and branches recent vs search', async () => {
+    const requests: { query: string; variables: Record<string, unknown> }[] = [];
+    const transport = vi.fn<LinearTransport>(async (input) => {
+      const request = JSON.parse(input.body) as {
+        query: string;
+        variables: Record<string, unknown>;
+      };
+      requests.push(request);
+      return response({
+        data: {
+          issues: {
+            nodes: [{ ...rawIssue, assignee: { id: 'user-1', name: 'Nikhil' } }],
+          },
+        },
+      });
+    });
+    const client = new LinearClient({ apiKey: 'secret', transport, retries: 0 });
+
+    await expect(client.issues('', { assignedOnly: true })).resolves.toMatchObject([
+      { assignee: { id: 'user-1', name: 'Nikhil' } },
+    ]);
+    expect(requests[0]!.query).toContain('assignee { id name }');
+    expect(requests[0]!.query).toContain('isMe');
+    expect(requests[0]!.query).toContain('eq: true');
+    expect(requests[0]!.variables).toEqual({});
+
+    await client.issues('FOU-190', { assignedOnly: true });
+    expect(requests[1]!.query).toContain('isMe');
+    expect(requests[1]!.query).toContain('containsIgnoreCase');
+    expect(requests[1]!.variables).toEqual({ query: 'FOU-190' });
+
+    await client.issues('FOU-190');
+    expect(requests[2]!.query).not.toContain('isMe');
+    expect(requests[2]!.variables).toEqual({ query: 'FOU-190' });
+
+    await client.issues('', { assigned: true });
+    expect(requests[3]!.query).toContain('isMe');
   });
 });
