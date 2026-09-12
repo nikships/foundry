@@ -1,21 +1,21 @@
 /**
  * Plays generated milestone sounds from live orchestrator, run, and Smith
  * snapshots. Historical rows are a baseline, not a concert: the first read
- * of each run or pending proposal is silent. Priming waits until the first
- * successful run-list fetch so a failed startup poll cannot replay history.
+ * of each run or pending proposal is silent. Snapshot maps survive project-list
+ * refreshes so a known row cannot become a first-sighting replay.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
-import type { ProjectDef, RunRow } from '@shared/types.js';
+import type { ProjectDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { playAgentSound, unlockAgentSounds } from '../utils/agent-sounds.js';
 import {
+  applyRunSnapshots,
   orchestratorCues,
-  runCues,
+  rememberSmithProposals,
   smithCues,
   snapshotOrchestrator,
-  snapshotRun,
   snapshotSmith,
   type AgentSoundCue,
   type OrchestratorCueSnapshot,
@@ -29,7 +29,6 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
   const orchestratorRef = useRef(new Map<string, OrchestratorCueSnapshot>());
   const runsRef = useRef(new Map<string, RunCueSnapshot>());
   const smithRef = useRef<SmithCueSnapshot | undefined>(undefined);
-  const primedRef = useRef(false);
   const inFlightRef = useRef(false);
   const queuedRef = useRef(false);
   const projectKey = useMemo(() => projects.map((project) => project.id).join(','), [projects]);
@@ -54,43 +53,49 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
 
   useEffect(() => {
     let disposed = false;
-    primedRef.current = false;
     inFlightRef.current = false;
     queuedRef.current = false;
-    runsRef.current = new Map();
-    smithRef.current = undefined;
-    orchestratorRef.current = new Map();
 
     const play = (cues: readonly AgentSoundCue[]): void => {
       if (disposed || !enabledRef.current) return;
       for (const cue of cues) playAgentSound(cue);
     };
 
-    const refreshRuns = async (): Promise<{ live: boolean; loaded: boolean }> => {
-      if (disposed) return { live: false, loaded: false };
+    let timer: number | null = null;
+    const schedule = (live: boolean): void => {
+      if (disposed) return;
+      if (timer !== null) window.clearTimeout(timer);
+      // Idle pages do not poll: settled rows have nothing left to announce,
+      // and a 4s refresh was enough to turn a static accepted run into a
+      // repeating beep. Live runs still need the short cadence because phase
+      // completions do not push `runs-changed`.
+      if (!live) {
+        timer = null;
+        return;
+      }
+      timer = window.setTimeout(() => {
+        if (disposed) return;
+        void refreshRuns();
+      }, 800);
+    };
+
+    const refreshRuns = async (): Promise<void> => {
+      if (disposed) return;
       if (inFlightRef.current) {
         queuedRef.current = true;
-        return {
-          live: [...runsRef.current.values()].some((run) => run.status === 'running'),
-          loaded: primedRef.current,
-        };
+        return;
       }
       inFlightRef.current = true;
       try {
         const lists = await Promise.all(
           projectsRef.current.map((project) => api.runs.list(project.id, false)),
         );
-        if (disposed) return { live: false, loaded: false };
-        applyRunSnapshots(lists.flat(), runsRef.current, primedRef.current, play);
-        return {
-          live: [...runsRef.current.values()].some((run) => run.status === 'running'),
-          loaded: true,
-        };
+        if (disposed) return;
+        const rows = lists.flat();
+        play(applyRunSnapshots(rows, runsRef.current));
+        schedule(rows.some((run) => run.status === 'running'));
       } catch {
-        return {
-          live: [...runsRef.current.values()].some((run) => run.status === 'running'),
-          loaded: false,
-        };
+        /* A missed poll is silent; the next change event or live tick retries. */
       } finally {
         inFlightRef.current = false;
         if (!disposed && queuedRef.current) {
@@ -104,8 +109,8 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       try {
         const snap = snapshotSmith(await api.smith.proposalsList());
         if (disposed) return;
-        if (primedRef.current) play(smithCues(smithRef.current, snap));
-        smithRef.current = snap;
+        play(smithCues(smithRef.current, snap));
+        smithRef.current = rememberSmithProposals(smithRef.current, snap);
       } catch {
         /* A missed poll is silent; the next change event retries. */
       }
@@ -129,27 +134,7 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       void refreshSmith();
     });
 
-    let timer: number | null = null;
-    const schedule = (live: boolean): void => {
-      if (disposed) return;
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(
-        () => {
-          if (disposed) return;
-          void refreshRuns().then((result) => {
-            if (!primedRef.current && result.loaded) primedRef.current = true;
-            schedule(result.live);
-          });
-        },
-        live ? 800 : 4_000,
-      );
-    };
-
-    void Promise.all([refreshRuns(), refreshSmith()]).then(([result]) => {
-      if (disposed) return;
-      if (result.loaded) primedRef.current = true;
-      schedule(result.live);
-    });
+    void Promise.all([refreshRuns(), refreshSmith()]);
 
     return () => {
       disposed = true;
@@ -159,22 +144,4 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [projectKey]);
-}
-
-function applyRunSnapshots(
-  runs: RunRow[],
-  store: Map<string, RunCueSnapshot>,
-  primed: boolean,
-  play: (cues: readonly AgentSoundCue[]) => void,
-): void {
-  const next = new Map<string, RunCueSnapshot>();
-  const cues: AgentSoundCue[] = [];
-  for (const run of runs) {
-    const snap = snapshotRun(run);
-    next.set(run.runId, snap);
-    if (primed) cues.push(...runCues(store.get(run.runId), snap));
-  }
-  store.clear();
-  for (const [id, snap] of next) store.set(id, snap);
-  play(cues);
 }
