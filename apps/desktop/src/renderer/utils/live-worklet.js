@@ -16,6 +16,8 @@ class PcmCapture extends AudioWorkletProcessor {
     super();
     this.buffer = new Int16Array(1024);
     this.filled = 0;
+    this.sum = 0;
+    this.count = 0;
   }
 
   process(inputs) {
@@ -23,11 +25,13 @@ class PcmCapture extends AudioWorkletProcessor {
     if (!input || input.length === 0) return true;
     const channel = input[0];
     if (!channel) return true;
-    // Linear-interpolate 48 kHz → 16 kHz: three input frames per output frame.
-    const step = channel.length / 3;
-    for (let i = 0; i < step; i++) {
-      const at = i * 3;
-      const sample = channel[at] * 0.77 + channel[at + 1] * 0.1155 + channel[at + 2] * 0.1155;
+    // Carry partial groups across 128-frame render quanta (128 is not divisible by 3).
+    for (const value of channel) {
+      this.sum += value;
+      if (++this.count < 3) continue;
+      const sample = this.sum / 3;
+      this.sum = 0;
+      this.count = 0;
       this.buffer[this.filled++] = Math.max(-1, Math.min(1, sample)) * 32767;
       if (this.filled === this.buffer.length) {
         this.port.postMessage(this.buffer);

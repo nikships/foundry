@@ -70,14 +70,14 @@ describe('foldSettleWatch', () => {
 });
 
 describe('settledAnswerText', () => {
-  it('takes the last Smith text rows, not operator or tool rows', () => {
+  it('takes only Smith text from the current operator turn', () => {
     const transcript = [
       text('a', 'operator', 'please fix it'),
       text('b', 'smith', 'first part'),
       text('c', 'operator', 'thanks'),
       text('d', 'smith', 'the answer'),
     ];
-    expect(settledAnswerText(transcript)).toBe('first part\n\nthe answer');
+    expect(settledAnswerText(transcript)).toBe('the answer');
   });
 
   it('caps long answers', () => {
@@ -89,6 +89,9 @@ describe('settledAnswerText', () => {
 
   it('returns empty when Smith said nothing', () => {
     expect(settledAnswerText([text('a', 'operator', 'hello')])).toBe('');
+    expect(
+      settledAnswerText([text('a', 'smith', 'old success'), text('b', 'operator', 'new task')]),
+    ).toBe('');
   });
 });
 
@@ -135,6 +138,15 @@ describe('proposalSummary', () => {
 });
 
 describe('friendlyVoiceError', () => {
+  it('gives actionable microphone permission and device recovery instructions', () => {
+    expect(friendlyVoiceError(new DOMException('Permission denied', 'NotAllowedError'))).toContain(
+      'Privacy & Security → Microphone',
+    );
+    expect(friendlyVoiceError(new DOMException('Device missing', 'NotFoundError'))).toContain(
+      'microphone is unavailable',
+    );
+  });
+
   it('maps an invalid-key blob to the Settings pointer, never the raw JSON', () => {
     const raw = new Error(
       'Could not mint a Live API token: {"error":{"code":400,"message":"API key not valid.",' +

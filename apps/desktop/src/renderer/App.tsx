@@ -452,7 +452,11 @@ function AppInner(): React.JSX.Element {
        */}
       {ready && !needsOnboarding && (
         <Suspense fallback={null}>
-          <SmithVoiceOverlay screenContext={liveScreenContext} />
+          <SmithVoiceOverlay
+            screenContext={liveScreenContext}
+            onOpenSmith={openSmith}
+            onOpenSettings={openSettingsPane}
+          />
         </Suspense>
       )}
       {creatingProject && (

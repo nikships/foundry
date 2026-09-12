@@ -1,159 +1,201 @@
-/**
- * Smith's live voice launcher and panel: one mic button docked in the
- * titlebar band beside the Smith chat launcher, mounted on every screen so
- * voice keeps running while the operator navigates. The panel that opens
- * above it shows live transcriptions and the state of the delegated work.
- *
- * Voice is a layer, not a second agent: the panel says so in its hints, and
- * everything the voice model does flows through the same Smith chat session
- * the text UI drives.
- */
-
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Mic, MicOff, Square, X, ArrowUpRight } from 'lucide-react';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
-import { useSmithVoice } from '../../hooks/useSmithVoice.js';
+import { useSmithVoice, type SmithVoiceState } from '../../hooks/useSmithVoice.js';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
-import { SmithEmblem } from '../layout/SidebarEmblems.js';
+import { VoiceOrb } from './VoiceOrb.js';
 import styles from './SmithVoiceOverlay.module.css';
 
-/** Mic glyph, drawn inline: one 16×16 path, no icon-package weight. */
-function MicIcon(): React.JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <rect x="5.5" y="1" width="5" height="8" rx="2.5" fill="currentColor" />
-      <path
-        d="M3.5 7a4.5 4.5 0 0 0 9 0M8 11.5V15M5.5 15h5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function statusPill(status: ReturnType<typeof useSmithVoice>['state']['status']): string {
-  switch (status) {
-    case 'live':
-      return 'listening';
-    case 'connecting':
-      return 'connecting…';
-    case 'error':
-      return 'error';
-    default:
-      return 'off';
-  }
+function voicePresentation(state: SmithVoiceState): { title: string; detail: string } {
+  if (state.status === 'error')
+    return { title: 'Let’s reconnect', detail: 'Your microphone is off' };
+  if (state.status === 'connecting')
+    return { title: 'Connecting to Smith', detail: 'Preparing a secure voice session' };
+  if (state.status === 'idle')
+    return { title: 'Think out loud', detail: 'Your voice. The same Smith.' };
+  if (state.speaking)
+    return {
+      title: 'Smith is speaking',
+      detail: state.muted ? 'Unmute to join the conversation' : 'You can interrupt anytime',
+    };
+  if (state.muted)
+    return { title: 'Microphone muted', detail: 'Smith stays connected while you take a moment' };
+  if (state.smithRunning)
+    return {
+      title: 'Smith is working',
+      detail: 'Your chosen model is on it. You can keep talking.',
+    };
+  return { title: 'I’m listening', detail: 'Speak naturally. No need to hold a button.' };
 }
 
 export default function SmithVoiceOverlay({
   screenContext,
+  onOpenSmith,
+  onOpenSettings,
 }: {
-  /** What the operator is looking at; the voice layer sends it with each delegation. */
   screenContext: SmithScreenContext;
+  onOpenSmith: () => void;
+  onOpenSettings: (pane: string) => void;
 }): React.JSX.Element {
-  const { state, start, stop, setScreenContext } = useSmithVoice();
+  const { state, start, stop, toggleMute, readLevel, setScreenContext } = useSmithVoice();
   const [open, setOpen] = useState(false);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const presentation = voicePresentation(state);
+  const live = state.status === 'live';
+  const connecting = state.status === 'connecting';
 
   useEffect(() => {
     setScreenContext(screenContext);
   }, [screenContext, setScreenContext]);
-
-  /**
-   * Closing the panel never stops a live session: voice keeps running while
-   * the operator navigates, and the breathing mic shows it. Stopping is the
-   * Stop button's job inside the panel.
-   */
-  const close = useCallback((): void => setOpen(false), []);
+  useEffect(() => {
+    if (open) closeRef.current?.focus();
+  }, [open]);
+  const close = useCallback(() => {
+    setOpen(false);
+    launcherRef.current?.focus();
+  }, []);
   useEscapeToClose(close, open);
-
-  const live = state.status === 'live';
-
-  const toggle = (): void => {
-    if (open) {
-      close();
-      return;
-    }
-    setOpen(true);
-    if (state.status === 'idle' || state.status === 'error') void start();
+  const settings = (): void => {
+    close();
+    onOpenSettings('integrations');
   };
 
   return (
     <div className={styles.anchor}>
       {open && (
-        <div className={styles.panel} role="dialog" aria-label="Smith voice">
-          <div className={styles.head}>
+        <section
+          id="smith-voice-panel"
+          className={styles.panel}
+          role="dialog"
+          aria-label="Smith voice"
+          data-testid="smith-voice-panel"
+        >
+          <header className={styles.head}>
             <h3 className={styles.title}>
-              <SmithEmblem aria-hidden /> Smith voice
+              Smith <span>/ Voice</span>
             </h3>
-            <span
-              className={cx(
-                styles.pill,
-                live && styles.pillLive,
-                state.status === 'error' && styles.pillError,
-              )}
-              data-testid="smith-voice-status"
-            >
-              {statusPill(state.status)}
+            <span className={cx(styles.pill, live && styles.pillLive)}>
+              {live ? 'Live' : 'Gemini Live'}
             </span>
             <button
+              ref={closeRef}
               type="button"
               className={styles.close}
               onClick={close}
-              title="Close"
               aria-label="Close Smith voice"
               data-testid="smith-voice-close"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path
-                  d="M4 4l8 8M12 4l-8 8"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <X size={16} />
             </button>
+          </header>
+          <div className={styles.stage} data-speaking={state.speaking}>
+            <VoiceOrb active={live || connecting} speaking={state.speaking} readLevel={readLevel} />
+            <div className={styles.status} role="status" data-testid="smith-voice-status">
+              {presentation.title}
+            </div>
+            <p className={styles.detail}>{presentation.detail}</p>
           </div>
-          {state.status === 'error' && state.error && (
-            <p className={cx(styles.line, styles.errorText)}>{state.error}</p>
-          )}
-          {state.status !== 'error' && (
-            <div>
-              <p className={styles.lineLabel}>You</p>
-              <p className={cx(styles.line, state.inputText && styles.lineSpeaking)}>
-                {state.inputText || '—'}
+          {state.error ? (
+            <p className={styles.errorText} role="alert">
+              {state.error}
+            </p>
+          ) : (
+            <div className={styles.caption}>
+              <p className={styles.lineLabel}>
+                {state.outputText ? 'Smith' : 'Start a conversation'}
               </p>
+              <p className={styles.line}>
+                {state.outputText || '“Help me think through my next change.”'}
+              </p>
+              {state.inputText && (
+                <div className={styles.heard}>
+                  <span className={styles.lineLabel}>You</span>
+                  <p>{state.inputText}</p>
+                </div>
+              )}
             </div>
           )}
-          <p className={styles.hint}>
-            {state.smithRunning
-              ? 'A delegated turn is running on the Smith chat. Ask me to cancel it, or wait for the result.'
-              : 'Ask me anything about Foundry. Real work goes to the Smith chat on the model you chose there.'}
-          </p>
+          {state.proposalPending && (
+            <button
+              className={styles.notice}
+              onClick={() => {
+                close();
+                onOpenSmith();
+              }}
+            >
+              A proposal needs your review <ArrowUpRight size={14} />
+            </button>
+          )}
+          {state.smithRunning && (
+            <p className={styles.workNote}>Work continues in Smith chat, even if you end voice.</p>
+          )}
           <div className={styles.actions}>
             {live && (
-              <Button size="sm" variant="danger" onClick={stop}>
-                Stop
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-pressed={state.muted}
+                onClick={toggleMute}
+                data-testid="smith-voice-mute"
+              >
+                {state.muted ? <MicOff size={15} /> : <Mic size={15} />}
+                {state.muted ? 'Unmute' : 'Mute mic'}
               </Button>
             )}
-            {(state.status === 'idle' || state.status === 'error') && (
-              <Button size="sm" variant="primary" onClick={() => void start()}>
-                Connect
+            {live || connecting ? (
+              <Button size="sm" variant="danger" onClick={stop} data-testid="smith-voice-stop">
+                <Square size={12} />
+                {connecting ? 'Cancel' : 'End session'}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => void start()}
+                data-testid="smith-voice-start"
+              >
+                <Mic size={15} />
+                {state.status === 'error' ? 'Try again' : 'Start voice'}
+              </Button>
+            )}
+            {!live && !connecting && (
+              <Button size="sm" variant="ghost" onClick={settings}>
+                Voice settings <ArrowUpRight size={14} />
               </Button>
             )}
           </div>
-        </div>
+          <footer className={styles.footer}>
+            <span className={styles.micDot} data-on={live && !state.muted} />
+            {live
+              ? state.muted
+                ? 'Mic muted · Closing this panel keeps voice connected.'
+                : 'Mic on · Closing this panel keeps voice connected.'
+              : 'Audio is sent to Gemini only while voice is connected.'}
+          </footer>
+        </section>
       )}
       <button
+        ref={launcherRef}
         type="button"
         className={cx(styles.launcher, live && styles.launcherLive)}
         aria-expanded={open}
-        aria-label={open ? 'Close Smith voice mode' : 'Start Smith voice mode'}
+        aria-controls="smith-voice-panel"
+        aria-label={
+          live
+            ? state.muted
+              ? 'Smith voice connected, microphone muted'
+              : 'Smith voice live, microphone on'
+            : 'Open Smith voice mode'
+        }
         data-testid="smith-voice-launcher"
         title={live ? 'Smith voice is live' : 'Smith voice mode'}
-        onClick={toggle}
+        onClick={() => (open ? close() : setOpen(true))}
       >
-        <MicIcon />
+        {state.muted ? <MicOff size={15} /> : <Mic size={15} />}
+        {live && <span className={styles.liveDot} />}
       </button>
     </div>
   );

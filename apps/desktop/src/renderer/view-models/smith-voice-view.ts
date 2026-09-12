@@ -65,7 +65,7 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
     {
       name: VOICE_TOOL_NAMES.proposalAnswer,
       description:
-        'Approve or reject the pending proposal card. Only call when the operator clearly asked you to decide.',
+        'Approve or reject the proposal you just read with smith_proposal_read. Read it aloud first, then wait for the operator to explicitly approve or reject that proposal. Never answer a different or unread proposal.',
       parameters: {
         type: Type.OBJECT,
         properties: {
@@ -90,6 +90,12 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
  */
 export function friendlyVoiceError(raw: unknown): string {
   const message = raw instanceof Error ? raw.message : String(raw);
+  if (raw instanceof Error && /NotAllowedError|PermissionDeniedError/.test(raw.name)) {
+    return 'Microphone access was denied. Allow Foundry in macOS System Settings → Privacy & Security → Microphone, then try again.';
+  }
+  if (raw instanceof Error && /NotFoundError|NotReadableError/.test(raw.name)) {
+    return 'Your microphone is unavailable. Check that it is connected and not in use by another app, then try again.';
+  }
   if (/API_KEY_INVALID|API key not valid|invalid API key|API key expired/i.test(message)) {
     return 'Your Gemini API key was rejected. Replace it in Settings → Integrations.';
   }
@@ -137,7 +143,11 @@ export function settledAnswerText(
   maxEntries = 3,
   maxChars = 4000,
 ): string {
+  const lastOperator = transcript.findLastIndex(
+    (entry) => entry.kind === 'text' && entry.source === 'operator',
+  );
   const smithText = transcript
+    .slice(lastOperator + 1)
     .filter((entry) => entry.kind === 'text' && entry.source === 'smith')
     .slice(-maxEntries);
   const text = smithText.map((entry) => (entry as { text: string }).text).join('\n\n');

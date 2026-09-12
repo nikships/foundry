@@ -15,6 +15,7 @@ export const OUTPUT_RATE = 24000;
 
 export interface MicCapture {
   start(onChunk: (pcm: ArrayBuffer) => void): Promise<void>;
+  setMuted(muted: boolean): void;
   stop(): void;
 }
 
@@ -31,27 +32,43 @@ export function micCapture(): MicCapture {
   let context: AudioContext | null = null;
   let stream: MediaStream | null = null;
   let node: AudioWorkletNode | null = null;
+  let stopped = false;
+  let muted = false;
 
   return {
     async start(onChunk): Promise<void> {
       const win = window as AudioContextWindow;
       const Ctor = win.AudioContext ?? win.webkitAudioContext;
       if (!Ctor) throw new Error('this browser has no WebAudio');
-      stream = await navigator.mediaDevices.getUserMedia({
+      const acquired = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+      if (stopped) {
+        acquired.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      stream = acquired;
       context = new Ctor({ sampleRate: 48000 });
       const source = context.createMediaStreamSource(stream);
       // Explicit-URL import: Vite emits the worklet as its own file and
       // rewrites this URL for dev and build alike.
       await context.audioWorklet.addModule(new URL('./live-worklet.js', import.meta.url));
+      if (stopped) return;
       node = new AudioWorkletNode(context, 'foundry-pcm-capture');
       node.port.onmessage = (event: MessageEvent<Int16Array>) => {
-        onChunk(event.data.buffer as ArrayBuffer);
+        if (!muted && !stopped) onChunk(event.data.buffer as ArrayBuffer);
       };
       source.connect(node);
+      await context.resume();
+    },
+    setMuted(value): void {
+      muted = value;
+      stream?.getAudioTracks().forEach((track) => {
+        track.enabled = !value;
+      });
     },
     stop(): void {
+      stopped = true;
       node?.port.close();
       node?.disconnect();
       node = null;
@@ -71,6 +88,19 @@ export function micCapture(): MicCapture {
 export class SpeakerQueue {
   private context: AudioContext | null = null;
   private nextAt = 0;
+  private sources = new Set<AudioBufferSourceNode>();
+  private analyser: AnalyserNode | null = null;
+  private samples = new Float32Array(256);
+
+  constructor(private readonly onSpeaking: (speaking: boolean) => void = () => undefined) {}
+
+  /** Read actual speaker amplitude, rather than the arrival rate of network chunks. */
+  level(): number {
+    if (!this.analyser || this.sources.size === 0) return 0;
+    this.analyser.getFloatTimeDomainData(this.samples);
+    const energy = this.samples.reduce((sum, value) => sum + value * value, 0);
+    return Math.min(1, Math.sqrt(energy / this.samples.length) * 4);
+  }
 
   private ensureContext(): AudioContext {
     if (!this.context) {
@@ -78,6 +108,9 @@ export class SpeakerQueue {
       const Ctor = win.AudioContext ?? win.webkitAudioContext;
       if (!Ctor) throw new Error('this browser has no WebAudio');
       this.context = new Ctor({ sampleRate: OUTPUT_RATE });
+      this.analyser = this.context.createAnalyser();
+      this.analyser.fftSize = 256;
+      this.analyser.connect(this.context.destination);
     }
     return this.context;
   }
@@ -97,23 +130,38 @@ export class SpeakerQueue {
     buffer.copyToChannel(samples, 0);
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(context.destination);
+    source.connect(this.analyser!);
+    this.sources.add(source);
+    source.onended = () => {
+      source.disconnect();
+      this.sources.delete(source);
+      if (this.sources.size === 0) this.onSpeaking(false);
+    };
     const now = context.currentTime;
     this.nextAt = Math.max(this.nextAt, now);
     source.start(this.nextAt);
     this.nextAt += buffer.duration;
+    this.onSpeaking(true);
     return true;
   }
 
   /** An interruption: stop and drop everything queued. */
   clear(): void {
+    for (const source of this.sources) {
+      source.onended = null;
+      source.stop();
+      source.disconnect();
+    }
+    this.sources.clear();
     this.nextAt = 0;
+    this.onSpeaking(false);
   }
 
   close(): void {
     this.clear();
     const context = this.context;
     this.context = null;
+    this.analyser = null;
     void context?.close().catch(() => undefined);
   }
 }

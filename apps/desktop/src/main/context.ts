@@ -287,6 +287,10 @@ export class AppContext {
         answerProposal: (id, answer) => this.smith.proposals.answer(id, answer),
         models: () => this.availableModels(),
       },
+      voice: {
+        state: () => this.geminiLive.state(),
+        mintToken: () => this.geminiLive.mintToken(),
+      },
     });
 
     // Native chats open lazily per project and share one proposal queue, so

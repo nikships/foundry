@@ -404,6 +404,13 @@ class HttpCompanionRepository(
             encode(CompanionPrCreateRequest.serializer(), request)
         )
 
+    override suspend fun getSmithVoiceToken(projectId: String?): Result<SmithVoiceToken> =
+        postJson(
+            "/v1/smith/voice/token",
+            SmithVoiceToken.serializer(),
+            encode(SmithScopeRequest.serializer(), SmithScopeRequest(projectId = scopedProjectId(projectId)))
+        )
+
     override suspend fun getSmithState(projectId: String?): Result<SmithChatState> {
         val path = if (projectId.isNullOrBlank()) "/v1/smith" else "/v1/smith?projectId=$projectId"
         return getJson(path, SmithChatState.serializer())

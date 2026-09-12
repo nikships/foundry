@@ -1,168 +1,223 @@
-/**
- * Smith's live voice overlay: the mic button docked in the titlebar band
- * (beside the Smith launcher, same reserved strip — see SmithBubble.module.css)
- * and the voice panel that opens above it on any screen.
- *
- * The launcher stays mounted on every screen, so voice keeps running while
- * the operator navigates; only the panel is conditional.
- */
-
 .anchor {
   position: fixed;
   top: 0;
   right: calc(var(--s5) + 40px);
   z-index: 70;
-  display: flex;
-  flex-direction: column-reverse;
-  align-items: flex-end;
-  gap: var(--s2);
   padding-top: calc((var(--titlebar-h) - 32px) / 2);
   -webkit-app-region: no-drag;
 }
 
-.launcher {
-  position: relative;
+.launcher,
+.close {
   width: 32px;
   height: 32px;
-  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  border-radius: var(--r);
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: default;
-  transition:
-    background var(--fast) var(--ease),
-    border-color var(--fast) var(--ease),
-    color var(--fast) var(--ease);
+  cursor: pointer;
 }
 
-.launcher:hover {
+.launcher {
+  position: relative;
+}
+.launcher:hover,
+.close:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
-
 .launcher[aria-expanded='true'] {
   background: var(--bg-active);
   border-color: var(--line);
-  color: var(--accent);
 }
-
 .launcherLive {
   color: var(--accent);
 }
-
-/* Three slow breaths per second reads as "listening" without urgency. */
-.launcherLive svg {
-  animation: voice-breathe 3.3s var(--ease) infinite;
-}
-
-@keyframes voice-breathe {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
+.launcher:focus-visible,
+.close:focus-visible,
+.notice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .panel {
-  width: min(340px, calc(100vw - 2 * var(--s5)));
+  position: absolute;
+  top: calc(var(--titlebar-h) - 2px);
+  right: -40px;
+  width: min(380px, calc(100vw - 2 * var(--s5)));
+  max-height: calc(100dvh - var(--titlebar-h) - var(--s4));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: var(--r-xl);
   background: var(--bg-panel);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
-  padding: var(--s4);
+  box-shadow:
+    0 24px 80px #0009,
+    0 0 0 1px #0003;
+  padding: var(--s5);
   display: flex;
   flex-direction: column;
-  gap: var(--s3);
+  gap: var(--s4);
 }
 
 .head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
+  gap: var(--s3);
 }
-
 .title {
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: 600;
-  margin: 0;
 }
-
+.title span {
+  font: 10px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  margin-left: var(--s2);
+}
 .close {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--r-sm);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: default;
   margin-left: auto;
+  flex-shrink: 0;
 }
-
-.close:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
 .pill {
-  font-size: var(--text-xs);
-  padding: 2px var(--s2);
-  border-radius: var(--r-full);
-  background: var(--bg-active);
+  font: 9px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--text-dim);
 }
-
 .pillLive {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
 }
-
-.pillError {
-  background: color-mix(in srgb, var(--red) 18%, transparent);
-  color: var(--red);
+.stage {
+  text-align: center;
+  padding-bottom: var(--s2);
 }
-
-.line {
-  margin: 0;
-  font-size: var(--text-sm);
-  line-height: 1.45;
-  min-height: calc(1.45em * 2);
+.orb {
+  display: block;
+  width: 280px;
+  height: 210px;
+  max-width: 100%;
+  margin: -12px auto -2px;
+}
+.status {
+  font-size: var(--text-xl);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+.detail {
+  margin-top: var(--s2);
+  font-size: var(--text-xs);
   color: var(--text-dim);
+  line-height: 1.5;
+}
+.caption {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  padding: var(--s4);
+  max-height: 190px;
+  overflow-y: auto;
   overflow-wrap: anywhere;
 }
-
-.lineSpeaking {
+.lineLabel {
+  font: 10px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  margin-bottom: var(--s2);
+}
+.line {
+  font-size: var(--text-sm);
+  line-height: 1.65;
   color: var(--text);
 }
-
-.lineLabel {
+.heard {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  color: var(--text-dim);
   font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-faint);
-  margin: 0 0 calc(var(--s1) / 2);
+  line-height: 1.5;
 }
-
+.heard span {
+  display: block;
+}
 .actions {
   display: flex;
   gap: var(--s2);
-  justify-content: flex-end;
 }
-
-.hint {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--text-faint);
+.actions > button {
+  flex: 1;
+  min-height: 36px;
 }
-
+.footer {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.micDot,
+.liveDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.micDot[data-on='true'],
+.liveDot {
+  background: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.liveDot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+}
 .errorText {
+  font-size: var(--text-sm);
+  line-height: 1.6;
   color: var(--red);
+  padding: var(--s3);
+  background: color-mix(in srgb, var(--red) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 20%, transparent);
+  border-radius: var(--r);
+}
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s3);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: var(--r);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.workNote {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+@media (max-height: 700px) {
+  .orb {
+    height: 140px;
+    width: 187px;
+  }
+  .panel {
+    gap: var(--s3);
+  }
+  .caption {
+    max-height: 120px;
+  }
 }
