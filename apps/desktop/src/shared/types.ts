@@ -129,7 +129,11 @@ export interface PipelineCanvasPoint {
 
 /** Presentation-only state for the Pipelines canvas. It never affects execution order. */
 export interface PipelineCanvas {
-  /** Phase-name keyed positions. Phase names are unique in a valid pipeline. */
+  /**
+   * Card positions keyed by unique phase name. Invalid drafts that repeat a
+   * name qualify the extra occupants as `index:name` so the cards stay distinct
+   * while the operator fixes the duplicate-name error.
+   */
   nodes?: Record<string, PipelineCanvasPoint>;
   /** The operator's last pan and zoom level. */
   viewport?: PipelineCanvasPoint & { zoom: number };

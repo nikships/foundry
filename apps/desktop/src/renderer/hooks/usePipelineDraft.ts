@@ -23,10 +23,12 @@ import { useApp } from '../stores/app.js';
 import {
   applyPipelineDraftPatch,
   blankPhase,
-  defaultCanvasPosition,
+  canvasForPhases,
+  canvasNodeKey,
   formatClock,
   newPipelineDraft,
   pipelineFlowEquals,
+  retargetCanvasNode,
 } from '../view-models/pipeline-view.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
 
@@ -60,14 +62,6 @@ function draftFrom(pipeline: PipelineDef | null): PipelineDef | null {
   return pipeline ? withLocalCanvas(structuredClone(pipeline)) : null;
 }
 
-function canvasForPhases(phases: PhaseDef[], canvas: PipelineCanvas | undefined): PipelineCanvas {
-  const nodes = { ...canvas?.nodes };
-  phases.forEach((phase, index) => {
-    nodes[phase.name] ??= defaultCanvasPosition(index);
-  });
-  return { ...canvas, nodes };
-}
-
 function formatIssues(issues: ValidationIssue[]): string {
   return issues.map((issue) => issue.message).join(' ');
 }
@@ -75,20 +69,6 @@ function formatIssues(issues: ValidationIssue[]): string {
 function errorMessage(err: unknown, fallback = ''): string {
   const message = err instanceof Error ? err.message : String(err);
   return message || fallback;
-}
-
-/** Rename or drop a node in the canvas map, leaving the canvas alone otherwise. */
-function renameCanvasNode(
-  canvas: PipelineCanvas | undefined,
-  from: string | undefined,
-  to: string | null,
-): PipelineCanvas | undefined {
-  const nodes = canvas?.nodes;
-  if (!from || !nodes?.[from]) return canvas;
-  const entries = Object.entries(nodes)
-    .filter(([name]) => to !== null || name !== from)
-    .map(([name, at]) => [name === from && to !== null ? to : name, at] as const);
-  return { ...canvas, nodes: Object.fromEntries(entries) };
 }
 
 export function usePipelineDraft(deepLink?: {
@@ -410,12 +390,12 @@ export function usePipelineDraft(deepLink?: {
   const updatePhase = useCallback(
     (index: number, patch: Partial<PhaseDef>): void => {
       if (!draft) return;
+      const previousKey = canvasNodeKey(draft.phases, index);
       const phases = draft.phases.map((phase, i) => (i === index ? { ...phase, ...patch } : phase));
-      const previousName = draft.phases[index]?.name;
-      const nextName = phases[index]?.name ?? null;
+      const nextKey = canvasNodeKey(phases, index);
       const canvas =
-        nextName && nextName !== previousName
-          ? renameCanvasNode(draft.canvas, previousName, nextName)
+        nextKey !== previousKey
+          ? retargetCanvasNode(draft.canvas, previousKey, nextKey)
           : draft.canvas;
       updateDraft({ phases, canvas });
     },
@@ -455,9 +435,9 @@ export function usePipelineDraft(deepLink?: {
   const removePhase = useCallback(
     (index: number): void => {
       if (!draft) return;
-      const removedName = draft.phases[index]?.name;
+      const removedKey = canvasNodeKey(draft.phases, index);
       const phases = draft.phases.filter((_, i) => i !== index);
-      updateDraft({ phases, canvas: renameCanvasNode(draft.canvas, removedName, null) });
+      updateDraft({ phases, canvas: retargetCanvasNode(draft.canvas, removedKey, null) });
       setActivePhase((cur) => {
         if (cur === null || cur === index) return null;
         return cur > index ? cur - 1 : cur;
