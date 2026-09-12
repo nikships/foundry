@@ -117,6 +117,11 @@ describe('Linear run chrome', () => {
     expect(composer).not.toContain('currentBlocked && issue && !starting');
   });
 
+  it('does not start a Linear run from ⌘↵ that originated in a text field', () => {
+    const composer = read('src/renderer/components/run/LinearComposer.tsx');
+    expect(composer).toContain('primaryEnterShortcut(event, event.target)');
+  });
+
   it('renders full run ids and delegates constrained shortening to CSS ellipsis', () => {
     const screen = read('src/renderer/screens/RunDetailScreen.tsx');
     const styles = read('src/renderer/screens/RunDetailScreen.module.css');
