@@ -22,6 +22,7 @@ import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.ui.screens.smith.SmithScreen
+import com.foundry.companion.ui.screens.smith.SmithVoicePanel
 import com.foundry.companion.util.CompanionHaptics
 import com.foundry.companion.util.CustomTabs
 import com.foundry.companion.viewmodel.CompanionViewModel
@@ -125,7 +126,10 @@ fun FoundryNavHost(
         val route = pendingDeepLink?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!isPaired) return@LaunchedEffect
         try {
-            val stackRoutes = navController.currentBackStack.value.mapNotNull { it.destination.route }
+            val stackRoutes = listOfNotNull(
+                navController.currentBackStackEntry?.destination?.route,
+                navController.previousBackStackEntry?.destination?.route
+            )
             if (needsSynthesizedHome(stackRoutes)) {
                 navController.navigate(NavRoute.Runs.route) {
                     popUpTo(0) { inclusive = true }
@@ -211,6 +215,20 @@ fun FoundryNavHost(
 
         composable(NavRoute.Smith.route) {
             val currentProject = uiState.projects.find { it.id == uiState.selectedProjectId }
+            val voice = remember(uiState.selectedProjectId, uiState.activeSession) {
+                viewModel.createSmithVoiceController(context, uiState.selectedProjectId)
+            }
+            var showVoice by remember(voice) { mutableStateOf(false) }
+            DisposableEffect(voice) { onDispose { voice.end() } }
+            LaunchedEffect(uiState.connectionStatus) {
+                if (uiState.connectionStatus !is ConnectionStatus.Connected) {
+                    voice.end()
+                    showVoice = false
+                }
+            }
+            if (showVoice) {
+                SmithVoicePanel(voice, onDismiss = { showVoice = false; viewModel.loadSmith() })
+            }
             LaunchedEffect(uiState.selectedProjectId) {
                 viewModel.loadSmith(uiState.selectedProjectId)
             }
@@ -229,7 +247,8 @@ fun FoundryNavHost(
                 onAnswerProposal = { approved, secret -> viewModel.answerSmithProposal(approved, secret) },
                 models = uiState.smithModels,
                 onSelectModel = { viewModel.setSmithModel(it) },
-                onSelectEffort = { viewModel.setSmithEffort(it) }
+                onSelectEffort = { viewModel.setSmithEffort(it) },
+                onVoice = { showVoice = true }
             )
         }
 

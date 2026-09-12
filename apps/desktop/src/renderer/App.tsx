@@ -34,6 +34,7 @@ const OnboardingShell = lazy(() => import('./screens/onboarding/OnboardingShell.
 const NewProjectWizard = lazy(() => import('./components/project/NewProjectWizard.js'));
 const SmithScreen = lazy(() => import('./screens/SmithScreen.js'));
 const SmithBubble = lazy(() => import('./components/smith/SmithBubble.js'));
+const SmithVoiceOverlay = lazy(() => import('./components/smith/SmithVoiceOverlay.js'));
 
 /**
  * The line a finished check should show. An unpackaged build and a real
@@ -440,6 +441,21 @@ function AppInner(): React.JSX.Element {
             onCompleted={(target) => void onSmithCompleted(target)}
             onOpenInspector={openInspector}
             onOpenReceiptLink={openReceiptLink}
+          />
+        </Suspense>
+      )}
+      {/*
+       * Smith's voice layer: mounted on every screen, including Smith's own,
+       * so a live voice session survives navigation. The voice session runs in
+       * refs inside the hook, so this component staying mounted is all it
+       * needs; unmounting it stops the mic and closes the socket.
+       */}
+      {ready && !needsOnboarding && (
+        <Suspense fallback={null}>
+          <SmithVoiceOverlay
+            screenContext={liveScreenContext}
+            onOpenSmith={openSmith}
+            onOpenSettings={openSettingsPane}
           />
         </Suspense>
       )}

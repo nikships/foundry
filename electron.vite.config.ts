@@ -48,6 +48,11 @@ export default defineConfig({
     build: {
       minify: 'esbuild',
       chunkSizeWarningLimit: 1000,
+      // The mic-capture AudioWorklet must load from its own file: the
+      // sandboxed file:// renderer cannot fetch blob: or data: URLs at all,
+      // and the default inline limit would base64 it into the bundle. Every
+      // other asset keeps the default 4 KiB inline budget.
+      assetsInlineLimit: (filePath) => (filePath?.endsWith('live-worklet.js') ? false : undefined),
       rollupOptions: {
         input: resolve(import.meta.dirname, 'apps/desktop/src/renderer/index.html'),
       },

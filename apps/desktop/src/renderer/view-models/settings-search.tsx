@@ -192,6 +192,12 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     note: 'Opt-in web search and page fetching for run agents.',
     keywords: 'tavily web search fetch extension api key download enable disable internet',
   },
+  {
+    pane: 'integrations',
+    label: 'Gemini Live',
+    note: 'The voice layer in front of the Smith chat.',
+    keywords: 'gemini live voice smith speak microphone api key google ai studio',
+  },
   // Project
   {
     pane: 'project',

@@ -434,6 +434,42 @@ class CompanionRepositoryTest {
     }
 
     @Test
+    fun testHttpSmithVoiceTokenUsesAuthenticatedScopedRequest() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "voice_bearer",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "token": "auth_tokens/one-use",
+                  "model": "gemini-3.1-flash-live-preview",
+                  "systemInstruction": "Speak as Smith."
+                }
+                """.trimIndent()
+            )
+        )
+
+        val token = httpRepository.getSmithVoiceToken("proj_1").getOrThrow()
+        assertEquals("auth_tokens/one-use", token.token)
+        assertEquals("gemini-3.1-flash-live-preview", token.model)
+        assertEquals("Speak as Smith.", token.systemInstruction)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/smith/voice/token", req.path)
+        assertEquals("POST", req.method)
+        assertEquals("Bearer voice_bearer", req.getHeader("Authorization"))
+        assertEquals("""{"projectId":"proj_1"}""", req.body.readUtf8())
+    }
+
+    @Test
     fun testHttpSmithStateSendAndProposalAnswer() = runBlocking {
         val hostOrigin = server.url("").toString().removeSuffix("/")
         httpRepository.injectFakeSession(

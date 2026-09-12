@@ -192,3 +192,6 @@ android/.cxx/
 android/.idea/
 *.apk
 *.aab
+
+# Local dogfood state (seeded by `npm run dogfood:seed`; holds saved API keys)
+/.dogfood-state/

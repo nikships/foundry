@@ -60,8 +60,8 @@ describe('the IPC surface', () => {
     expect(registered.filter((channel) => channel === IPC.settingsGet)).toHaveLength(1);
   });
 
-  it('registers 151 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(151);
+  it('registers 155 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(155);
   });
 
   it('registers the durable proposal channels the Activity sidebar restores from', () => {
