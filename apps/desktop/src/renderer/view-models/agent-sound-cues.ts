@@ -2,6 +2,9 @@
  * Which agent milestones deserve a sound. Tool chatter is not a milestone:
  * only orchestrator turns, proposed pipelines, finished phases, settled runs,
  * and moments that wait on the operator.
+ *
+ * First sighting of a run, plan, or Smith id is a baseline, never a concert.
+ * Settled runs stay quiet even if a later list row grows phase summaries.
  */
 
 import type { OrchestratorState } from '@shared/ipc-contract.js';
@@ -71,7 +74,9 @@ export function snapshotSmith(proposals: readonly Pick<SmithProposal, 'id'>[]): 
 /**
  * Live planning sessions only. The first snapshot of a planId is itself a
  * transition (the operator just clicked), except a plan that is already on
- * the wire — that is a late join, not a new proposal.
+ * the wire — that is a late join, not a new proposal. A finished transcript
+ * that arrives as the first event is the same late join: its ask notes are
+ * history, not a ping.
  */
 export function orchestratorCues(
   prev: OrchestratorCueSnapshot | undefined,
@@ -79,17 +84,21 @@ export function orchestratorCues(
 ): AgentSoundCue[] {
   const cues: AgentSoundCue[] = [];
   const seenPings = new Set(prev?.pingKeys ?? []);
-  if (next.pingKeys.some((key) => !seenPings.has(key))) cues.push('orchestrator-ping');
+  const hasNewPing = next.pingKeys.some((key) => !seenPings.has(key));
+  if (hasNewPing && (prev !== undefined || next.status === 'running')) {
+    cues.push('orchestrator-ping');
+  }
   if (prev && !prev.hasPlan && next.hasPlan) cues.push('plan-proposed');
   if (prev?.hasPlan && next.revision > prev.revision) cues.push('plan-proposed');
   return cues;
 }
 
 export function runCues(prev: RunCueSnapshot | undefined, next: RunCueSnapshot): AgentSoundCue[] {
-  if (!prev) return next.status === 'running' ? [] : [settledRunCue(next.status)];
+  if (!prev) return [];
   if (prev.status === 'running' && next.status !== 'running') {
     return [settledRunCue(next.status)];
   }
+  if (next.status !== 'running') return [];
   const cues: AgentSoundCue[] = [];
   const previousStatus = new Map(prev.phases.map((phase) => [phase.name, phase.status]));
   for (const phase of next.phases) {
@@ -108,6 +117,50 @@ export function smithCues(
   if (!prev) return [];
   const seen = new Set(prev.proposalIds);
   return next.proposalIds.some((id) => !seen.has(id)) ? ['needs-you'] : [];
+}
+
+/**
+ * A list row with no phases is incomplete, not a reset. Keep the last known
+ * summary so an empty poll cannot make the next full row look like a burst
+ * of brand-new successes.
+ */
+export function stabilizeRunSnapshot(
+  prev: RunCueSnapshot | undefined,
+  next: RunCueSnapshot,
+): RunCueSnapshot {
+  if (prev?.phases.length && next.phases.length === 0) {
+    return { ...next, phases: prev.phases };
+  }
+  return next;
+}
+
+/**
+ * Merge list rows into the cue store. Rows that drop out of the current page
+ * stay remembered so they cannot replay as first-sighting settlements when
+ * they return. Callers play the returned cues.
+ */
+export function applyRunSnapshots(
+  runs: readonly Pick<RunRow, 'runId' | 'status' | 'phaseSummary'>[],
+  store: Map<string, RunCueSnapshot>,
+): AgentSoundCue[] {
+  const cues: AgentSoundCue[] = [];
+  for (const run of runs) {
+    const incoming = snapshotRun(run);
+    const prev = store.get(run.runId);
+    const next = stabilizeRunSnapshot(prev, incoming);
+    cues.push(...runCues(prev, next));
+    store.set(run.runId, next);
+  }
+  return cues;
+}
+
+/** Union of seen Smith ids so a transient empty list cannot resurrect them as new. */
+export function rememberSmithProposals(
+  prev: SmithCueSnapshot | undefined,
+  next: SmithCueSnapshot,
+): SmithCueSnapshot {
+  if (!prev) return next;
+  return { proposalIds: [...new Set([...prev.proposalIds, ...next.proposalIds])] };
 }
 
 function settledRunCue(status: RunStatus): AgentSoundCue {

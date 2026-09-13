@@ -1,20 +1,24 @@
 /**
  * Milestone sounds fire on orchestrator turns, proposed pipelines, finished
  * phases, settled runs, and new Smith proposals — never on the first historical
- * snapshot, and never on tool chatter that never reaches this view-model.
+ * snapshot, never on a settled run that later grows phase rows, and never on
+ * tool chatter that never reaches this view-model.
  */
 
 import { describe, expect, it } from 'vitest';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
-import type { PhaseStatus, RunRow, RunStatus } from '@shared/types.js';
+import type { PhaseKind, PhaseStatus, RunRow, RunStatus } from '@shared/types.js';
 import {
+  applyRunSnapshots,
   isOrchestratorPingNote,
   orchestratorCues,
+  rememberSmithProposals,
   runCues,
   smithCues,
   snapshotOrchestrator,
   snapshotRun,
   snapshotSmith,
+  stabilizeRunSnapshot,
   type OrchestratorCueSnapshot,
   type RunCueSnapshot,
 } from '@renderer/view-models/agent-sound-cues.js';
@@ -40,6 +44,21 @@ function runSnap(
     ...over,
   };
 }
+
+function listRow(
+  over: Partial<Pick<RunRow, 'runId' | 'status' | 'phaseSummary'>> & { runId: string },
+): Pick<RunRow, 'runId' | 'status' | 'phaseSummary'> {
+  return {
+    status: 'accepted',
+    ...over,
+  };
+}
+
+const success = (name: string): { name: string; status: PhaseStatus; kind: PhaseKind } => ({
+  name,
+  status: 'success',
+  kind: 'agent',
+});
 
 describe('isOrchestratorPingNote', () => {
   it('recognises the ask and the correction retry, not setup notes', () => {
@@ -70,7 +89,7 @@ describe('snapshotOrchestrator', () => {
 });
 
 describe('orchestratorCues', () => {
-  it('pings when a new ask note lands, including the first snapshot', () => {
+  it('pings when a new ask note lands, including the first live snapshot', () => {
     expect(orchestratorCues(undefined, orch({ planId: 'p', pingKeys: ['a'] }))).toEqual([
       'orchestrator-ping',
     ]);
@@ -80,6 +99,20 @@ describe('orchestratorCues', () => {
         orch({ planId: 'p', pingKeys: ['a', 'b'] }),
       ),
     ).toEqual(['orchestrator-ping']);
+  });
+
+  it('does not ping a finished transcript on first snapshot', () => {
+    expect(
+      orchestratorCues(
+        undefined,
+        orch({ planId: 'p', status: 'done', hasPlan: true, revision: 1, pingKeys: ['a'] }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not ping when the same live ask notes are re-emitted', () => {
+    const snap = orch({ planId: 'p', pingKeys: ['a'] });
+    expect(orchestratorCues(snap, snap)).toEqual([]);
   });
 
   it('does not treat an already-present plan on first snapshot as a proposal', () => {
@@ -102,7 +135,7 @@ describe('orchestratorCues', () => {
 });
 
 describe('runCues', () => {
-  it('is silent the first time a still-running run appears', () => {
+  it('is silent the first time a run appears, running or already settled', () => {
     expect(
       runCues(
         undefined,
@@ -113,9 +146,6 @@ describe('runCues', () => {
         }),
       ),
     ).toEqual([]);
-  });
-
-  it('settles a run that appears already finished after the historical load', () => {
     expect(
       runCues(
         undefined,
@@ -125,7 +155,32 @@ describe('runCues', () => {
           phases: [{ name: 'build', status: 'success' }],
         }),
       ),
-    ).toEqual(['run-accepted']);
+    ).toEqual([]);
+  });
+
+  it('is silent when a settled run is polled unchanged', () => {
+    const snap = runSnap({
+      runId: 'run_1',
+      status: 'accepted',
+      phases: [{ name: 'build', status: 'success' }],
+    });
+    expect(runCues(snap, { ...snap })).toEqual([]);
+  });
+
+  it('is silent when a settled run later grows success phases', () => {
+    expect(
+      runCues(
+        runSnap({ runId: 'run_1', status: 'accepted', phases: [] }),
+        runSnap({
+          runId: 'run_1',
+          status: 'accepted',
+          phases: [
+            { name: 'scout', status: 'success' },
+            { name: 'build', status: 'success' },
+          ],
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it('sounds each finished phase and the settled run, not skipped or still-running ones', () => {
@@ -198,11 +253,106 @@ describe('snapshotRun', () => {
   });
 });
 
+describe('stabilizeRunSnapshot', () => {
+  it('keeps last known phases when the next list row omits them', () => {
+    const prev = runSnap({
+      runId: 'run_1',
+      status: 'accepted',
+      phases: [{ name: 'build', status: 'success' }],
+    });
+    expect(
+      stabilizeRunSnapshot(prev, runSnap({ runId: 'run_1', status: 'accepted', phases: [] })),
+    ).toEqual(prev);
+  });
+});
+
+describe('applyRunSnapshots', () => {
+  it('is silent on the historical load and on later identical settled polls', () => {
+    const store = new Map<string, RunCueSnapshot>();
+    const settled = listRow({
+      runId: 'run_1',
+      phaseSummary: [success('build')],
+    });
+    expect(applyRunSnapshots([settled], store)).toEqual([]);
+    expect(applyRunSnapshots([settled], store)).toEqual([]);
+  });
+
+  it('does not replay a settled run that left the page and came back', () => {
+    const store = new Map<string, RunCueSnapshot>();
+    const settled = listRow({
+      runId: 'run_1',
+      phaseSummary: [success('build'), success('review')],
+    });
+    expect(applyRunSnapshots([settled], store)).toEqual([]);
+    expect(applyRunSnapshots([], store)).toEqual([]);
+    expect(applyRunSnapshots([settled], store)).toEqual([]);
+  });
+
+  it('does not treat newly attached success phases on a settled run as completions', () => {
+    const store = new Map<string, RunCueSnapshot>();
+    expect(applyRunSnapshots([listRow({ runId: 'run_1' })], store)).toEqual([]);
+    expect(
+      applyRunSnapshots(
+        [listRow({ runId: 'run_1', phaseSummary: [success('scout'), success('build')] })],
+        store,
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not treat an empty-then-full phase summary as a live completion burst', () => {
+    const store = new Map<string, RunCueSnapshot>();
+    const full = listRow({
+      runId: 'run_1',
+      phaseSummary: [success('scout'), success('build')],
+    });
+    expect(applyRunSnapshots([full], store)).toEqual([]);
+    expect(applyRunSnapshots([listRow({ runId: 'run_1' })], store)).toEqual([]);
+    expect(applyRunSnapshots([full], store)).toEqual([]);
+  });
+
+  it('still sounds a live phase finish and a running-to-settled transition', () => {
+    const store = new Map<string, RunCueSnapshot>();
+    const running = listRow({
+      runId: 'run_1',
+      status: 'running',
+      phaseSummary: [{ name: 'build', status: 'running', kind: 'agent' }],
+    });
+    expect(applyRunSnapshots([running], store)).toEqual([]);
+    expect(
+      applyRunSnapshots(
+        [
+          listRow({
+            runId: 'run_1',
+            status: 'running',
+            phaseSummary: [success('build')],
+          }),
+        ],
+        store,
+      ),
+    ).toEqual(['phase-success']);
+    expect(
+      applyRunSnapshots(
+        [listRow({ runId: 'run_1', status: 'accepted', phaseSummary: [success('build')] })],
+        store,
+      ),
+    ).toEqual(['run-accepted']);
+  });
+});
+
 describe('smithCues', () => {
   it('is silent on the first pending list and pings only for a new id', () => {
     const first = snapshotSmith([{ id: 'old' }]);
     expect(smithCues(undefined, first)).toEqual([]);
     expect(smithCues(first, first)).toEqual([]);
     expect(smithCues(first, snapshotSmith([{ id: 'old' }, { id: 'new' }]))).toEqual(['needs-you']);
+  });
+
+  it('does not treat a reappearing id as new after a transient empty list', () => {
+    const remembered = rememberSmithProposals(snapshotSmith([{ id: 'old' }]), snapshotSmith([]));
+    expect(remembered.proposalIds).toEqual(['old']);
+    expect(smithCues(remembered, snapshotSmith([{ id: 'old' }]))).toEqual([]);
+    expect(smithCues(remembered, snapshotSmith([{ id: 'old' }, { id: 'new' }]))).toEqual([
+      'needs-you',
+    ]);
   });
 });
