@@ -275,19 +275,6 @@ export interface CompanionRoutes {
     request: CompanionComposeAcceptRequest;
     response: ComposeAcceptResult;
   };
-  /** One-release aliases for Companion clients that have not shipped FOU-388. */
-  'GET /v1/orchestrator/options': { response: CompanionComposeOptions };
-  'POST /v1/orchestrator/plans': {
-    request: CompanionComposeStartRequest;
-    response: CompanionComposeStartResult;
-  };
-  'GET /v1/orchestrator/plans/:planId': { response: ComposeState };
-  'POST /v1/orchestrator/plans/:planId/cancel': { response: { ok: boolean } };
-  'GET /v1/orchestrator/plans': { response: ProposalSnapshot[] };
-  'POST /v1/orchestrator/plans/:planId/accept': {
-    request: CompanionComposeAcceptRequest;
-    response: ComposeAcceptResult;
-  };
   'GET /v1/linear': { response: CompanionLinearState };
   'GET /v1/linear/issues': { response: LinearIssueSnapshot[] };
   'GET /v1/linear/issues/:issueId': { response: LinearIssueSnapshot };

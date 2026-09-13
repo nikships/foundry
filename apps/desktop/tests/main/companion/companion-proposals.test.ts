@@ -118,15 +118,6 @@ describe('companion proposal list/accept', () => {
     expect(rows.map((r) => r.planId)).toEqual(['plan_1', 'plan_2']);
   });
 
-  it('keeps the legacy route as a deprecated alias', async () => {
-    const token = await pair();
-    const res = await authed(token, '/v1/orchestrator/plans?projectId=proj_a');
-    expect(res.status).toBe(200);
-    expect(res.headers.get('deprecation')).toBe('true');
-    const rows = (await res.json()) as ProposalSnapshot[];
-    expect(rows.map((row) => row.planId)).toEqual(['plan_1', 'plan_2']);
-  });
-
   it('refuses list without projectId', async () => {
     const token = await pair();
     const res = await authed(token, '/v1/smith/compose/plans');

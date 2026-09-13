@@ -73,7 +73,7 @@ fun NewRunScreen(
     validationIssues: List<ValidationIssue> = emptyList(),
     initialRequestText: String = "",
     onRequestChange: (String) -> Unit = {},
-    // Orchestrator
+    // Smith composition
     orchestratorOptions: OrchestratorOptions? = null,
     orchestratorState: OrchestratorState? = null,
     orchestratorOriginalPlan: GeneratedRunPlan? = null,
@@ -86,8 +86,8 @@ fun NewRunScreen(
     onRestorePlanPhaseSettings: () -> Unit = {},
     onStartOrchestratedRun: (projectId: String) -> Unit = {},
     /**
-     * Durable proposals (`GET /v1/orchestrator/plans`), newest first. Rendered
-     * as the `SAVED PLANS` list in Orchestrator mode; each ready row accepts
+     * Durable proposals (`GET /v1/smith/compose/plans`), newest first. Rendered
+     * as the `SAVED PLANS` list in Smith mode; each ready row accepts
      * via exactly-once `POST .../accept` (see ViewModel.acceptOrchestratedPlan).
      */
     orchestratorProposals: List<ProposalSnapshot> = emptyList(),
@@ -246,7 +246,7 @@ fun NewRunScreen(
                         disabledReason = when {
                             !isConnected -> "Reconnect to start a run"
                             orchestratorOptions == null -> "Loading planning options…"
-                            orchestratorOptions.models.isEmpty() -> "Connect a provider on the Mac to use the Orchestrator"
+                            orchestratorOptions.models.isEmpty() -> "Connect a provider on the Mac to use Smith"
                             requestText.isBlank() -> "Describe what to build"
                             plannerModel.isBlank() -> "Choose a planning model"
                             !planReady -> "Generate a plan, then review it before starting"
@@ -523,7 +523,7 @@ private fun NewRunModeTabs(
             modifier = Modifier.weight(1f)
         )
         ModeTab(
-            label = "ORCHESTRATOR",
+            label = "SMITH",
             selected = mode == NewRunMode.Orchestrator,
             enabled = enabled,
             onClick = { if (enabled) onModeChange(NewRunMode.Orchestrator) },
@@ -656,7 +656,7 @@ private fun OrchestratorBottomBar(
             val colors = FoundryTheme.colors
             val typography = FoundryTheme.typography
             Text(
-                text = "Connect a provider on the Mac to use the Orchestrator.",
+                text = "Connect a provider on the Mac to use Smith.",
                 style = typography.metaMono,
                 color = colors.textFaint,
                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -896,7 +896,7 @@ private fun PipelinePicker(
     }
 }
 
-// ── Orchestrator picker, planning, and plan card ─────────────────────────────
+// ── Smith picker, planning, and plan card ────────────────────────────────────
 
 @Composable
 private fun PlannerPicker(
@@ -1081,7 +1081,7 @@ private fun PlanningCard(state: OrchestratorState) {
                 strokeWidth = 2.dp
             )
             Text(
-                text = "ORCHESTRATOR IS PLANNING",
+                text = "SMITH IS PLANNING",
                 style = typography.eyebrowMono,
                 color = colors.accent
             )
@@ -1094,7 +1094,7 @@ private fun PlanningCard(state: OrchestratorState) {
             )
         }
         Text(
-            text = "The Orchestrator picks phases, agents, and verification for your request. Review the plan before starting it.",
+            text = "Smith picks phases, agents, and verification for your request. Review the plan before starting it.",
             style = typography.body,
             color = colors.textDim
         )
@@ -1102,7 +1102,7 @@ private fun PlanningCard(state: OrchestratorState) {
 }
 
 /**
- * Durable proposals (`GET /v1/orchestrator/plans`), newest first.
+ * Durable proposals (`GET /v1/smith/compose/plans`), newest first.
  *
  * Each `ready` row accepts via exactly-once `POST .../accept` with its stored
  * snapshot (null override); repeats return the same run and start nothing, so
@@ -1295,7 +1295,7 @@ private fun PlanCard(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "ORCHESTRATOR PLAN",
+            text = "SMITH PLAN",
             style = typography.eyebrowMono,
             color = colors.accent
         )

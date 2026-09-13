@@ -23,12 +23,12 @@ interface CompanionRepository {
     suspend fun getOrchestratorPlan(planId: String): Result<OrchestratorState>
     suspend fun cancelOrchestratorPlan(planId: String): Result<Boolean>
     /**
-     * Durable proposal list for a project (`GET /v1/orchestrator/plans`),
+     * Durable proposal list for a project (`GET /v1/smith/compose/plans`),
      * same rows the desktop Activity sidebar reads, newest first.
      */
     suspend fun listOrchestratorPlans(projectId: String): Result<List<ProposalSnapshot>>
     /**
-     * Exactly-once accept (`POST /v1/orchestrator/plans/:planId/accept`).
+     * Exactly-once accept (`POST /v1/smith/compose/plans/:planId/accept`).
      * Repeats return the same run id and start nothing. A null `plan` keeps
      * the stored snapshot; a non-null plan overrides it for this accept.
      */

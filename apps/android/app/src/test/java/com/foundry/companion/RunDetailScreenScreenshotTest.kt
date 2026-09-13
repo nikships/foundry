@@ -432,7 +432,7 @@ class RunDetailScreenScreenshotTest {
                     id = "linear-fou-204",
                     identifier = "FOU-204",
                     title = "Bring Android run creation and recovery to desktop parity",
-                    description = "Add Orchestrator plans, Linear-backed starts, and checkpoint restore.",
+                    description = "Add Smith-composed plans, Linear-backed starts, and checkpoint restore.",
                     url = "https://linear.app/foundry-nik/issue/FOU-204",
                     updatedAt = "2026-08-25T20:00:00Z",
                     team = LinearTeam("team-foundry", "Foundry"),

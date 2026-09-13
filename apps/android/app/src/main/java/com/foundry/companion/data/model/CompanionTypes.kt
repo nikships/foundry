@@ -628,7 +628,7 @@ data class ProposalMessage(
 
 /**
  * One durable orchestrator proposal, mirroring desktop `ProposalSnapshot` in
- * `shared/types.ts`. One row per `POST /v1/orchestrator/plans` call; the list
+ * `shared/types.ts`. One row per `POST /v1/smith/compose/plans` call; the list
  * route hides `discarded` rows, newest first.
  */
 @Serializable
@@ -659,7 +659,7 @@ data class ProposalSnapshot(
 }
 
 /**
- * Body of `POST /v1/orchestrator/plans/:planId/accept`. A null plan means
+ * Body of `POST /v1/smith/compose/plans/:planId/accept`. A null plan means
  * "no override" and is omitted from the JSON body (`explicitNulls = false`).
  */
 @Serializable

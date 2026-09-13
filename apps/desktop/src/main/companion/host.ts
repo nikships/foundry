@@ -468,9 +468,6 @@ export class CompanionHost {
     const device = this.devices.authenticate(bearerToken(req));
     if (!device) throw new RouteError(401, 'unauthorized', 'unknown or revoked device token');
 
-    if (path === '/v1/orchestrator' || path.startsWith('/v1/orchestrator/')) {
-      res.setHeader('Deprecation', 'true');
-    }
     const segments = path.split('/').filter(Boolean);
     const answer = await this.dispatch(method, segments, url, req, device);
     this.json(res, 200, answer);
@@ -545,8 +542,6 @@ export class CompanionHost {
     if (head === 'smith' && rest[0] === 'compose') {
       return this.composeRoute(method, rest.slice(1), req, url);
     }
-    // One-release alias for Companion clients that have not shipped FOU-388.
-    if (head === 'orchestrator') return this.composeRoute(method, rest, req, url);
 
     if (head === 'linear') return this.linearRoute(method, rest, url, req);
 
@@ -578,7 +573,7 @@ export class CompanionHost {
     throw new RouteError(404, 'not_found', 'no such route');
   }
 
-  /** Routes under `/v1/smith/compose` and its one-release legacy alias. */
+  /** Routes under `/v1/smith/compose`. */
   private async composeRoute(
     method: string,
     rest: string[],

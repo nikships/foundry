@@ -55,7 +55,7 @@ data class CompanionUiState(
     val orchestratorState: OrchestratorState? = null,
     val orchestratorOriginalPlan: GeneratedRunPlan? = null,
     val isPlanning: Boolean = false,
-    /** Durable proposals (`GET /v1/orchestrator/plans`), newest first. */
+    /** Durable proposals (`GET /v1/smith/compose/plans`), newest first. */
     val orchestratorProposals: List<ProposalSnapshot> = emptyList(),
     val isLoadingProposals: Boolean = false,
     /** Exactly-once accept in flight; guards against double-tap double-start. */
@@ -475,7 +475,7 @@ class CompanionViewModel(
                 _uiState.update { it.copy(orchestratorOptions = fetched) }
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: "Could not load Orchestrator options")
+                    it.copy(errorMessage = error.message ?: "Could not load Smith options")
                 }
             }
 
@@ -843,7 +843,7 @@ class CompanionViewModel(
 
     /**
      * Finishes an orchestrated run via exactly-once accept
-     * (`POST /v1/orchestrator/plans/:planId/accept`) instead of a direct
+     * (`POST /v1/smith/compose/plans/:planId/accept`) instead of a direct
      * `POST /v1/runs`: repeats return the same run id and start nothing, so a
      * retry or double-tap cannot fork a second run. The edited composer plan
      * travels as the accept override and becomes the run's plan.

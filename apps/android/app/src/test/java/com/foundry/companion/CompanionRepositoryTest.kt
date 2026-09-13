@@ -681,10 +681,10 @@ class CompanionRepositoryTest {
         assertTrue(runResult.ok)
         assertEquals("run_http_1", runResult.runId)
 
-        assertEquals("/v1/orchestrator/options", server.takeRequest().path)
-        assertEquals("/v1/orchestrator/plans", server.takeRequest().path)
-        assertEquals("/v1/orchestrator/plans/plan_http_1", server.takeRequest().path)
-        assertEquals("/v1/orchestrator/plans/plan_http_1/cancel", server.takeRequest().path)
+        assertEquals("/v1/smith/compose/options", server.takeRequest().path)
+        assertEquals("/v1/smith/compose/plans", server.takeRequest().path)
+        assertEquals("/v1/smith/compose/plans/plan_http_1", server.takeRequest().path)
+        assertEquals("/v1/smith/compose/plans/plan_http_1/cancel", server.takeRequest().path)
         val startReq = server.takeRequest()
         assertEquals("/v1/runs", startReq.path)
         val body = startReq.body.readUtf8()
@@ -884,7 +884,7 @@ class CompanionRepositoryTest {
         assertTrue(plans.single().isReady)
 
         val req = server.takeRequest()
-        assertEquals("/v1/orchestrator/plans?projectId=proj_1", req.path)
+        assertEquals("/v1/smith/compose/plans?projectId=proj_1", req.path)
         assertEquals("GET", req.method)
         assertEquals("Bearer test_token", req.getHeader("Authorization"))
     }
@@ -928,7 +928,7 @@ class CompanionRepositoryTest {
         assertEquals("run_acc_1", result.runId)
 
         val req = server.takeRequest()
-        assertEquals("/v1/orchestrator/plans/plan+1/accept", req.path)
+        assertEquals("/v1/smith/compose/plans/plan+1/accept", req.path)
         assertEquals("POST", req.method)
         assertEquals("Bearer test_token", req.getHeader("Authorization"))
         // explicitNulls=false: a null plan means "no override", not `"plan":null`.
@@ -958,7 +958,7 @@ class CompanionRepositoryTest {
         assertNull(result.runId)
         assertEquals("proposal is not ready to start", result.issues.single().message)
 
-        assertEquals("/v1/orchestrator/plans/plan_1/accept", server.takeRequest().path)
+        assertEquals("/v1/smith/compose/plans/plan_1/accept", server.takeRequest().path)
     }
 
     @Test
