@@ -41,6 +41,22 @@ export const APP_THEMES = [
     preview: { base: '#140c08', panel: '#1e1410', accent: '#e07a3d', text: '#f3e6d8' },
   },
   {
+    id: 'plum',
+    label: 'Plum',
+    group: 'Dark',
+    appearance: 'dark',
+    background: '#150d1e',
+    preview: { base: '#150d1e', panel: '#1f142e', accent: '#b18cff', text: '#efe8fa' },
+  },
+  {
+    id: 'abyss',
+    label: 'Abyss',
+    group: 'Dark',
+    appearance: 'dark',
+    background: '#07181e',
+    preview: { base: '#07181e', panel: '#0e232c', accent: '#45d6c5', text: '#e2f1f3' },
+  },
+  {
     id: 'contrast',
     label: 'High Contrast',
     group: 'Dark',
@@ -71,6 +87,22 @@ export const APP_THEMES = [
     appearance: 'light',
     background: '#eef1f6',
     preview: { base: '#eef1f6', panel: '#ffffff', accent: '#2b5f9e', text: '#1a2230' },
+  },
+  {
+    id: 'sage',
+    label: 'Sage',
+    group: 'Light',
+    appearance: 'light',
+    background: '#eef2eb',
+    preview: { base: '#eef2eb', panel: '#ffffff', accent: '#2e6b3f', text: '#1c2620' },
+  },
+  {
+    id: 'blush',
+    label: 'Blush',
+    group: 'Light',
+    appearance: 'light',
+    background: '#f7ecea',
+    preview: { base: '#f7ecea', panel: '#fff8f6', accent: '#a63a52', text: '#2c1e1f' },
   },
 ] as const;
 
