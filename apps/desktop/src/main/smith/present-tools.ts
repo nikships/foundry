@@ -1996,24 +1996,15 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
   return defineTool({
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
-    description:
-      'Show the operator a rich inline card in the chat: an entity design, a checklist report, ' +
-      'a run summary, an entity comparison, a change receipt, a project card, a pull request ' +
-      'card, a settings diff, a diagnostics report, a data catalog table, a context/evidence ' +
-      'disclosure, the readiness journey, or provider/Companion status. ' +
-      'Use it before proposing a non-trivial pipeline, agent, or envelope, to compare a proposed ' +
-      'edit against the stored definition, to record a change/command receipt after direct ' +
-      'checkout work, to present a checklist/doctor/readiness/validation report, for run ' +
-      'summaries (run_summary) when reporting on run status, progress, or outcomes, to show ' +
-      'project state/divergence/health, to present a PR preview/result, to display settings ' +
-      'changes with human labels and old/new values, to present doctor/orphan/update ' +
-      'diagnostics, to present bounded catalogs of entities/runs/projects, to disclose context ' +
-      'occupancy and capped evidence, to show the whole readiness journey (marker, criteria, ' +
-      'remediation, PR), or to report provider connection and paired Companion devices. It is ' +
-      'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
-      'succeeded: changing readiness still goes through the approval card. Never put an API ' +
-      'key, token, masked key prefix, or Companion pairing payload in a spec. Do not repeat ' +
-      'the card content in prose; add only rationale, uncertainty, or a recommendation.',
+    description: [
+      'Show a validated inline card. Presentation only: no saved definitions, no action execution, no approval. A card is not proof of success.',
+      'Use pipeline_design, agent_design, or envelope_design with the full entity as spec. Use entity_comparison with entityKind, name, and the revised full spec; the stored definition supplies the before state.',
+      'For run_summary, supply runId and projectId when known; omit spec. The tool reads stored run data, so no trace fetch or hand-built summary is needed.',
+      'For a report use checklist with spec:{title,items:[{label,status,detail?}]}; status is pass, warn, fail, or info. Base findings on tool evidence.',
+      'For completed direct work use change_receipt with spec:{target:"direct_checkout",status:"success"|"failure",filesChanged?,command?,outputExcerpt?}. command is {command,exitCode,passed,durationMs?,timedOut?}. Never present action_receipt; only the app can create it from an action result.',
+      'Other kinds: project_card, pr_card, settings_diff, diagnostics, data_table, evidence_disclosure, readiness_journey, provider_status. Use a short text answer when a card adds no useful detail.',
+      'Never include an API key, token, masked key prefix, or Companion pairing payload. Do not repeat card content in prose; add only rationale, uncertainty, or a recommendation.',
+    ].join('\n'),
     parameters: {
       type: 'object',
       properties: {
@@ -2039,8 +2030,8 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         spec: {
           type: 'object',
           description:
-            'The card payload. Entity JSON for a design or comparison edit; a checklist ' +
-            'definition; a run_summary spec object; a change receipt (target, status, ' +
+            'Required except for run_summary. Entity JSON for a design or comparison edit; a checklist ' +
+            'definition; a change receipt (target, status, ' +
             'filesChanged, diffstat, command, outputExcerpt); a project card or PR card ' +
             'definition; a settings diff, diagnostics report, data table definition, or ' +
             'context/evidence disclosure definition; a readiness journey (phase, marker, ' +

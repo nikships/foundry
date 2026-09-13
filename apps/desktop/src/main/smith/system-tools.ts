@@ -69,7 +69,7 @@ export function smithSystemTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_system',
     label: 'Smith system',
     description:
-      'Run diagnostics, maintenance, lifecycle, and updates. Operations: doctor, orphans, remove_orphan(projectId,path), remove_all_orphans, apply_retention, compact, version, open_external(url), quit, relaunch, update_status, update_check, update_download, update_install.',
+      'Read diagnostics without approval: doctor, orphans, version, update_status. Approval: remove_orphan(projectId,path), remove_all_orphans, apply_retention, compact, open_external(url), quit, relaunch, update_check, update_download, update_install. compact compacts project trace databases, not chat context. apply_retention deletes old run records using the retention setting; read smith_settings get first. Read orphans before removal; copy its exact projectId and path (no scope default). Read update_status before download/install. Explain before proposing quit, relaunch, or update_install: the app can close before your final reply.',
     parameters: {
       type: 'object',
       properties: {

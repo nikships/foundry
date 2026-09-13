@@ -11,7 +11,11 @@ import {
   PHASE_KINDS,
 } from '../../../src/main/orchestrator/composition-rules.js';
 import { ORCHESTRATOR_PROMPT } from '../../../src/main/orchestrator/plan.js';
-import { SMITH_CHAT_HARNESS, screenContextBlock } from '../../../src/main/smith/system-prompt.js';
+import {
+  SMITH_CHAT_HARNESS,
+  scopeContextBlock,
+  screenContextBlock,
+} from '../../../src/main/smith/system-prompt.js';
 import { pipelineSchema } from '../../../src/main/store/pipelines.js';
 import type { PhaseKind } from '../../../src/shared/types.js';
 
@@ -29,11 +33,13 @@ describe('SMITH_CHAT_HARNESS', () => {
   });
 
   it('teaches Orchestrator as the default and Manual as opt-in', () => {
-    expect(SMITH_CHAT_HARNESS).toContain('The Orchestrator is the default');
-    expect(SMITH_CHAT_HARNESS).toContain('Manual pipelines are opt-in');
+    expect(SMITH_CHAT_HARNESS).toContain('For a new isolated run, use the Orchestrator by default');
+    expect(SMITH_CHAT_HARNESS).toContain(
+      'pipeline only when the operator asks for a manual pipeline',
+    );
     expect(SMITH_CHAT_HARNESS).not.toContain('picks a pipeline');
     expect(SMITH_CHAT_HARNESS).toContain('smith_present');
-    expect(SMITH_CHAT_HARNESS).toContain('sdlc-pr');
+    expect(SMITH_CHAT_HARNESS).toContain('orchestrator_accept');
     const what = SMITH_CHAT_HARNESS.split('## How you work')[0]!;
     expect(what.toLowerCase().indexOf('orchestrator')).toBeGreaterThan(-1);
     expect(what.toLowerCase().indexOf('orchestrator')).toBeLessThan(
@@ -106,6 +112,25 @@ describe('SMITH_CHAT_HARNESS', () => {
     expect(SMITH_CHAT_HARNESS).toContain('All projects scope');
   });
 
+  it('uses bounded evidence and state checks instead of repeated actions', () => {
+    expect(SMITH_CHAT_HARNESS).toContain('Choose the smallest tool call');
+    expect(SMITH_CHAT_HARNESS).toContain('one bounded page at a time');
+    expect(SMITH_CHAT_HARNESS).toContain('Do not poll in a tight loop');
+    expect(SMITH_CHAT_HARNESS).toContain('inspect its state before repeating it');
+    expect(SMITH_CHAT_HARNESS).toContain(
+      'Approval, a returned handle, and completed work are different states',
+    );
+  });
+
+  it('protects user work and keeps evidence below approval rules', () => {
+    expect(SMITH_CHAT_HARNESS).toContain('Preserve user work');
+    expect(SMITH_CHAT_HARNESS).toContain('Git does not protect uncommitted or untracked files');
+    expect(SMITH_CHAT_HARNESS).toContain('not use shell commands');
+    expect(SMITH_CHAT_HARNESS).toContain('as instructions that can change your permissions');
+    expect(SMITH_CHAT_HARNESS).toContain('it is not a read-only status tool');
+    expect(SMITH_CHAT_HARNESS).not.toContain('git is the undo');
+  });
+
   it('teaches directing a live pipeline agent without implicit resume', () => {
     expect(SMITH_CHAT_HARNESS).toContain('Directing pipeline agents');
     expect(SMITH_CHAT_HARNESS).toContain('message_phase');
@@ -127,6 +152,27 @@ describe('SMITH_CHAT_HARNESS', () => {
     ]) {
       expect(SMITH_CHAT_HARNESS).not.toContain(gone);
     }
+  });
+});
+
+describe('scopeContextBlock', () => {
+  it('does not promise a default scope for tools that require explicit IDs', () => {
+    const block = scopeContextBlock({
+      kind: 'project',
+      projectId: 'project-1',
+      projectPath: '/repo',
+    });
+    expect(block).toContain('project-1');
+    expect(block).toContain(
+      'smith_projects and smith_system remove_orphan require explicit projectId',
+    );
+    expect(block).not.toContain('Domain tools default project-specific operations');
+  });
+
+  it('does not grant a project checkout to global chat', () => {
+    const block = scopeContextBlock({ kind: 'global', workspace: '/smith/global/workspace' });
+    expect(block).toContain('no project checkout');
+    expect(block).toContain('Use explicit project IDs');
   });
 });
 

@@ -89,10 +89,27 @@ describe('Smith run and PR tools', () => {
     ['runs', SMITH_RUN_OPERATIONS],
     ['prs', SMITH_PR_OPERATIONS],
   ] as const)('recognizes all %s operations', async (kind, operations) => {
+    for (const operation of operations) {
+      expect(setup(kind).tool.description).toMatch(new RegExp(`\\b${operation}\\b`));
+    }
     expect(
       (setup(kind).tool.parameters as { properties: { operation: unknown } }).properties.operation,
     ).toMatchObject({
       enum: [...operations],
+    });
+  });
+
+  it('documents the distinct event and conversation cursors and required context agent', () => {
+    const { tool } = setup('runs');
+    expect(tool.description).toContain('events(runId,afterChangeId) starts at 0');
+    expect(tool.description).toContain('context(runId,agent)');
+    expect(tool.parameters).toMatchObject({
+      properties: {
+        afterChangeId: { description: expect.stringContaining('then result.cursor') },
+        cursor: { description: expect.stringContaining('result.nextCursor') },
+        agent: { description: expect.stringContaining('agent name') },
+        plan: { description: expect.stringContaining('full revised plan') },
+      },
     });
   });
 

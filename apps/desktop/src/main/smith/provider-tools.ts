@@ -70,13 +70,19 @@ export function smithProvidersTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_providers',
     label: 'Smith providers',
     description:
-      'Inspect and configure model providers plus Linear, Tavily, and Live Voice: state, stored_keys, connect/disconnect/cancel_login(provider), set_api_key/clear_api_key(providerId), linear_state/linear_test/linear_set_api_key/linear_clear_api_key, tavily_state/tavily_install/tavily_remove/tavily_set_api_key/tavily_clear_api_key, gemini_live_state/gemini_live_set_api_key/gemini_live_clear_api_key. API key values are entered only in the masked approval card, never spoken aloud over voice.',
+      'Read connection state without approval: state, stored_keys (presence only), linear_state, tavily_state, gemini_live_state. Approval: connect/disconnect/cancel_login(provider), set_api_key/clear_api_key(providerId), linear_test/linear_set_api_key/linear_clear_api_key, tavily_install/tavily_remove/tavily_set_api_key/tavily_clear_api_key, gemini_live_set_api_key/gemini_live_clear_api_key. Read state before changes. OAuth uses provider; key operations use providerId. API key values are entered only in the masked approval card, never in arguments, chat, or spoken aloud over voice. A started login is not a completed connection; inspect state to confirm.',
     parameters: {
       type: 'object',
       properties: {
         operation: { type: 'string', enum: [...SMITH_PROVIDER_OPERATIONS] },
-        provider: { type: 'string' },
-        providerId: { type: 'string' },
+        provider: {
+          type: 'string',
+          description: 'Provider slug for connect, disconnect, or cancel_login. Not an API key.',
+        },
+        providerId: {
+          type: 'string',
+          description: 'Provider ID for set_api_key or clear_api_key. Never the key value.',
+        },
       },
       required: ['operation'],
       additionalProperties: false,

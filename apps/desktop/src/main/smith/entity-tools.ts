@@ -86,7 +86,7 @@ export function smithListTool(deps: SmithEntityToolDeps): ToolDefinition {
     name: 'smith_list',
     label: 'Smith list',
     description:
-      'List Foundry entities as JSON. Agents and pipelines use projectId when supplied, otherwise the current scope. Projects return complete definitions.',
+      'Read Foundry entity definitions as JSON without approval. Use this to discover names or IDs; use smith_show instead when the name or ID is known. Agents and pipelines use projectId when supplied, otherwise the current scope. Projects and envelopes are global. Results are full definitions, not just names.',
     parameters: {
       type: 'object',
       properties: {
@@ -115,7 +115,7 @@ export function smithShowTool(deps: SmithEntityToolDeps): ToolDefinition {
     name: 'smith_show',
     label: 'Smith show',
     description:
-      'Show one Foundry entity by name (agents/envelopes) or ID (pipelines/projects). Agents and pipelines may target projectId.',
+      'Read one full Foundry entity without approval. name is the agent/envelope name or pipeline/project ID. Agents and pipelines use projectId when supplied, otherwise the current scope. Read this before an edit and preserve unchanged fields. A null entity means not found.',
     parameters: {
       type: 'object',
       properties: {
@@ -153,7 +153,7 @@ export function smithProposeTool(deps: SmithEntityToolDeps): ToolDefinition {
     name: 'smith_propose',
     label: 'Smith propose',
     description:
-      'Propose creating or editing an agent, pipeline, or envelope. projectId targets a project-local roster/pipeline; omitted means the current project or global set. Validation happens before approval.',
+      'Validate and propose saving a full agent, pipeline, or envelope definition, not a patch. Read smith_show before editing; an existing name or ID is overwritten even with mode:create. projectId targets a project-local roster/pipeline; omitted means the current project or global set. Envelopes are global. Invalid specs return validation errors without a card. A valid spec waits for operator approval; one proposal can be pending. This saves a definition, not a run. Use smith_projects to change projects.',
     parameters: {
       type: 'object',
       properties: {

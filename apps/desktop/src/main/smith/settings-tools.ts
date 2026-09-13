@@ -29,12 +29,15 @@ export function smithSettingsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_settings',
     label: 'Smith settings',
     description:
-      'Read or change Foundry settings and catalogs: get, patch(patch), catalog_gates, catalog_template_variables, catalog_models.',
+      'Read settings and catalogs without approval: get, catalog_gates, catalog_template_variables, catalog_models. Use these catalogs for valid gate names, prompt variables, model IDs, and supported reasoning levels. patch(patch) requires approval. Read get first; send only changed settings, not the full object. Use smith_providers for credentials.',
     parameters: {
       type: 'object',
       properties: {
         operation: { type: 'string', enum: [...SMITH_SETTINGS_OPERATIONS] },
-        patch: { type: 'object' },
+        patch: {
+          type: 'object',
+          description: 'For patch only: changed fields from get. Do not include credentials.',
+        },
       },
       required: ['operation'],
       additionalProperties: false,

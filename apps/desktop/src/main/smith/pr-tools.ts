@@ -19,7 +19,7 @@ export function smithPrsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_prs',
     label: 'Smith pull requests',
     description:
-      'Inspect and operate pull requests: status/list(projectId?), create(projectId?,runId,title,body), merge(projectId?,prNumber,method), fix_conflicts(projectId?,prNumber).',
+      'Use for GitHub pull requests, not local worktree merges. Read now: status(projectId?) checks GitHub availability; list(projectId?) returns PRs. Approval: create(projectId?,runId,title,body), merge(projectId?,prNumber,method), fix_conflicts(projectId?,prNumber). projectId defaults to the current project and is required in All projects scope. Use the PR number from list; runId is only for create. Read current PR state before merging or fixing conflicts; method must be merge or squash.',
     parameters: {
       type: 'object',
       properties: {

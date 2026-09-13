@@ -135,19 +135,38 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
   return defineTool({
     name: 'smith_runs',
     label: 'Smith runs',
-    description:
-      'Inspect and operate Foundry runs. agents(projectId?,runId) lists phase identities and state; conversation(projectId?,runId,phaseId,cursor?) pages actual session history; messages(projectId?,runId) reads direction audit; message_phase(projectId?,runId,phaseId,text) proposes an exact queued note without resuming; interrupt_phase(projectId?,runId,phaseId) separately proposes interrupting a live turn. Resume remains a separate approval and re-evaluates the first failed phase in its existing worktree/conversation, without re-running successful earlier phases. Other operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt/artifacts(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?,assigned?), linear_issue(issueId), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId), orchestrator_plan(projectId?,prompt,model?,reasoningEffort?), orchestrator_list(projectId?), orchestrator_get(planId), orchestrator_message(planId,text), orchestrator_accept(planId,plan?), orchestrator_cancel(planId), orchestrator_discard(planId). For "my tickets" or "what is assigned to me", call linear_issues with assigned:true; any remaining text still filters key/title; to report a ticket\'s status, call linear_issue(issueId) for detail and linear_workflow_states(teamId) to interpret state.type. orchestrator_plan returns a planId immediately while the plan arrives as orchestrator progress — hand the planId back right away and offer to check it with orchestrator_get rather than blocking; orchestrator_accept creates the run exactly once. Prefer detail for failure summary. events returns one small page; pass cursor as afterChangeId to continue.',
+    description: [
+      'Inspect runs, direct phase agents, or propose run actions. Names in parentheses are arguments; ? means optional.',
+      'Scope: projectId defaults to the current project; supply it in All projects scope. Linear reads, live_tail, and planId operations need no projectId.',
+      'Read now: list(includeArchived?), detail(runId), plan(runId), checkpoints(runId), agents(runId), messages(runId). Use detail first for failures.',
+      'Read evidence: events(runId,afterChangeId) starts at 0; pass result.cursor as afterChangeId for the next page. conversation(runId,phaseId,cursor?) starts without cursor; pass result.nextCursor unchanged as cursor until null. Read only needed pages.',
+      'Read phase data: prompt(phaseId), artifacts(phaseId), live_tail(phaseId). context(runId,agent) requires the agent name, not phaseId.',
+      'Approval: message_phase(runId,phaseId,text) sends an exact note; interrupt_phase(runId,phaseId) stops a live turn. Neither resumes a run. Inspect agents before either action.',
+      'Approval: resume(runId) retries the first failed phase in its existing worktree/conversation, without re-running successful earlier phases; kill(runId), archive(runId,archived), discard(runId).',
+      'Approval: merge(runId) merges the run worktree into the local base; fix_merge(runId) repairs that merge. For GitHub PRs use smith_prs. open_worktree(runId), reveal_files(runId).',
+      'Approval: export_plan(runId,pipeline?,agents?) needs pipeline:true or at least one agent name. restore_checkpoint(runId,checkpointId,acceptPartial?) resets the run worktree; inspect checkpoints first and explain any partial restore.',
+      'New run (default): orchestrator_plan(prompt,model?,reasoningEffort?) requires approval and returns a planId while planning continues. Return that handle promptly; do not poll in a tight loop.',
+      'Read plans: orchestrator_list(), orchestrator_get(planId). Approval: orchestrator_message(planId,text), orchestrator_cancel(planId), orchestrator_discard(planId), orchestrator_accept(planId,plan?). Accept starts the run exactly once; plan is an optional full revised plan, not a patch.',
+      'Manual pipelines only: start(pipelineId,request) or linear_start(pipelineId,issueId), both with approval.',
+      'Read Linear: linear_issues(query?,assigned?), linear_issue(issueId), linear_workflow_states(teamId). For my tickets use assigned:true; query filters key/title. Use issue detail and workflow state.type to report status.',
+    ].join('\n'),
     parameters: {
       type: 'object',
       properties: {
         operation: { type: 'string', enum: [...SMITH_RUN_OPERATIONS] },
-        projectId: { type: 'string' },
+        projectId: {
+          type: 'string',
+          description:
+            'Target project; required in All projects scope for project-scoped operations.',
+        },
         includeArchived: { type: 'boolean' },
         runId: { type: 'string' },
         phaseId: { type: 'string' },
         text: { type: 'string', minLength: 1, maxLength: 12000 },
         cursor: {
           type: 'object',
+          description:
+            'Conversation paging only. Omit on the first call; reuse result.nextCursor unchanged. A null nextCursor means no more pages.',
           properties: {
             line: { type: 'integer', minimum: 1 },
             offset: { type: 'integer', minimum: 0 },
@@ -156,8 +175,15 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
           required: ['line', 'offset'],
           additionalProperties: false,
         },
-        afterChangeId: { type: 'number' },
-        agent: { type: 'string' },
+        afterChangeId: {
+          type: 'number',
+          description:
+            'Required for events. Use 0 for the first page, then result.cursor. Not a conversation cursor.',
+        },
+        agent: {
+          type: 'string',
+          description: 'Required for context: agent name from agents, not a phase ID.',
+        },
         pipelineId: { type: 'string' },
         request: { type: 'string' },
         archived: { type: 'boolean' },
@@ -173,7 +199,11 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
         model: { type: 'string' },
         reasoningEffort: { type: 'string', enum: ['low', 'medium', 'high'] },
         planId: { type: 'string' },
-        plan: { type: 'object' },
+        plan: {
+          type: 'object',
+          description:
+            'For orchestrator_accept only: full revised plan from orchestrator_get. Omit to accept the stored plan.',
+        },
       },
       required: ['operation'],
       additionalProperties: false,

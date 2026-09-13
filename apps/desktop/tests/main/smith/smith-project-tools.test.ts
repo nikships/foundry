@@ -35,6 +35,9 @@ async function approve(h: ReturnType<typeof harness>, params: Record<string, unk
 describe('smith_projects', () => {
   it('recognizes every exported operation and rejects unknown operations', async () => {
     const h = harness();
+    for (const operation of SMITH_PROJECT_OPERATIONS) {
+      expect(h.tool.description).toMatch(new RegExp(`\\b${operation}\\b`));
+    }
     expect(
       (h.tool.parameters as { properties: { operation: unknown } }).properties.operation,
     ).toMatchObject({
@@ -43,6 +46,18 @@ describe('smith_projects', () => {
     expect(result(await h.execute({ operation: 'arbitrary' }))).toEqual({
       ok: false,
       error: 'unknown operation',
+    });
+  });
+
+  it('documents explicit scope and full project saves', () => {
+    const { tool } = harness();
+    expect(tool.description).toContain('does not use the chat scope as a default');
+    expect(tool.parameters).toMatchObject({
+      properties: {
+        projectId: { description: expect.stringContaining('Required even in project chat') },
+        project: { description: expect.stringContaining('Not a patch') },
+        script: { description: expect.stringContaining('Required for setup_save and setup_try') },
+      },
     });
   });
 
