@@ -13,6 +13,7 @@ import {
 import { ORCHESTRATOR_PROMPT } from '../../../src/main/orchestrator/plan.js';
 import {
   SMITH_CHAT_HARNESS,
+  permissionContextBlock,
   scopeContextBlock,
   screenContextBlock,
 } from '../../../src/main/smith/system-prompt.js';
@@ -152,6 +153,18 @@ describe('SMITH_CHAT_HARNESS', () => {
     ]) {
       expect(SMITH_CHAT_HARNESS).not.toContain(gone);
     }
+  });
+});
+
+describe('permissionContextBlock', () => {
+  it('states automatic approvals without removing the remaining controls', () => {
+    const block = permissionContextBlock('bypass');
+    expect(block).toContain('YOLO mode is ON');
+    expect(block).toContain('without asking for a separate confirmation');
+    expect(block).toContain('private operator cards in either mode');
+    expect(block).toContain('project write boundaries, and run gates still apply');
+    expect(block).toContain('Only the operator can change this mode');
+    expect(permissionContextBlock('ask')).toContain('wait for the operator');
   });
 });
 

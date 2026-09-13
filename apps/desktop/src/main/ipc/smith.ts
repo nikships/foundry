@@ -13,7 +13,12 @@ import type {
   SmithProposalAnswer,
 } from '@shared/types.js';
 import { isReasoningEffort } from '@shared/reasoning-effort.js';
-import { IPC, type SmithChatState, type SmithScreenContext } from '@shared/ipc-contract.js';
+import {
+  IPC,
+  type SmithChatState,
+  type SmithPermissionMode,
+  type SmithScreenContext,
+} from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifySettings } from './shared.js';
@@ -81,6 +86,18 @@ export function register(ctx: Ctx, handle: Handle): void {
       // channel is not the picker: an unknown level would reach a provider.
       if (!isReasoningEffort(effort)) throw new Error('a known reasoning effort is required');
       await chat.setReasoningEffort(effort);
+      return chat.snapshot();
+    },
+  );
+
+  handle(
+    IPC.smithSetPermissionMode,
+    (projectId: string | undefined, mode: SmithPermissionMode): SmithChatState | null => {
+      if (mode !== 'ask' && mode !== 'bypass')
+        throw new Error('a known permission mode is required');
+      const chat = ctx.smith.chat(projectId);
+      if (!chat) return null;
+      chat.setPermissionMode(mode);
       return chat.snapshot();
     },
   );

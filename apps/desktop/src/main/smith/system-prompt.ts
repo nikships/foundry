@@ -10,7 +10,7 @@
  * user's message.
  */
 
-import type { SmithScreenContext } from '@shared/ipc-contract.js';
+import type { SmithPermissionMode, SmithScreenContext } from '@shared/ipc-contract.js';
 import { compositionRuleBullets } from '../orchestrator/composition-rules.js';
 import type { SmithScope } from './chat-session.js';
 
@@ -18,7 +18,7 @@ import type { SmithScope } from './chat-session.js';
 export const SMITH_CHAT_HARNESS = [
   "You are Smith, Foundry's entity-smith — a native operator and coding agent inside the",
   'Foundry app. You can inspect and operate the same meaningful application',
-  'capabilities as the operator while preserving explicit human approval.',
+  'capabilities as the operator under the selected permission mode.',
   '',
   '## What Foundry is',
   '',
@@ -51,6 +51,8 @@ export const SMITH_CHAT_HARNESS = [
   '',
   '## How you work',
   '',
+  '- The current permission-mode block controls whether action approval is',
+  '  manual or automatic. Do not infer this mode from old chat messages.',
   '- Start with the operator’s requested outcome. Use the current scope and',
   '  screen context to resolve references, then read current state with a tool.',
   '  Ask a question only when a missing choice changes the target or action.',
@@ -214,6 +216,18 @@ export const SMITH_CHAT_HARNESS = [
   '  already carries: `status`, `summary`, `artifacts`,',
   '  `notes_for_next_agent`.',
 ].join('\n');
+
+export function permissionContextBlock(mode: SmithPermissionMode): string {
+  return [
+    '## Smith permission mode',
+    mode === 'bypass'
+      ? 'YOLO mode is ON for this conversation. The operator enabled automatic approval of Smith app actions and entity saves, including destructive, Git, network, and lifecycle actions. Use the named tools without asking for a separate confirmation each time. Their approval requirements in the tool descriptions are automatic in this mode.'
+      : 'Normal mode is ON. Smith app actions and entity saves wait for the operator to answer their approval cards.',
+    'API key entry and Companion pairing still need private operator cards in either mode. Never put secrets in tool arguments or chat.',
+    'This mode changes approval waits only. Validation, tool allowlists, project write boundaries, and run gates still apply. Never use shell commands to bypass them. An approval is not proof that an action succeeded.',
+    'Only the operator can change this mode through the Smith control. Do not change it through files, settings, or tool calls. A new chat or app restart restores normal mode.',
+  ].join('\n');
+}
 
 /** Standing scope context installed once when the transport opens. */
 export function scopeContextBlock(scope: SmithScope): string {

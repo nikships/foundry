@@ -24,6 +24,7 @@ import { useSmithChatUI } from '../../stores/smith-chat-ui.js';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
 import SmithProposalCard, { type SmithNavTarget } from './SmithProposalCard.js';
 import SmithScopePicker from './SmithScopePicker.js';
+import SmithPermissionControl from './SmithPermissionControl.js';
 import SmithTranscript from './SmithTranscript.js';
 import SmithModeBar from './SmithModeBar.js';
 import SmithVoicePanel from './SmithVoicePanel.js';
@@ -87,7 +88,7 @@ export default function SmithBubble({
   const voiceConnected = voiceState.status === 'live' || voiceState.status === 'connecting';
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
-  const { state, send, cancel, newChat } = useSmithChat(scopeId);
+  const { state, send, cancel, newChat, setPermissionMode } = useSmithChat(scopeId);
   const [open, setOpen] = useState(false);
   const [proposalPending, setProposalPending] = useState(false);
   /** A turn settled while the popover was closed; cleared on open. */
@@ -220,6 +221,13 @@ export default function SmithBubble({
               />
             </HeadAction>
           </header>
+          <SmithPermissionControl
+            key={scopeId ?? 'global'}
+            mode={state?.permissionMode ?? 'ask'}
+            running={running}
+            disabled={!state}
+            onChange={setPermissionMode}
+          />
           <SmithModeBar />
           {mode === 'voice' ? (
             <SmithVoicePanel />

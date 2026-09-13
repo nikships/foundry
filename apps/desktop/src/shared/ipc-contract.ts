@@ -334,6 +334,8 @@ export interface GeminiLiveToken {
   systemInstruction: string;
 }
 
+export type SmithPermissionMode = 'ask' | 'bypass';
+
 export interface SmithChatState {
   /** Absent for the global “All projects” conversation. */
   projectId?: string;
@@ -343,6 +345,7 @@ export interface SmithChatState {
   reasoningEffort: ReasoningEffort;
   /** What is actually running, clamped to what the resolved model offers. */
   activeReasoningEffort: ReasoningEffort;
+  permissionMode: SmithPermissionMode;
   running: boolean;
   error: string | null;
   transcript: SmithTranscriptEntry[];
@@ -896,6 +899,10 @@ export interface FoundryApi {
       projectId: string | undefined,
       effort: ReasoningEffort,
     ): Promise<SmithChatState | null>;
+    setPermissionMode(
+      projectId: string | undefined,
+      mode: SmithPermissionMode,
+    ): Promise<SmithChatState | null>;
     /** The one pending proposal, or an empty list. Only ever one at a time. */
     proposalsList(): Promise<SmithProposal[]>;
     /** Approve or reject the pending proposal, unblocking Smith's tool call. */
@@ -1121,6 +1128,7 @@ export const IPC = {
   smithState: 'smith:state',
   smithSetModel: 'smith:setModel',
   smithSetReasoningEffort: 'smith:setReasoningEffort',
+  smithSetPermissionMode: 'smith:setPermissionMode',
   smithProposalsList: 'smith:proposalsList',
   smithAnswerProposal: 'smith:answerProposal',
   geminiLiveState: 'gemini-live:state',

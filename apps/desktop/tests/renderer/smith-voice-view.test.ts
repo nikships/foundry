@@ -28,6 +28,7 @@ function chat(over: Partial<SmithChatState>): SmithChatState {
     activeModel: 'inherit',
     reasoningEffort: 'medium',
     activeReasoningEffort: 'medium',
+    permissionMode: 'ask',
     running: false,
     error: null,
     transcript: [],

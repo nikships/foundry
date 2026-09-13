@@ -6,7 +6,11 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import type { SmithChatState, SmithScreenContext } from '../../../src/shared/ipc-contract.js';
+import type {
+  SmithChatState,
+  SmithPermissionMode,
+  SmithScreenContext,
+} from '../../../src/shared/ipc-contract.js';
 import { IPC } from '../../../src/shared/ipc-contract.js';
 import type { ReasoningEffort } from '../../../src/shared/types.js';
 import { register } from '../../../src/main/ipc/smith.js';
@@ -21,6 +25,7 @@ function state(over: Partial<SmithChatState> = {}): SmithChatState {
     activeModel: 'provider/model',
     reasoningEffort: 'medium',
     activeReasoningEffort: 'medium',
+    permissionMode: 'ask',
     running: false,
     error: null,
     transcript: [],
@@ -63,6 +68,9 @@ function harness(chatPresent = true) {
     setReasoningEffort: vi.fn(async (effort: ReasoningEffort) => {
       current = { ...current, reasoningEffort: effort, activeReasoningEffort: effort };
     }),
+    setPermissionMode: vi.fn((permissionMode: SmithPermissionMode) => {
+      current = { ...current, permissionMode };
+    }),
   };
   const answer = vi.fn(async () => ({ ok: true as const }));
   const handlers = new Map<string, Handler>();
@@ -90,6 +98,7 @@ describe('Smith chat IPC router', () => {
       IPC.smithState,
       IPC.smithSetModel,
       IPC.smithSetReasoningEffort,
+      IPC.smithSetPermissionMode,
       IPC.smithProposalsList,
       IPC.smithAnswerProposal,
     ]);
@@ -176,5 +185,18 @@ describe('Smith chat IPC router', () => {
     ) => Promise<{ ok: true }>;
     await expect(answerProposal('proposal-1', { approved: true })).resolves.toEqual({ ok: true });
     expect(answer).toHaveBeenCalledWith('proposal-1', { approved: true });
+  });
+
+  it('changes permission mode only through the named, validated channel', () => {
+    const { handlers, chat } = harness();
+    const change = handlers.get(IPC.smithSetPermissionMode) as (
+      projectId: string | undefined,
+      mode: string,
+    ) => SmithChatState | null;
+    expect(() => change('proj_1', 'unknown')).toThrow('known permission mode');
+    expect(chat.setPermissionMode).not.toHaveBeenCalled();
+    expect(change('proj_1', 'bypass')).toMatchObject({ permissionMode: 'bypass' });
+    expect(change('proj_1', 'ask')).toMatchObject({ permissionMode: 'ask' });
+    expect(chat.setPermissionMode.mock.calls).toEqual([['bypass'], ['ask']]);
   });
 });

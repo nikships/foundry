@@ -13,6 +13,7 @@ import {
 import type { ProposalInput } from '../../../src/main/smith/proposals.js';
 import type { SmithChatSession } from '../../../src/main/smith/chat-session.js';
 import type { MainInvoker } from '../../../src/main/ipc/shared.js';
+import type { SmithPermissionMode } from '../../../src/shared/ipc-contract.js';
 
 const seed: ProposalInput = {
   type: 'entity',
@@ -25,8 +26,9 @@ const seed: ProposalInput = {
   projectId: 'proj_1',
 };
 
-function fakeChat(): SmithChatSession {
+function fakeChat(permissionMode: SmithPermissionMode = 'ask'): SmithChatSession {
   return {
+    permissionMode,
     dispose: vi.fn(async () => undefined),
     absorbArtifact: vi.fn(),
   } as unknown as SmithChatSession;
@@ -57,6 +59,57 @@ describe('readSmithProposalSeed', () => {
 });
 
 describe('SmithService', () => {
+  it('uses the source chat mode, not the target project mode', async () => {
+    const smith = service({
+      createChat: (projectId) => fakeChat(projectId === 'trusted' ? 'bypass' : 'ask'),
+    });
+    smith.chat('trusted');
+    smith.chat('normal');
+    smith.chat();
+    await expect(
+      smith.proposals.propose({ ...seed, projectId: 'trusted', targetProjectId: 'normal' }),
+    ).resolves.toMatchObject({ approved: true });
+    for (const projectId of ['normal', undefined]) {
+      const pending = smith.proposals.propose({ ...seed, projectId, targetProjectId: 'trusted' });
+      expect(smith.proposals.list()).toHaveLength(1);
+      await smith.proposals.answer(smith.proposals.list()[0]!.id, { approved: false });
+      await pending;
+    }
+  });
+
+  it('supports YOLO in global chat without enabling it for project chats', async () => {
+    const smith = service({ createChat: (projectId) => fakeChat(projectId ? 'ask' : 'bypass') });
+    smith.chat();
+    smith.chat('proj_1');
+    await expect(smith.proposals.propose({ ...seed, projectId: undefined })).resolves.toMatchObject(
+      { approved: true },
+    );
+    const pending = smith.proposals.propose(seed);
+    expect(smith.proposals.list()).toHaveLength(1);
+    await smith.proposals.answer(smith.proposals.list()[0]!.id, { approved: false });
+    await pending;
+  });
+
+  it('records an automatic action receipt in its source chat', async () => {
+    const chat = fakeChat('bypass');
+    const smith = service({ createChat: () => chat });
+    smith.chat('proj_1');
+    await smith.proposals.propose(
+      {
+        type: 'action',
+        operation: 'merge',
+        title: 'Merge',
+        summary: 'Merge run.',
+        args: { runId: 'run_1' },
+        risk: 'git',
+        projectId: 'proj_1',
+      },
+      () => ({ ok: true, modelResult: { ok: true } }),
+    );
+    expect(chat.absorbArtifact).toHaveBeenCalledOnce();
+    expect(smith.proposals.list()).toEqual([]);
+  });
+
   it('opens one chat per project and reuses it', () => {
     const created: Array<string | undefined> = [];
     const chats = new Map<string, SmithChatSession>();

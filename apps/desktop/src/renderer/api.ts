@@ -51,6 +51,11 @@ const guarded = guard(window.foundry);
 
 export const api: FoundryApi = {
   ...guarded,
+  smith: {
+    ...guarded.smith,
+    setPermissionMode: (projectId, mode) =>
+      window.foundry.smith.setPermissionMode(plain(projectId), plain(mode)),
+  },
   runs: {
     ...guarded.runs,
     // Spelled out rather than left to `guard`: its wrapper is variadic, and a

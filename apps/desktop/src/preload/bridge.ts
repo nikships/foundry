@@ -209,6 +209,7 @@ const api: FoundryApi = {
     state: (projectId) => call(IPC.smithState, projectId),
     setModel: (projectId, model) => call(IPC.smithSetModel, projectId, model),
     setReasoningEffort: (projectId, effort) => call(IPC.smithSetReasoningEffort, projectId, effort),
+    setPermissionMode: (projectId, mode) => call(IPC.smithSetPermissionMode, projectId, mode),
     proposalsList: () => call(IPC.smithProposalsList),
     answerProposal: (id, answer) => call(IPC.smithAnswerProposal, id, answer),
   },
