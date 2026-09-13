@@ -1,9 +1,7 @@
 /**
- * At ~700px the Orchestrator picker used to shrink under Plan run
- * (`flex: 1` → basis 0%) while its effort select stayed `flex: none`, so the
- * High control painted over the primary CTA. Visual layout is not executable
- * under Vitest's node environment; this file pins the CSS contract that makes
- * the row wrap from content width and lets the picker shrink without overflow.
+ * The model picker and thinking-level control stay on one row. Wrapping
+ * used to drop effort under a full-width model (`min-width: 100%`) and
+ * grow the picker height. Plan run can still wrap onto its own line.
  */
 
 import { readFileSync } from 'node:fs';
@@ -16,6 +14,10 @@ const runsCss = readFileSync(
 );
 const pickerCss = readFileSync(
   resolve(import.meta.dirname, '../../src/renderer/components/run/OrchestratorPicker.module.css'),
+  'utf8',
+);
+const smithCss = readFileSync(
+  resolve(import.meta.dirname, '../../src/renderer/screens/SmithScreen.module.css'),
   'utf8',
 );
 
@@ -57,26 +59,41 @@ describe('orchestrator composer control overflow', () => {
     expect(button).toMatch(/margin-left:\s*auto/);
   });
 
-  it('lets the picker and its effort row wrap instead of overflowing Plan run', () => {
+  it('keeps model and thinking level on one row and lets the model name shrink', () => {
     const picker = rule(pickerCss, '.picker');
-    expect(picker).toMatch(/flex-wrap:\s*wrap/);
     expect(picker).toMatch(/min-width:\s*0/);
     expect(picker).toMatch(/max-width:\s*100%/);
 
     const controls = rule(pickerCss, '.controls');
-    expect(controls).toMatch(/flex-wrap:\s*wrap/);
+    expect(controls).toMatch(/flex-wrap:\s*nowrap/);
     expect(controls).toMatch(/min-width:\s*0/);
-    expect(controls).not.toMatch(/flex:\s*none/);
+
+    const model = rule(pickerCss, '.model');
+    expect(model).toMatch(/min-width:\s*0/);
+    expect(model).toMatch(/flex:\s*1 1 auto/);
+    expect(model).not.toMatch(/100%/);
+
+    const effort = rule(pickerCss, '.effort');
+    expect(effort).toMatch(/flex:\s*none/);
+    expect(effort).not.toMatch(/flex-wrap/);
   });
 
-  it('does not pin model/effort above the picker width at 700px', () => {
-    expect(rule(pickerCss, '.model')).toMatch(/min-width:\s*min\(180px,\s*100%\)/);
-    expect(rule(pickerCss, '.effort')).toMatch(/min-width:\s*min\(96px,\s*100%\)/);
+  it('keeps Smith header model and thinking level on one row', () => {
+    const headControls = rule(smithCss, '.headControls');
+    expect(headControls).toMatch(/flex-wrap:\s*nowrap/);
+    expect(headControls).toMatch(/min-width:\s*0/);
+
+    const model = rule(smithCss, '.modelPicker');
+    expect(model).toMatch(/min-width:\s*0/);
+    expect(model).not.toMatch(/min-width:\s*240px/);
+
+    expect(rule(smithCss, '.effortPicker')).toMatch(/flex:\s*none/);
   });
 
   it('maps a 700px window onto a composer narrower than picker + Plan run', () => {
     // Ceremony + model + effort min-content is well above 400px; Plan run is
-    // ~122px. The 700px CDP repro had ~372px inside the card — they must wrap.
+    // ~122px. The 700px CDP repro had ~372px inside the card — Plan run wraps,
+    // model and thinking stay on one line.
     const inner = composerInner(700);
     expect(inner).toBeLessThan(400);
     expect(inner).toBeGreaterThan(300);

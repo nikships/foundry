@@ -1,5 +1,6 @@
 .picker {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--s2);
 }

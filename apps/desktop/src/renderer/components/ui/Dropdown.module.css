@@ -18,9 +18,7 @@
 }
 
 .face {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
+  display: block;
   min-width: 0;
   flex: 1;
   overflow: hidden;

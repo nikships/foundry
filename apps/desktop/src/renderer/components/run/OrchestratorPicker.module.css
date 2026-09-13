@@ -34,13 +34,17 @@
 .controls {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: var(--s2);
-  flex-wrap: wrap;
+  /* Model + thinking stay one row. Wrap used to drop effort under a
+     full-width model (`min-width: 100%`) and grow the picker height. */
+  flex-wrap: nowrap;
 }
 .model {
-  min-width: min(180px, 100%);
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .effort {
-  min-width: min(96px, 100%);
+  flex: none;
 }
