@@ -79,14 +79,12 @@
     {
       "id": "ci_parity",
       "status": "pass",
-      "notes": "GitHub Actions workflows mirror local checks (.github/workflows/ci.yml, .github/workflows/codeql.yml, .github/workflows/dependency-review.yml, .github/workflows/junie-review.yml, .github/workflows/junie-tag.yml, .github/workflows/mac-package.yml).",
+      "notes": "GitHub Actions workflows mirror local checks (.github/workflows/ci.yml, .github/workflows/codeql.yml, .github/workflows/dependency-review.yml, .github/workflows/mac-package.yml).",
       "measurement": {
         "workflows": [
           ".github/workflows/ci.yml",
           ".github/workflows/codeql.yml",
           ".github/workflows/dependency-review.yml",
-          ".github/workflows/junie-review.yml",
-          ".github/workflows/junie-tag.yml",
           ".github/workflows/mac-package.yml"
         ]
       }
