@@ -46,7 +46,7 @@ export function ProposalRow({
   baseSyncing: boolean;
   focusRequested: boolean;
   onOpen: (runId: string) => void;
-  onRetry: (prompt: string) => void;
+  onRetry: (planId: string, prompt: string) => void;
 }): React.JSX.Element {
   const { project, refreshAll } = useApp();
   const [starting, setStarting] = useState(false);
@@ -149,7 +149,7 @@ export function ProposalRow({
           <span className={styles.failedDetail}>{proposal.detail || 'The planner gave up.'}</span>
           <Button
             size="sm"
-            onClick={() => act((row) => onRetry(row.prompt))}
+            onClick={() => act((row) => onRetry(row.planId, row.prompt))}
             data-testid="proposal-retry"
           >
             Try again
@@ -244,7 +244,7 @@ export function ProposalRow({
           setReasoningOverrides({});
         }}
         onStart={() => void accept()}
-        onRegenerate={() => act((row) => onRetry(row.prompt))}
+        onRegenerate={() => act((row) => onRetry(row.planId, row.prompt))}
         onDiscard={discard}
       />
     </div>
@@ -266,7 +266,7 @@ export default function ProposalList({
   baseSyncing: boolean;
   focusPlanId?: string | null;
   onOpen: (runId: string) => void;
-  onRetry: (prompt: string) => void;
+  onRetry: (planId: string, prompt: string) => void;
 }): React.JSX.Element | null {
   const visible = useMemo(
     () =>

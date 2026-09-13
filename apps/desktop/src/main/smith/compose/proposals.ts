@@ -96,7 +96,9 @@ export function proposalToLiveState(snapshot: ProposalSnapshot): ComposeState | 
     detail: snapshot.detail,
     startedAt: snapshot.createdAt,
     ...(snapshot.endedAt !== undefined ? { endedAt: snapshot.endedAt } : {}),
-    messages: snapshot.messages.map((message) => ({ ...message })),
+    // Historical rows predate the rename; normalize at the read boundary so
+    // every surface agrees on the persona name.
+    messages: normalizeMessages(snapshot).messages,
     revision: snapshot.revision,
   };
 }
@@ -334,7 +336,10 @@ export class ProposalStore {
         endedAt: at,
       });
     } catch {
-      return true;
+      // A tombstone that never persisted must not be reported as done: the
+      // caller (and the operator) would believe the plan was discarded when
+      // the row is still live. The next list refresh re-reads durable state.
+      return false;
     }
     this.broadcastProposals(found.snapshot.projectId, planId);
     return true;
@@ -388,7 +393,17 @@ export class ProposalStore {
         endedAt: at,
       });
     } catch {
-      return { ok: true, runId: outcome.runId };
+      // The run started but the acceptance was not recorded: reporting
+      // success here would let a later accept see a `ready` row with no
+      // `accepted_run_id` and start a second run. Fail loudly instead — the
+      // operator can see the run on the Runs list and must not blindly
+      // re-accept this proposal.
+      return acceptIssue(
+        'store',
+        `Run ${outcome.runId} started, but recording the acceptance failed. ` +
+          'Do not accept this proposal again without checking the Runs list: ' +
+          'it still reads as ready, and a second accept would start a duplicate run.',
+      );
     }
     this.broadcastProposals(found.snapshot.projectId, planId);
     return { ok: true, runId: outcome.runId };

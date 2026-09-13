@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS phase_checkpoints (
   change_id        INTEGER NOT NULL,
   created_at       TEXT
 );
--- Durable composition proposals, one row per startPlan call, written before
+-- Durable composition proposals, one row per startCompose call, written before
 -- any run exists. The DB is the history; the in-memory session registry is
 -- only the live-turn cache. Additive only; existing rows are user data.
 CREATE TABLE IF NOT EXISTS proposals (

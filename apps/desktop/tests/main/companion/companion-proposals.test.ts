@@ -124,6 +124,17 @@ describe('companion proposal list/accept', () => {
     expect(res.status).toBe(400);
   });
 
+  it('answers 404 on the retired orchestrator routes (no silent fallback)', async () => {
+    const token = await pair();
+    const list = await authed(token, '/v1/orchestrator/plans?projectId=proj_a');
+    expect(list.status).toBe(404);
+    const accept = await authed(token, '/v1/orchestrator/plans/plan_1/accept', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    expect(accept.status).toBe(404);
+  });
+
   it('accepts a proposal exactly once via HTTP', async () => {
     const token = await pair();
     const res = await authed(token, '/v1/smith/compose/plans/plan_1/accept', {

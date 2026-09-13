@@ -161,7 +161,7 @@ async function readClipboardImageSources(files: readonly File[]): Promise<Clipbo
   return imageSourcesFromFileList(snapshots);
 }
 
-function OrchestratedComposer({
+function SmithComposer({
   header,
   request,
   choice,
@@ -199,10 +199,15 @@ function OrchestratedComposer({
     void compose.submit(request);
   };
 
-  const retryPrompt = (prompt: string): void => {
+  const retryPrompt = (planId: string, prompt: string): void => {
     if (!project || baseSyncing) return;
     if (prompt.trim()) onRequestChange(prompt);
-    void compose.submit(prompt);
+    void compose.submit(prompt).then((newPlanId) => {
+      // The new proposal supersedes this card: tombstone the old row so
+      // repeated regenerates don't accumulate stale cards. Only after the
+      // new row exists — a failed submit keeps the old card in place.
+      if (newPlanId && newPlanId !== planId) compose.discardPlan(planId);
+    });
   };
 
   const handleOpen = (runId: string): void => {
@@ -401,7 +406,7 @@ export default function RunsScreen({
         <div className={styles.composerRegion}>
           {mode === 'smith' && (
             <div className={styles.modePanel}>
-              <OrchestratedComposer
+              <SmithComposer
                 header={tabs}
                 request={request}
                 choice={composeChoice}

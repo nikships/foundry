@@ -223,4 +223,56 @@ describe('exactly-once accept', () => {
     expect(h.startedPlans).toHaveLength(0);
     h.plans.cancelAll();
   });
+
+  it('fails the accept loudly when the acceptance write fails (no false success)', async () => {
+    const h = setup();
+    const started = h.store.start(
+      h.project,
+      { prompt: 'one', model: 'inherit', reasoningEffort: 'medium' },
+      h.services,
+    );
+    const planId = (started as { planId: string }).planId;
+    readyStore(h, planId, samplePlan(planId, 'proj_a'));
+
+    // The run starts, then the DB write of `accepted_run_id` fails.
+    const tracer = h.tracerFor('proj_a');
+    if (!tracer) throw new Error('no tracer');
+    tracer.updateProposal = () => {
+      throw new Error('db down');
+    };
+
+    const outcome = await h.store.accept(planId);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) throw new Error('expected failure');
+    expect(outcome.issues[0]?.where).toBe('store');
+    expect(outcome.issues[0]?.message).toContain('run_1');
+    // Nothing was recorded: the row still reads ready with no idempotency key,
+    // so the message must warn against a blind re-accept (it would start a
+    // second run).
+    expect(h.store.get(planId)?.status).toBe('ready');
+    expect(h.store.get(planId)?.acceptedRunId).toBeNull();
+    expect(outcome.issues[0]?.message).toContain('duplicate run');
+    h.plans.cancelAll();
+  });
+
+  it('reports discard failure when the tombstone write fails', async () => {
+    const h = setup();
+    const started = h.store.start(
+      h.project,
+      { prompt: 'one', model: 'inherit', reasoningEffort: 'medium' },
+      h.services,
+    );
+    const planId = (started as { planId: string }).planId;
+    readyStore(h, planId, samplePlan(planId, 'proj_a'));
+
+    const tracer = h.tracerFor('proj_a');
+    if (!tracer) throw new Error('no tracer');
+    tracer.updateProposal = () => {
+      throw new Error('db down');
+    };
+
+    expect(h.store.discard(planId)).toBe(false);
+    expect(h.store.get(planId)?.status).toBe('ready');
+    h.plans.cancelAll();
+  });
 });
