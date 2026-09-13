@@ -19,7 +19,7 @@ import type {
 } from '@shared/types.js';
 import type { LinearConnectionState } from '@shared/ipc-contract.js';
 import { api } from '../../api.js';
-import { useOrchestratorPlan } from '../../hooks/useOrchestratorPlan.js';
+import { useComposePlan } from '../../hooks/useComposePlan.js';
 import { useApp } from '../../stores/app.js';
 import { primaryEnterShortcut } from '../../utils/keyboard.js';
 import { safeGetItem, safeSetItem } from '../../utils/local-store.js';
@@ -32,17 +32,17 @@ import { TextInput } from '../ui/Field.js';
 import LinearIssueResults from './LinearIssueResults.js';
 import LinearSelectedIssue from './LinearSelectedIssue.js';
 import LinearStatusMappingPanel from './LinearStatusMapping.js';
-import { OrchestratorControls, type OrchestratorChoice } from './OrchestratorPicker.js';
+import { ComposeControls, type ComposeChoice } from './ComposePicker.js';
 import PlanCard from '../smith/SmithRunPlanDesign.js';
 import styles from './LinearComposer.module.css';
 
 const EMPTY_MAPPING: LinearStatusMapping = { started: null, completed: null, failed: null };
 const SEARCH_DEBOUNCE_MS = 250;
 const EXECUTION_KEY = 'foundry.linear.execution';
-type LinearExecution = 'orchestrator' | 'pipeline';
+type LinearExecution = 'compose' | 'pipeline';
 
 function loadExecution(): LinearExecution {
-  return safeGetItem(EXECUTION_KEY) === 'pipeline' ? 'pipeline' : 'orchestrator';
+  return safeGetItem(EXECUTION_KEY) === 'pipeline' ? 'pipeline' : 'compose';
 }
 
 function suggestedMapping(
@@ -220,7 +220,7 @@ function LinearExecutionFooter({
   execution: LinearExecution;
   stage: 'compose' | 'planning' | 'ready';
   planningFailed: boolean;
-  choice: OrchestratorChoice;
+  choice: ComposeChoice;
   pipeline: PipelineDef | null;
   pipelines: PipelineDef[];
   hasIssue: boolean;
@@ -230,7 +230,7 @@ function LinearExecutionFooter({
   currentBlocked: string | null;
   starting: boolean;
   onExecutionChange: (execution: LinearExecution) => void;
-  onChoiceChange: (choice: OrchestratorChoice) => void;
+  onChoiceChange: (choice: ComposeChoice) => void;
   onPipelineChange: (pipelineId: string) => void;
   onMappingToggle: () => void;
   onCancel: () => void;
@@ -242,11 +242,11 @@ function LinearExecutionFooter({
       <div className={styles.execution} role="group" aria-label="Execution">
         <button
           type="button"
-          className={execution === 'orchestrator' ? styles.executionActive : undefined}
-          aria-pressed={execution === 'orchestrator'}
+          className={execution === 'compose' ? styles.executionActive : undefined}
+          aria-pressed={execution === 'compose'}
           disabled={stage !== 'compose'}
-          onClick={() => onExecutionChange('orchestrator')}
-          data-testid="linear-execution-orchestrator"
+          onClick={() => onExecutionChange('compose')}
+          data-testid="linear-execution-compose"
         >
           Smith composes
         </button>
@@ -265,9 +265,9 @@ function LinearExecutionFooter({
         </button>
       </div>
 
-      {execution === 'orchestrator' ? (
+      {execution === 'compose' ? (
         stage !== 'ready' && (
-          <OrchestratorControls
+          <ComposeControls
             choice={choice}
             disabled={stage === 'planning'}
             onChange={onChoiceChange}
@@ -337,10 +337,10 @@ function LinearExecutionFooter({
           className={styles.startButton}
           disabled={Boolean(currentBlocked) || starting}
           title={currentBlocked ?? undefined}
-          onClick={execution === 'orchestrator' ? onSubmitPlan : onStartPipeline}
+          onClick={execution === 'compose' ? onSubmitPlan : onStartPipeline}
           data-testid="linear-primary"
         >
-          {starting ? 'Starting…' : execution === 'orchestrator' ? 'Plan run' : 'Start from issue'}
+          {starting ? 'Starting…' : execution === 'compose' ? 'Plan run' : 'Start from issue'}
           {!currentBlocked && !starting && <kbd>⌘↵</kbd>}
         </Button>
       )}
@@ -360,15 +360,15 @@ export default function LinearComposer({
 }: {
   active: boolean;
   header: ReactNode;
-  choice: OrchestratorChoice;
-  onChoiceChange: (choice: OrchestratorChoice) => void;
+  choice: ComposeChoice;
+  onChoiceChange: (choice: ComposeChoice) => void;
   onOpen: (runId: string) => void;
   onOpenSettings?: (pane: string) => void;
   onConnectionChange?: (connection: LinearConnectionState | null) => void;
   baseSyncing: boolean;
 }): React.JSX.Element {
   const { settings, pipelines, project, projectId, patchSettings, refreshAll } = useApp();
-  const orchestrator = useOrchestratorPlan(projectId, choice);
+  const compose = useComposePlan(projectId, choice);
   const [connection, setConnection] = useState<LinearConnectionState | null>(null);
   const [execution, setExecution] = useState<LinearExecution>(loadExecution);
   const [query, setQuery] = useState('');
@@ -538,11 +538,11 @@ export default function LinearComposer({
   }, [projectId]);
 
   const ownSelectedPlanId =
-    orchestrator.selectedPlanId && ownedPlansRef.current.has(orchestrator.selectedPlanId)
-      ? orchestrator.selectedPlanId
+    compose.selectedPlanId && ownedPlansRef.current.has(compose.selectedPlanId)
+      ? compose.selectedPlanId
       : null;
   const discardOwnProposal = (): void => {
-    if (ownSelectedPlanId) orchestrator.discardPlan(ownSelectedPlanId);
+    if (ownSelectedPlanId) compose.discardPlan(ownSelectedPlanId);
   };
 
   const selectIssue = (next: LinearIssueSnapshot): void => {
@@ -650,7 +650,7 @@ export default function LinearComposer({
     try {
       const detailedIssue = await api.linear.issue(issue.id);
       if (issueRef.current?.id !== issue.id) return;
-      const planId = await orchestrator.submit(
+      const planId = await compose.submit(
         [linearIssueBrief(detailedIssue), linearIssueEvidence(detailedIssue)].join('\n\n'),
       );
       if (planId) ownedPlansRef.current.add(planId);
@@ -673,7 +673,7 @@ export default function LinearComposer({
     if (ownStage === 'planning') return;
     if (ownStage === 'ready' && ownPlan) {
       void start(ownPlan);
-    } else if (execution === 'orchestrator') {
+    } else if (execution === 'compose') {
       void submitPlan();
     } else {
       void start(null);
@@ -693,14 +693,14 @@ export default function LinearComposer({
   // This composer's view of the shared facade: only an owned proposal
   // counts. A Runs-composer proposal generating in parallel never flips
   // this composer's stage, lock, or footer.
-  const ownStage = ownSelectedPlanId ? orchestrator.stage : 'compose';
-  const ownPlanning = ownSelectedPlanId ? orchestrator.planning : null;
-  const ownPlan = ownSelectedPlanId ? orchestrator.plan : null;
-  const ownOriginal = ownSelectedPlanId ? orchestrator.original : null;
+  const ownStage = ownSelectedPlanId ? compose.stage : 'compose';
+  const ownPlanning = ownSelectedPlanId ? compose.planning : null;
+  const ownPlan = ownSelectedPlanId ? compose.plan : null;
+  const ownOriginal = ownSelectedPlanId ? compose.original : null;
   const planningFailed = ownPlanning?.status === 'failed';
   const currentBlocked = evidenceLoading
     ? 'Loading Linear issue details'
-    : execution === 'orchestrator'
+    : execution === 'compose'
       ? planBlocked
       : manualBlocked;
   const lifecycle = issue ? lifecycleSummary(issue, states, mapping, mappingReady) : '';
@@ -788,14 +788,14 @@ export default function LinearComposer({
               onPipelineChange={setSelectedPipeline}
               onMappingToggle={() => setMappingOpen((open) => !open)}
               onCancel={() => {
-                if (ownSelectedPlanId) orchestrator.cancelPlan(ownSelectedPlanId);
+                if (ownSelectedPlanId) compose.cancelPlan(ownSelectedPlanId);
               }}
               onSubmitPlan={submitPlan}
               onStartPipeline={() => void start(null)}
             />
 
-            {issue && execution === 'orchestrator' && ownStage === 'compose' && (
-              <p className={styles.orchestratorHint}>
+            {issue && execution === 'compose' && ownStage === 'compose' && (
+              <p className={styles.composeHint}>
                 Smith reads {issue.identifier}&apos;s title as the brief and the description,
                 comments, labels, and parent as untrusted evidence, then composes the pipeline.
               </p>
@@ -803,9 +803,9 @@ export default function LinearComposer({
             {currentBlocked && !starting && ownStage === 'compose' && (
               <p className={styles.startHint}>{currentBlocked}</p>
             )}
-            {orchestrator.planError && (
+            {compose.planError && (
               <p className={styles.planError} role="alert">
-                {orchestrator.planError}
+                {compose.planError}
               </p>
             )}
             <ValidationIssues issues={startIssues} />
@@ -835,12 +835,12 @@ export default function LinearComposer({
           starting={starting}
           startBlocked={baseSyncing ? `Updating ${baseRef} first` : null}
           issues={planStartIssues}
-          messages={orchestrator.messages}
+          messages={compose.messages}
           sourceBadge={`Linear · ${issue.identifier}`}
           sourceDetail={lifecycle}
-          onPhaseModelChange={orchestrator.setPhaseModel}
-          onPhaseReasoningEffortChange={orchestrator.setPhaseReasoningEffort}
-          onResetPhaseOverrides={orchestrator.resetPhaseOverrides}
+          onPhaseModelChange={compose.setPhaseModel}
+          onPhaseReasoningEffortChange={compose.setPhaseReasoningEffort}
+          onResetPhaseOverrides={compose.resetPhaseOverrides}
           onStart={() => void start(ownPlan)}
           onRegenerate={submitPlan}
           onDiscard={() => {

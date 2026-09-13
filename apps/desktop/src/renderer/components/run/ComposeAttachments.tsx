@@ -1,7 +1,7 @@
 import type { PlanImageAttachment } from '@shared/types.js';
-import styles from './OrchestratorAttachments.module.css';
+import styles from './ComposeAttachments.module.css';
 
-export default function OrchestratorAttachments({
+export default function ComposeAttachments({
   images,
   onRemove,
 }: {

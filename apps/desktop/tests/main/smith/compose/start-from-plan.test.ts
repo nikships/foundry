@@ -1,5 +1,5 @@
 /**
- * Starting a run from an inline Orchestrator plan, end to end: `startRun`
+ * Starting a run from an inline Compose plan, end to end: `startRun`
  * takes plan.pipeline, unions plan.agents into the roster, uses the refined
  * request, and the production executor runs it in a real git worktree with a
  * scripted transport — the engine cannot tell generated from stored.

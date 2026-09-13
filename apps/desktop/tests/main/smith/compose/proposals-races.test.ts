@@ -11,7 +11,7 @@ import { Tracer } from '../../../../src/main/trace/tracer.js';
 import { createComposeSessions } from '../../../../src/main/smith/compose/session.js';
 import { ProposalStore } from '../../../../src/main/smith/compose/proposals.js';
 import type { GeneratedRunPlan } from '../../../../src/shared/types.js';
-import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import type { ComposeState } from '../../../../src/shared/ipc-contract.js';
 import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
 
 function samplePlan(planId: string, projectId: string): GeneratedRunPlan {
@@ -99,7 +99,7 @@ function harness() {
   };
 }
 
-function doneFor(store: ProposalStore, planId: string, at: number): OrchestratorState {
+function doneFor(store: ProposalStore, planId: string, at: number): ComposeState {
   const current = store.get(planId);
   if (!current) throw new Error('missing proposal');
   return {
@@ -117,7 +117,7 @@ function doneFor(store: ProposalStore, planId: string, at: number): Orchestrator
     messages: [],
     revision: 1,
     endedAt: at,
-  } as OrchestratorState;
+  } as ComposeState;
 }
 
 describe('proposal cancel/discard races', () => {

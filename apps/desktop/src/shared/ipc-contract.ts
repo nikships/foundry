@@ -212,27 +212,27 @@ export interface DetectionState extends PanelStateCore {
 export type SetupEntry = PanelEntry;
 
 /**
- * One exchange in the operator's back-and-forth with the Orchestrator about
+ * One exchange in the operator's back-and-forth with Smith about
  * an accepted plan. Presentation data only — the plan itself always travels
- * as `OrchestratorState.plan`, never inside a message.
+ * as `ComposeState.plan`, never inside a message.
  */
 export interface PlanChatMessage {
   id: string;
-  role: 'operator' | 'orchestrator';
+  role: 'operator' | 'smith';
   text: string;
-  /** Set on an orchestrator reply that also revised the plan. */
+  /** Set on a Smith reply that also revised the plan. */
   revisedPlan?: boolean;
   at: number;
 }
 
 /**
- * The live state of one Orchestrator planning session. Like detection it is
+ * The live state of one Smith composition session. Like detection it is
  * not a run: no worktree, no trace rows, progress pushed over
- * `orchestrator-progress`. `plan` is set once a plan passed the rails; while
+ * `smith-compose-progress`. `plan` is set once a plan passed the rails; while
  * a follow-up message is being considered `status` returns to `running` with
  * the accepted plan still standing.
  */
-export interface OrchestratorState extends PanelStateCore {
+export interface ComposeState extends PanelStateCore {
   planId: string;
   projectId: string;
   status: 'running' | 'done' | 'cancelled' | 'failed';
@@ -253,7 +253,7 @@ export interface OrchestratorState extends PanelStateCore {
  * Exactly-once accept outcome. `ok:true` carries the one run id; `ok:false`
  * carries the rails/issues that refused the plan and started nothing.
  */
-export type OrchestratorAcceptResult =
+export type ComposeAcceptResult =
   { ok: true; runId: string } | { ok: false; issues: ValidationIssue[] };
 
 export interface SetupState extends PanelStateCore {
@@ -522,7 +522,7 @@ export interface LinearStartRunInput {
   projectId: string;
   pipelineId: string;
   issueId: string;
-  /** A confirmed Orchestrator plan whose request source remains this Linear issue. */
+  /** A confirmed Compose plan whose request source remains this Linear issue. */
   plan?: GeneratedRunPlan;
 }
 
@@ -818,13 +818,13 @@ export interface FoundryApi {
      */
     restoreCheckpoint(projectId: string, input: RestoreRunInput): Promise<RestoreResult>;
   };
-  orchestrator: {
+  compose: {
     /**
      * Opens a planning session on the operator-chosen model. Returns as soon
      * as the session exists; progress and the finished plan arrive on
-     * `orchestrator-progress`.
+     * `smith-compose-progress`.
      */
-    plan(
+    start(
       projectId: string,
       prompt: string,
       model: string,
@@ -834,14 +834,14 @@ export interface FoundryApi {
     /**
      * Sends one follow-up message about the accepted plan. Returns as soon as
      * the session takes it; the reply — and any revised plan — arrives on
-     * `orchestrator-progress`. A non-null return is the refusal reason.
+     * `smith-compose-progress`. A non-null return is the refusal reason.
      */
-    message(planId: string, text: string): Promise<string | null>;
+    revise(planId: string, text: string): Promise<string | null>;
     cancel(planId: string): Promise<boolean>;
     /**
      * Durable proposal reads. The DB is the source of truth, so a reload or
      * reconnect re-reads these and then subscribes to `proposals-changed` +
-     * `orchestrator-progress` for live updates. No hook state required.
+     * `smith-compose-progress` for live updates. No hook state required.
      *
      * Optional during the service→UI handoff so the current renderer (which
      * the service slice must not edit) keeps compiling; the renderer build
@@ -857,7 +857,7 @@ export interface FoundryApi {
      * re-validates via `checkPlanRails` inside `startRun` and persists the
      * exact received value as `acceptedPlan`.
      */
-    accept?(planId: string, plan?: GeneratedRunPlan): Promise<OrchestratorAcceptResult>;
+    accept?(planId: string, plan?: GeneratedRunPlan): Promise<ComposeAcceptResult>;
     /**
      * Discard a proposal. If `generating`, cancels first, then tombstones.
      * `accepted` rows refuse (`false`); discard is otherwise idempotent.
@@ -979,11 +979,11 @@ export interface FoundryApi {
       | 'detection-progress'
       | 'setup-progress'
       // Planning is not a run: no trace rows, no change_id cursor to walk, so
-      // the Orchestrator's progress is pushed the way detection's is.
-      | 'orchestrator-progress'
+      // Smith composition's progress is pushed the way detection's is.
+      | 'smith-compose-progress'
       // Durable proposal list invalidation: a `list()` re-read picks up the
       // row the progress payload describes. Pushed alongside
-      // `orchestrator-progress` on every proposal transition.
+      // `smith-compose-progress` on every proposal transition.
       | 'proposals-changed'
       | 'smith-proposals-changed'
       | 'smith-progress'
@@ -1111,13 +1111,13 @@ export const IPC = {
   runsExportPlan: 'runs:exportPlan',
   runsRestorableCheckpoints: 'runs:restorableCheckpoints',
   runsRestoreCheckpoint: 'runs:restoreCheckpoint',
-  orchestratorPlan: 'orchestrator:plan',
-  orchestratorMessage: 'orchestrator:message',
-  orchestratorCancel: 'orchestrator:cancel',
-  orchestratorList: 'orchestrator:list',
-  orchestratorGet: 'orchestrator:get',
-  orchestratorAccept: 'orchestrator:accept',
-  orchestratorDiscard: 'orchestrator:discard',
+  smithComposeStart: 'smith-compose:start',
+  smithComposeRevise: 'smith-compose:revise',
+  smithComposeCancel: 'smith-compose:cancel',
+  smithComposeList: 'smith-compose:list',
+  smithComposeGet: 'smith-compose:get',
+  smithComposeAccept: 'smith-compose:accept',
+  smithComposeDiscard: 'smith-compose:discard',
   prsStatus: 'prs:status',
   prsList: 'prs:list',
   prsCreate: 'prs:create',
@@ -1161,7 +1161,7 @@ export const IPC = {
   eventUpdaterStatus: 'event:updater-status',
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
-  eventOrchestratorProgress: 'event:orchestrator-progress',
+  eventSmithComposeProgress: 'event:smith-compose-progress',
   eventProposalsChanged: 'event:proposals-changed',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
   eventSmithProgress: 'event:smith-progress',

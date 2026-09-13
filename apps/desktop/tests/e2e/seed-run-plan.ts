@@ -14,7 +14,7 @@ export function seedRunPlanFixture(userDataDir?: string, snapshotOnly = false): 
     { id: 'old-operator', role: 'operator', text: 'Keep the shortcuts.', at: 1 },
     {
       id: 'old-smith',
-      role: 'orchestrator',
+      role: 'smith',
       text: 'The shortcuts are preserved.',
       at: 2,
       revisedPlan: true,

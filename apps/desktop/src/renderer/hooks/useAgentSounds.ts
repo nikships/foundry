@@ -1,24 +1,24 @@
 /**
- * Plays generated milestone sounds from live orchestrator, run, and Smith
+ * Plays generated milestone sounds from live compose, run, and Smith
  * snapshots. Historical rows are a baseline, not a concert: the first read
  * of each run or pending proposal is silent. Snapshot maps survive project-list
  * refreshes so a known row cannot become a first-sighting replay.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
-import type { OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeState } from '@shared/ipc-contract.js';
 import type { ProjectDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { playAgentSound, unlockAgentSounds } from '../utils/agent-sounds.js';
 import {
   applyRunSnapshots,
-  orchestratorCues,
+  composeCues,
   rememberSmithProposals,
   smithCues,
-  snapshotOrchestrator,
+  snapshotCompose,
   snapshotSmith,
   type AgentSoundCue,
-  type OrchestratorCueSnapshot,
+  type ComposeCueSnapshot,
   type RunCueSnapshot,
   type SmithCueSnapshot,
 } from '../view-models/agent-sound-cues.js';
@@ -26,7 +26,7 @@ import {
 export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
   const enabledRef = useRef(enabled);
   const projectsRef = useRef(projects);
-  const orchestratorRef = useRef(new Map<string, OrchestratorCueSnapshot>());
+  const composeRef = useRef(new Map<string, ComposeCueSnapshot>());
   const runsRef = useRef(new Map<string, RunCueSnapshot>());
   const smithRef = useRef<SmithCueSnapshot | undefined>(undefined);
   const inFlightRef = useRef(false);
@@ -116,14 +116,14 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       }
     };
 
-    const offOrchestrator = api.on('orchestrator-progress', (data) => {
+    const offCompose = api.on('smith-compose-progress', (data) => {
       if (disposed) return;
-      const state = data as OrchestratorState | undefined;
+      const state = data as ComposeState | undefined;
       if (!state) return;
-      const next = snapshotOrchestrator(state);
-      const prev = orchestratorRef.current.get(state.planId);
-      orchestratorRef.current.set(state.planId, next);
-      play(orchestratorCues(prev, next));
+      const next = snapshotCompose(state);
+      const prev = composeRef.current.get(state.planId);
+      composeRef.current.set(state.planId, next);
+      play(composeCues(prev, next));
     });
 
     const offRuns = api.on('runs-changed', () => {
@@ -138,7 +138,7 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
 
     return () => {
       disposed = true;
-      offOrchestrator();
+      offCompose();
       offRuns();
       offSmith();
       if (timer !== null) window.clearTimeout(timer);

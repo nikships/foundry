@@ -111,8 +111,8 @@ export function describeScreen(view: View, position: ScreenPosition): SmithScree
 export type SmithCapabilityId =
   | 'assigned-work'
   | 'ticket-status'
-  | 'orchestrator-plan'
-  | 'orchestrator-list'
+  | 'compose-plan'
+  | 'compose-list'
   | 'pipeline-run'
   | 'linear-pipeline-run'
   | 'refresh-context'
@@ -149,13 +149,13 @@ export const SMITH_QUICK_PROMPTS: ReadonlyArray<SmithQuickPrompt> = [
     hint: 'One ticket: state, team, and what it means',
   },
   {
-    id: 'orchestrator-plan',
+    id: 'compose-plan',
     label: 'Plan a run for…',
     prompt: 'Ask Smith to compose a run plan for: <describe the change>.',
     hint: 'Draft a run plan; returns a plan ID immediately',
   },
   {
-    id: 'orchestrator-list',
+    id: 'compose-list',
     label: 'My plans',
     prompt: 'List my Smith run plans and their status.',
     hint: 'Browse planning proposals for this project',
@@ -199,7 +199,7 @@ export function smithTicketStatusPrompt(issueId: string): string {
 }
 
 /** "Start planning X" with the goal filled in. */
-export function smithOrchestratorPlanPrompt(goal: string): string {
+export function smithComposePlanPrompt(goal: string): string {
   return `Ask Smith to compose a run plan for: ${goal.trim()}`;
 }
 
@@ -214,7 +214,7 @@ export function smithLinearPipelineRunPrompt(pipelineId: string, issueId: string
 }
 
 /** Follow-up about a known plan: keeps the plan id attached to the message. */
-export function smithOrchestratorFollowUpPrompt(planId: string, text: string): string {
+export function smithComposeFollowUpPrompt(planId: string, text: string): string {
   return `For Smith run plan ${planId.trim()}: ${text.trim()}`;
 }
 
@@ -225,13 +225,13 @@ const PLAN_ID_PATTERN = /plan-[0-9a-f]{6,}/i;
  * Plan ids read `plan-<hex>`; the match is the handle for every follow-up
  * (`smith_compose` get, revise, and accept).
  */
-export function extractOrchestratorPlanId(text: string): string | null {
+export function extractComposePlanId(text: string): string | null {
   return PLAN_ID_PATTERN.exec(text)?.[0] ?? null;
 }
 
-/** Whether Smith's reply names an orchestrator plan the operator can follow up on. */
-export function hasOrchestratorPlanId(text: string): boolean {
-  return extractOrchestratorPlanId(text) !== null;
+/** Whether Smith's reply names a composition plan the operator can follow up on. */
+export function hasComposePlanId(text: string): boolean {
+  return extractComposePlanId(text) !== null;
 }
 
 /**
@@ -242,15 +242,15 @@ export function hasOrchestratorPlanId(text: string): boolean {
  * masked approval card.
  */
 export function smithConfirmationHint(operation: string): string {
-  if (operation === 'compose' || operation === 'orchestrator_plan')
+  if (operation === 'compose')
     return 'Planning spends an agent turn. The card arrives in this chat when ready.';
-  if (operation === 'revise' || operation === 'orchestrator_message')
+  if (operation === 'revise')
     return 'Read-only revisions run immediately. The revised plan arrives in Smith.';
-  if (operation === 'compose_accept' || operation === 'orchestrator_accept')
+  if (operation === 'compose_accept')
     return 'Accept creates the run exactly once — a repeat accept returns the same run.';
-  if (operation === 'compose_discard' || operation === 'orchestrator_discard')
+  if (operation === 'compose_discard')
     return 'Discarding is destructive. Discarding an accepted plan refuses — that is final.';
-  if (operation === 'compose_cancel' || operation === 'orchestrator_cancel')
+  if (operation === 'compose_cancel')
     return 'Cancel stops generation. The proposal row remains for review or discard.';
   if (operation === 'refresh_context')
     return 'Refresh rebuilds the repository fact card run agents receive as context.';

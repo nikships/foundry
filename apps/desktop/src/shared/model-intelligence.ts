@@ -2,7 +2,7 @@
  * The Artificial Analysis Intelligence Index for a model id, when one exists.
  *
  * The table is vendored (`model-intelligence.json`, refreshed by
- * `npm run fetch:intelligence`) rather than fetched, because the Orchestrator's
+ * `npm run fetch:intelligence`) rather than fetched, because Smith composition's
  * planning rail must work offline and a score is advisory: it improves a
  * casting decision but no run depends on it.
  *

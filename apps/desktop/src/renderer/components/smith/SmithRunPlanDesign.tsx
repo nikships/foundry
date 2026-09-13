@@ -143,8 +143,8 @@ export default function SmithRunPlanDesign({
         <div className={styles.headText}>
           <h2 className={styles.title}>{view.title}</h2>
           {sourceBadge && <span className={styles.sourceBadge}>{sourceBadge}</span>}
-          <p className={`faint ${styles.summary}`} data-testid="plan-orchestrator">
-            {view.summary} · composed by {view.orchestratorCredit}
+          <p className={`faint ${styles.summary}`} data-testid="plan-compose">
+            {view.summary} · composed by {view.composeCredit}
           </p>
         </div>
         <p className={styles.description}>{view.description}</p>

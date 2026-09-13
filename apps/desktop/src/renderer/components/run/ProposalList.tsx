@@ -76,7 +76,7 @@ export function ProposalRow({
   const generating = proposal.status === 'generating' && !proposal.plan;
 
   const readCurrent = async (): Promise<ProposalSnapshot> => {
-    const row = await api.orchestrator.get?.(proposal.planId);
+    const row = await api.compose.get?.(proposal.planId);
     if (!row) throw new Error('This proposal is unavailable. This card is a snapshot.');
     return row;
   };
@@ -90,7 +90,7 @@ export function ProposalRow({
   };
 
   const discard = (): void => {
-    act((row) => api.orchestrator.discard?.(row.planId));
+    act((row) => api.compose.discard?.(row.planId));
   };
 
   const accept = async (): Promise<void> => {
@@ -103,8 +103,8 @@ export function ProposalRow({
         throw new Error('The proposal changed. Review the current card before starting.');
       }
       const currentPlan = effectivePlanOf(row, modelOverrides, reasoningOverrides);
-      if (!currentPlan || !api.orchestrator.accept) throw new Error('Proposal cannot be started.');
-      const result = await api.orchestrator.accept(row.planId, currentPlan);
+      if (!currentPlan || !api.compose.accept) throw new Error('Proposal cannot be started.');
+      const result = await api.compose.accept(row.planId, currentPlan);
       if (!result.ok) {
         setIssues(result.issues);
         await refreshAll();
@@ -181,7 +181,7 @@ export function ProposalRow({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => act((row) => api.orchestrator.cancel(row.planId))}
+            onClick={() => act((row) => api.compose.cancel(row.planId))}
             data-testid="proposal-cancel"
           >
             Cancel

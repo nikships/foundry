@@ -15,7 +15,7 @@
  *
  * Models are pinned rather than fetched. `GET /v1/models` answers with ids and
  * nothing else — no context window, no rate card, no thinking levels — so the
- * metadata the picker and the Orchestrator's cast pool need has to come from
+ * metadata the picker and Smith composition's cast pool need has to come from
  * somewhere, and a table in the repository is reviewable where a runtime guess
  * is not. Only Muse Spark 1.3 is shipped: older Spark ids, Llama, Muse Image,
  * and the transcription model are left out. An agent phase needs a current

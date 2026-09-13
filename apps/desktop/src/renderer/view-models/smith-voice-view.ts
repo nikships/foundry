@@ -206,7 +206,7 @@ export function proposalSummary(proposals: SmithProposal[]): string {
 
 /** Spoken entry points that route through `smith_work`, mirroring the text chips. */
 export interface SmithVoiceCapabilityPrompt {
-  id: 'assigned-work' | 'ticket-status' | 'orchestrator-plan' | 'pipeline-run';
+  id: 'assigned-work' | 'ticket-status' | 'compose-plan' | 'pipeline-run';
   /** What the operator can say. */
   utterance: string;
   /** The self-contained `smith_work` text the utterance becomes. */
@@ -226,7 +226,7 @@ export const SMITH_VOICE_CAPABILITY_PROMPTS: ReadonlyArray<SmithVoiceCapabilityP
     workText: 'Check Linear ticket FOU-123 and report its status.',
   },
   {
-    id: 'orchestrator-plan',
+    id: 'compose-plan',
     utterance: 'Start planning a fix for my ticket.',
     workText: 'Ask Smith to compose a run plan for the described change.',
   },
@@ -240,7 +240,7 @@ export const SMITH_VOICE_CAPABILITY_PROMPTS: ReadonlyArray<SmithVoiceCapabilityP
 /**
  * Builds the self-contained `smith_work` text for a spoken capability
  * request, with the operator's detail filled in. The result names the
- * orchestrator plan id convention (`plan-<hex>`) implicitly: when settled
+ * compose plan id convention (`plan-<hex>`) implicitly: when settled
  * text names one, the declaration instructs the model to narrate the id and
  * offer a status check rather than claim an outcome.
  */
@@ -258,7 +258,7 @@ export function voiceCapabilityWorkText(
       return trimmed
         ? `Check Linear ticket ${trimmed} and report its status (state, team, and what it means).`
         : 'Check the requested Linear ticket and report its status.';
-    case 'orchestrator-plan':
+    case 'compose-plan':
       return trimmed
         ? `Ask Smith to compose a run plan for: ${trimmed}`
         : 'Ask Smith to compose a run plan for the described change.';

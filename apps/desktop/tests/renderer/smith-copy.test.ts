@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SMITH_ASSIGNED_EMPTY_COPY,
   SMITH_NO_PROVIDER_COPY,
-  SMITH_ORCHESTRATOR_ASYNC_COPY,
+  SMITH_COMPOSE_ASYNC_COPY,
   SMITH_QUICK_PROMPTS_LABEL,
   SMITH_SECRET_VOICE_COPY,
   SMITH_USER_ACCESS_COPY,
@@ -45,8 +45,8 @@ describe('smith user-level access copy', () => {
   it('keeps secrets in the masked card and plans async with a handle', () => {
     expect(SMITH_SECRET_VOICE_COPY).toMatch(/masked card/i);
     expect(SMITH_SECRET_VOICE_COPY).toMatch(/never spoken/i);
-    expect(SMITH_ORCHESTRATOR_ASYNC_COPY).toMatch(/plan ID/i);
-    expect(SMITH_ORCHESTRATOR_ASYNC_COPY).toMatch(/status/i);
+    expect(SMITH_COMPOSE_ASYNC_COPY).toMatch(/plan ID/i);
+    expect(SMITH_COMPOSE_ASYNC_COPY).toMatch(/status/i);
     expect(SMITH_ASSIGNED_EMPTY_COPY).toMatch(/No tickets/i);
     expect(SMITH_QUICK_PROMPTS_LABEL.trim().length).toBeGreaterThan(0);
   });

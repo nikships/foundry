@@ -43,8 +43,8 @@ import type {
   GeminiLiveConnectionState,
   GeminiLiveToken,
   LinearConnectionState,
-  OrchestratorAcceptResult,
-  OrchestratorState,
+  ComposeAcceptResult,
+  ComposeState,
   SmithChatState,
   SmithScreenContext,
 } from '@shared/ipc-contract.js';
@@ -54,9 +54,9 @@ import type {
   CompanionErrorCode,
   CompanionHostState,
   CompanionLinearStartRequest,
-  CompanionOrchestratorOptions,
-  CompanionOrchestratorStartRequest,
-  CompanionOrchestratorStartResult,
+  CompanionComposeOptions,
+  CompanionComposeStartRequest,
+  CompanionComposeStartResult,
   CompanionPairingPayload,
   CompanionPairRequest,
   CompanionPairResult,
@@ -120,7 +120,7 @@ export interface CompanionHostDeps {
   enabledModelIds?(): Promise<string[]>;
   /** Fires when host or device state changes, so Settings re-reads. */
   onStateChanged(): void;
-  orchestrator?: CompanionOrchestratorDeps;
+  compose?: CompanionComposeDeps;
   linear?: CompanionLinearDeps;
   /**
    * The same Smith session the desktop window talks to. Optional so a test
@@ -145,13 +145,13 @@ export interface CompanionHostDeps {
  * are optional so older test stubs (options/start/state/cancel only) keep
  * constructing a host; missing verbs answer 404 rather than inventing state.
  */
-export interface CompanionOrchestratorDeps {
-  options(): Promise<CompanionOrchestratorOptions>;
-  start(input: CompanionOrchestratorStartRequest): CompanionOrchestratorStartResult;
-  state(planId: string): OrchestratorState | null;
+export interface CompanionComposeDeps {
+  options(): Promise<CompanionComposeOptions>;
+  start(input: CompanionComposeStartRequest): CompanionComposeStartResult;
+  state(planId: string): ComposeState | null;
   cancel(planId: string): boolean;
   list?(projectId: string): ProposalSnapshot[];
-  accept?(planId: string, plan?: GeneratedRunPlan): Promise<OrchestratorAcceptResult>;
+  accept?(planId: string, plan?: GeneratedRunPlan): Promise<ComposeAcceptResult>;
 }
 
 /** Linear reads plus the one setting write a Linear-backed start performs. */
@@ -468,6 +468,9 @@ export class CompanionHost {
     const device = this.devices.authenticate(bearerToken(req));
     if (!device) throw new RouteError(401, 'unauthorized', 'unknown or revoked device token');
 
+    if (path === '/v1/orchestrator' || path.startsWith('/v1/orchestrator/')) {
+      res.setHeader('Deprecation', 'true');
+    }
     const segments = path.split('/').filter(Boolean);
     const answer = await this.dispatch(method, segments, url, req, device);
     this.json(res, 200, answer);
@@ -539,7 +542,11 @@ export class CompanionHost {
       }));
     }
 
-    if (head === 'orchestrator') return this.orchestratorRoute(method, rest, req, url);
+    if (head === 'smith' && rest[0] === 'compose') {
+      return this.composeRoute(method, rest.slice(1), req, url);
+    }
+    // One-release alias for Companion clients that have not shipped FOU-388.
+    if (head === 'orchestrator') return this.composeRoute(method, rest, req, url);
 
     if (head === 'linear') return this.linearRoute(method, rest, url, req);
 
@@ -571,21 +578,21 @@ export class CompanionHost {
     throw new RouteError(404, 'not_found', 'no such route');
   }
 
-  /** Routes under `/v1/orchestrator`. List/accept read the durable store. */
-  private async orchestratorRoute(
+  /** Routes under `/v1/smith/compose` and its one-release legacy alias. */
+  private async composeRoute(
     method: string,
     rest: string[],
     req: IncomingMessage,
     url: URL,
   ): Promise<unknown> {
-    const orchestrator = this.deps.orchestrator;
-    if (!orchestrator) throw new RouteError(404, 'not_found', 'Smith composition is not available');
+    const compose = this.deps.compose;
+    if (!compose) throw new RouteError(404, 'not_found', 'Smith composition is not available');
 
     if (method === 'GET' && rest[0] === 'options' && rest.length === 1) {
-      return orchestrator.options();
+      return compose.options();
     }
     if (method === 'POST' && rest[0] === 'plans' && rest.length === 1) {
-      const body = (await readJson(req)) as Partial<CompanionOrchestratorStartRequest>;
+      const body = (await readJson(req)) as Partial<CompanionComposeStartRequest>;
       if (
         typeof body.projectId !== 'string' ||
         typeof body.prompt !== 'string' ||
@@ -598,7 +605,7 @@ export class CompanionHost {
           'plan needs projectId, prompt, model, and a known reasoning effort',
         );
       }
-      return orchestrator.start({
+      return compose.start({
         projectId: body.projectId,
         prompt: body.prompt,
         model: body.model,
@@ -606,28 +613,28 @@ export class CompanionHost {
       });
     }
     if (method === 'GET' && rest[0] === 'plans' && rest.length === 1) {
-      if (!orchestrator.list) throw new RouteError(404, 'not_found', 'no such route');
+      if (!compose.list) throw new RouteError(404, 'not_found', 'no such route');
       const projectId = url.searchParams.get('projectId') ?? '';
       if (!projectId) throw new RouteError(400, 'bad_request', 'list needs projectId');
-      return orchestrator.list(projectId);
+      return compose.list(projectId);
     }
     const planId = rest[0] === 'plans' ? rest[1] : undefined;
     if (method === 'GET' && planId && rest.length === 2) {
-      const state = orchestrator.state(planId);
+      const state = compose.state(planId);
       if (!state) throw new RouteError(404, 'not_found', 'plan not found');
       return state;
     }
     if (method === 'POST' && planId && rest[2] === 'cancel' && rest.length === 3) {
-      return { ok: orchestrator.cancel(planId) };
+      return { ok: compose.cancel(planId) };
     }
     if (method === 'POST' && planId && rest[2] === 'accept' && rest.length === 3) {
-      if (!orchestrator.accept) throw new RouteError(404, 'not_found', 'no such route');
+      if (!compose.accept) throw new RouteError(404, 'not_found', 'no such route');
       const body = (await readJson(req)) as Partial<{ plan?: unknown }>;
       const plan = body.plan === undefined ? undefined : parseGeneratedPlan(body.plan);
       if (body.plan !== undefined && !plan) {
         throw new RouteError(400, 'bad_request', 'plan is not a generated run plan');
       }
-      return plan ? orchestrator.accept(planId, plan) : orchestrator.accept(planId);
+      return plan ? compose.accept(planId, plan) : compose.accept(planId);
     }
     throw new RouteError(404, 'not_found', 'no such route');
   }

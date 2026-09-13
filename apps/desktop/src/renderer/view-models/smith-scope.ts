@@ -38,7 +38,7 @@ const GLOBAL_SMITH_CAPABILITIES: ReadonlySet<SmithCapabilityId> = new Set([
 
 /**
  * Whether a capability works from the current scope. Assigned work, ticket
- * status, and the voice-key state are viewer-global; orchestrator plans and
+ * status, and the voice-key state are viewer-global; compose plans and
  * lists, pipeline runs, and context refreshes need an explicit project, so
  * in All-projects scope Smith must ask which project before proposing.
  */

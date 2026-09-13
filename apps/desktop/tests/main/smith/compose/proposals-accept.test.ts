@@ -11,7 +11,7 @@ import { Tracer } from '../../../../src/main/trace/tracer.js';
 import { createComposeSessions } from '../../../../src/main/smith/compose/session.js';
 import { ProposalStore } from '../../../../src/main/smith/compose/proposals.js';
 import type { GeneratedRunPlan } from '../../../../src/shared/types.js';
-import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import type { ComposeState } from '../../../../src/shared/ipc-contract.js';
 import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
 
 function samplePlan(
@@ -125,8 +125,8 @@ function setup(
 
 function readyStore(h: ReturnType<typeof setup>, planId: string, plan: GeneratedRunPlan): void {
   h.setNow(2000);
-  const live = h.plans.get(planId) as OrchestratorState | null;
-  const base: OrchestratorState = live ?? {
+  const live = h.plans.get(planId) as ComposeState | null;
+  const base: ComposeState = live ?? {
     planId,
     projectId: 'proj_a',
     status: 'running',

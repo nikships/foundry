@@ -45,7 +45,7 @@ export const SMITH_SECRET_VOICE_COPY =
  * arrives as progress, so polling or asking for status is the workflow —
  * never waiting silently for an outcome.
  */
-export const SMITH_ORCHESTRATOR_ASYNC_COPY =
+export const SMITH_COMPOSE_ASYNC_COPY =
   'Planning runs in the background. Smith hands back a plan ID right away — ask for its status any time.';
 
 /** Empty assigned-work result: valid, not an error. */

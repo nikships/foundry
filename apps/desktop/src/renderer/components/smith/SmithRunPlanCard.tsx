@@ -20,9 +20,9 @@ export default function SmithRunPlanCard({
 
   const regenerate = (): void => {
     void (async () => {
-      const row = await api.orchestrator.get?.(artifact.planId);
+      const row = await api.compose.get?.(artifact.planId);
       if (!row) throw new Error('Proposal unavailable.');
-      const result = await api.orchestrator.plan(
+      const result = await api.compose.start(
         row.projectId,
         row.prompt,
         row.model,

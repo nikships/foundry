@@ -4,7 +4,7 @@ import type {
   ProposalSnapshot,
   ReasoningEffort,
 } from '@shared/types.js';
-import { IPC, type OrchestratorAcceptResult } from '@shared/ipc-contract.js';
+import { IPC, type ComposeAcceptResult } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import { startComposeWithPrep } from '../smith/compose/after-start.js';
 import type { Handle } from './shared.js';
@@ -25,11 +25,11 @@ type Ctx = Pick<
 export function register(ctx: Ctx, handle: Handle): void {
   /**
    * Opens a planning session and returns its id immediately; the plan (or the
-   * failure) arrives on `orchestrator-progress`, never on this invoke — a
+   * failure) arrives on `smith-compose-progress`, never on this invoke — a
    * click is not left awaiting a five-minute turn.
    */
   handle(
-    IPC.orchestratorPlan,
+    IPC.smithComposeStart,
     (
       projectId: string,
       prompt: string,
@@ -45,24 +45,24 @@ export function register(ctx: Ctx, handle: Handle): void {
 
   /**
    * Takes one follow-up message about the accepted plan and returns
-   * immediately; the reply arrives on `orchestrator-progress` like the plan
+   * immediately; the reply arrives on `smith-compose-progress` like the plan
    * itself did. A non-null return is the refusal reason.
    */
-  handle(IPC.orchestratorMessage, (planId: string, text: string): string | null =>
+  handle(IPC.smithComposeRevise, (planId: string, text: string): string | null =>
     ctx.plans.message(planId, text),
   );
 
-  handle(IPC.orchestratorCancel, (planId: string) => ctx.proposals.cancel(planId));
+  handle(IPC.smithComposeCancel, (planId: string) => ctx.proposals.cancel(planId));
 
   /**
    * Durable reads for restore/reconnect: the DB is the source of truth, so a
    * reloaded renderer re-reads these and subscribes to `proposals-changed`.
    */
-  handle(IPC.orchestratorList, (projectId: string): ProposalSnapshot[] =>
+  handle(IPC.smithComposeList, (projectId: string): ProposalSnapshot[] =>
     ctx.proposals.list(projectId),
   );
 
-  handle(IPC.orchestratorGet, (planId: string): ProposalSnapshot | null =>
+  handle(IPC.smithComposeGet, (planId: string): ProposalSnapshot | null =>
     ctx.proposals.get(planId),
   );
 
@@ -72,10 +72,10 @@ export function register(ctx: Ctx, handle: Handle): void {
    * restarts and double-clicks share one run.
    */
   handle(
-    IPC.orchestratorAccept,
-    (planId: string, plan?: GeneratedRunPlan): Promise<OrchestratorAcceptResult> =>
+    IPC.smithComposeAccept,
+    (planId: string, plan?: GeneratedRunPlan): Promise<ComposeAcceptResult> =>
       ctx.proposals.accept(planId, plan),
   );
 
-  handle(IPC.orchestratorDiscard, (planId: string) => ctx.proposals.discard(planId));
+  handle(IPC.smithComposeDiscard, (planId: string) => ctx.proposals.discard(planId));
 }

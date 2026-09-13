@@ -13,7 +13,7 @@ import type {
   ProjectCommand,
   ReasoningEffort,
 } from '@shared/types.js';
-import type { OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeState } from '@shared/ipc-contract.js';
 import type { PanelRegistry } from '../../session/index.js';
 import { validatePlanImages } from './plan-images.js';
 import type { ComposeStart } from './session.js';
@@ -47,7 +47,7 @@ export interface ComposeStartServices {
 }
 
 export function startCompose(
-  plans: PanelRegistry<ComposeStart, OrchestratorState>,
+  plans: PanelRegistry<ComposeStart, ComposeState>,
   project: ComposeStartProject | null | undefined,
   input: ComposeStartInput,
   services: ComposeStartServices,

@@ -35,7 +35,7 @@ const pool: ModelInfo[] = [
   model('anthropic/claude-haiku-4', 'Claude Haiku 4'),
 ];
 
-describe('orchestrator composition rules', () => {
+describe('compose composition rules', () => {
   it('generates prompt bullets from the same functions as the rails', () => {
     const bullets = compositionRuleBullets();
     expect(bullets).toMatchSnapshot();
@@ -89,8 +89,8 @@ describe('orchestrator composition rules', () => {
     // An operator-stated path is a constraint the brief must keep, not an invention.
     expect(
       briefIssues(
-        'tighten the cast pool in apps/desktop/src/main/orchestrator/plan.ts only',
-        'Tighten the cast pool in apps/desktop/src/main/orchestrator/plan.ts only; change nothing else.',
+        'tighten the cast pool in apps/desktop/src/main/compose/plan.ts only',
+        'Tighten the cast pool in apps/desktop/src/main/compose/plan.ts only; change nothing else.',
       ),
     ).toEqual([]);
 

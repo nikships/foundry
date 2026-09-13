@@ -8,7 +8,7 @@
  * A CLIProxyAPI subscription serves everything the plan includes — a decade of
  * superseded checkpoints, per-effort duplicates of one model, and executors
  * that happen to share a channel. All of it lands in the picker, in Settings,
- * and in the Orchestrator's cast pool, where every extra id is one more thing
+ * and in Smith composition's cast pool, where every extra id is one more thing
  * to scroll past and one more model a plan can be cast onto by mistake.
  * Removing an id here removes it from all of them at once.
  *

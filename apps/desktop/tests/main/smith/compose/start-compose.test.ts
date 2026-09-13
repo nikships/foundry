@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PlanImageAttachment } from '@shared/types.js';
 import { startCompose } from '../../../../src/main/smith/compose/start.js';
 import type { ComposeStart } from '../../../../src/main/smith/compose/session.js';
-import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import type { ComposeState } from '../../../../src/shared/ipc-contract.js';
 import type { PanelRegistry } from '../../../../src/main/session/index.js';
 
 const PNG_1X1 =
@@ -23,7 +23,7 @@ const services = {
   ghAvailable: async () => false,
 };
 
-function registry(): PanelRegistry<ComposeStart, OrchestratorState> & {
+function registry(): PanelRegistry<ComposeStart, ComposeState> & {
   start: ReturnType<typeof vi.fn>;
 } {
   const start = vi.fn((deps: ComposeStart) => `plan-from-${deps.projectId}`);

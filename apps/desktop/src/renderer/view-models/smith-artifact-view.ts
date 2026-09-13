@@ -889,9 +889,9 @@ export function compareEntities(
   return compareEnvelopes(previous as EnvelopeDef, next as EnvelopeDef);
 }
 
-// ── Full user-level access: Linear work + orchestrator receipts ─────────────
+// ── Full user-level access: Linear work + compose receipts ─────────────
 //
-// Smith reports assigned tickets and orchestrator proposals as transcript
+// Smith reports assigned tickets and composition proposals as transcript
 // text plus action receipts; these helpers give that text one consistent
 // shape in both the chat transcript and the voice narration. They mirror the
 // shared Linear status line deliberately: the renderer must render persisted
@@ -920,8 +920,8 @@ export function formatAssignedWorkSummary(
   return `${issues.length} ${unit}: ${keys}`;
 }
 
-/** Operator-facing label for an orchestrator proposal's durable status. */
-export function orchestratorStatusLabel(status: ProposalStatus): string {
+/** Operator-facing label for a composition proposal's durable status. */
+export function composeStatusLabel(status: ProposalStatus): string {
   switch (status) {
     case 'generating':
       return 'Generating plan';
@@ -938,9 +938,9 @@ export function orchestratorStatusLabel(status: ProposalStatus): string {
   }
 }
 
-/** True for composition actions, including historical `orchestrator_*` receipts. */
-export function isOrchestratorOperation(operation: string): boolean {
-  return operation.startsWith('orchestrator_') || operation.startsWith('compose_');
+/** True for Smith composition actions. */
+export function isComposeOperation(operation: string): boolean {
+  return operation.startsWith('compose_');
 }
 
 /** True when approving means typing a secret into the masked approval card. */

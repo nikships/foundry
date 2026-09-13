@@ -23,8 +23,8 @@ import { themeBackgroundColor } from '@shared/themes.js';
 import {
   IPC,
   type DetectionState,
-  type OrchestratorAcceptResult,
-  type OrchestratorState,
+  type ComposeAcceptResult,
+  type ComposeState,
   type SetupState,
 } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
@@ -89,11 +89,11 @@ export class AppContext {
   readonly registry: RunRegistry;
   readonly detections: PanelRegistry<DetectStart, DetectionState>;
   readonly setups: PanelRegistry<SetupStart, SetupState>;
-  readonly plans: PanelRegistry<ComposeStart, OrchestratorState>;
+  readonly plans: PanelRegistry<ComposeStart, ComposeState>;
   /**
    * Durable proposal records. The live `plans` registry is only the turn
    * cache; this store is the history that survives navigation, reconnect,
-   * and restart. Renderer reads via `orchestrator:list/get/accept/discard`.
+   * and restart. Renderer reads via `compose:list/get/accept/discard`.
    */
   readonly proposals: ProposalStore;
   readonly readiness: ReadinessSessions;
@@ -170,7 +170,7 @@ export class AppContext {
       this.broadcast(IPC.eventSetupProgress, state),
     );
     // Proposals own the push fan-out: `onProgress` persists the durable row
-    // and broadcasts both `orchestrator-progress` (live turn) and
+    // and broadcasts both `smith-compose-progress` (live turn) and
     // `proposals-changed` (list invalidation). The closure runs async after
     // construction, so referencing `this.proposals` here is safe.
     this.plans = createComposeSessions(this.oneShot, (state) => this.proposals.onProgress(state));
@@ -235,7 +235,7 @@ export class AppContext {
       notifyRuns: () => this.broadcast(IPC.eventRunsChanged),
       enabledModelIds: () => enabledModelIds(this.supportDir, this.settings.get().hiddenModelIds),
       onStateChanged: () => this.broadcast(IPC.eventCompanionChanged),
-      orchestrator: {
+      compose: {
         options: async () => {
           const settings = this.settings.get();
           return {
@@ -423,7 +423,7 @@ export class AppContext {
    * present, otherwise the durable row projected onto the live shape. Keeps
    * `start/state/cancel` working while the phone also sees late completion.
    */
-  private proposalLiveState(planId: string): OrchestratorState | null {
+  private proposalLiveState(planId: string): ComposeState | null {
     const live = this.plans.get(planId);
     if (live) return live;
     const durable = this.proposals.get(planId);
@@ -432,11 +432,11 @@ export class AppContext {
 
   /**
    * Exactly-once accept seam: proposal accepts must go through
-   * `orchestrator:accept` (this path), not `runs:start` directly, so the
+   * `compose:accept` (this path), not `runs:start` directly, so the
    * durable `accepted_run_id` idempotency key covers restarts. Manual and
    * Linear-pipeline paths keep using `runs:start`.
    */
-  private async startProposalRun(plan: GeneratedRunPlan): Promise<OrchestratorAcceptResult> {
+  private async startProposalRun(plan: GeneratedRunPlan): Promise<ComposeAcceptResult> {
     const outcome = await startRun(
       {
         projectById: (id) => this.projects.get(id),

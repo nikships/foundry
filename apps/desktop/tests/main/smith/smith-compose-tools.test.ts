@@ -8,7 +8,7 @@ vi.mock('../../../src/main/engine/operations.js', () => ({ warmStartPrep: vi.fn(
 describe('smith_compose', () => {
   it('replaces all legacy run operations and composes immediately with Smith defaults and prep', async () => {
     const h = composeHarness();
-    expect(SMITH_RUN_OPERATIONS.some((op) => op.startsWith('orchestrator_'))).toBe(false);
+    expect(SMITH_RUN_OPERATIONS.some((op) => op.startsWith('compose_'))).toBe(false);
     expect(h.tool.parameters).toMatchObject({
       properties: {
         operation: { enum: ['compose', 'revise', 'get', 'list', 'accept', 'discard', 'cancel'] },
@@ -76,7 +76,7 @@ describe('smith_compose', () => {
     [{ operation: 'get' }, 'planId'],
     [{ operation: 'revise', planId: 'p' }, 'note'],
     [{ operation: 'accept', planId: 'p', plan: [] }, 'plan must be an object'],
-    [{ operation: 'orchestrator_plan' }, 'unknown operation'],
+    [{ operation: 'compose_plan' }, 'unknown operation'],
   ])('refuses invalid arguments without a turn or approval: %j', async (params, message) => {
     const h = composeHarness();
     expect(await h.execute(params)).toMatchObject({

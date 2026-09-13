@@ -521,7 +521,7 @@
   text-transform: uppercase;
 }
 
-.orchestrator-hint {
+.compose-hint {
   margin: 0;
   color: var(--text-faint);
   font-size: 11px;

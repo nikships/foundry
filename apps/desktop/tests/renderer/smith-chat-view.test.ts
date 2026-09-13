@@ -15,16 +15,16 @@ import {
 } from '@renderer/view-models/smith-activity-view.js';
 import {
   describeScreen,
-  extractOrchestratorPlanId,
+  extractComposePlanId,
   groupTranscript,
-  hasOrchestratorPlanId,
+  hasComposePlanId,
   needsMaskedSecret,
   smithAssignedWorkPrompt,
   smithConfirmationHint,
   smithLinearPipelineRunPrompt,
   smithModelLabel,
-  smithOrchestratorFollowUpPrompt,
-  smithOrchestratorPlanPrompt,
+  smithComposeFollowUpPrompt,
+  smithComposePlanPrompt,
   smithPipelineRunPrompt,
   smithTicketStatusPrompt,
   SMITH_QUICK_PROMPTS,
@@ -210,8 +210,8 @@ describe('smith user-level quick prompts', () => {
     for (const id of [
       'assigned-work',
       'ticket-status',
-      'orchestrator-plan',
-      'orchestrator-list',
+      'compose-plan',
+      'compose-list',
       'pipeline-run',
       'linear-pipeline-run',
       'refresh-context',
@@ -224,7 +224,7 @@ describe('smith user-level quick prompts', () => {
       expect(item.prompt.trim().length).toBeGreaterThan(0);
       expect(item.hint.trim().length).toBeGreaterThan(0);
     }
-    expect(SMITH_QUICK_PROMPTS.find((item) => item.id === 'orchestrator-plan')?.label).toBe(
+    expect(SMITH_QUICK_PROMPTS.find((item) => item.id === 'compose-plan')?.label).toBe(
       'Plan a run for…',
     );
   });
@@ -237,22 +237,20 @@ describe('smith user-level quick prompts', () => {
 
   it('builds ticket, plan, and pipeline prompts with their ids attached', () => {
     expect(smithTicketStatusPrompt('FOU-123')).toContain('FOU-123');
-    expect(smithOrchestratorPlanPrompt('fix login')).toContain('fix login');
+    expect(smithComposePlanPrompt('fix login')).toContain('fix login');
     expect(smithPipelineRunPrompt('ship-it', 'roll out')).toContain('ship-it');
     expect(smithPipelineRunPrompt('ship-it', 'roll out')).toContain('roll out');
     expect(smithLinearPipelineRunPrompt('ship-it', 'FOU-123')).toContain('FOU-123');
-    expect(smithOrchestratorFollowUpPrompt('plan-abc123', 'prefer X')).toContain('plan-abc123');
+    expect(smithComposeFollowUpPrompt('plan-abc123', 'prefer X')).toContain('plan-abc123');
   });
 });
 
-describe('orchestrator plan id plumbing', () => {
+describe('compose plan id plumbing', () => {
   it('pulls the plan handle out of Smith reply text', () => {
-    expect(extractOrchestratorPlanId('Your plan plan-a1b2c3d4e5f6 is ready.')).toBe(
-      'plan-a1b2c3d4e5f6',
-    );
-    expect(hasOrchestratorPlanId('nothing here')).toBe(false);
-    expect(hasOrchestratorPlanId('Check plan-0123456789ab any time.')).toBe(true);
-    expect(extractOrchestratorPlanId('no handle')).toBeNull();
+    expect(extractComposePlanId('Your plan plan-a1b2c3d4e5f6 is ready.')).toBe('plan-a1b2c3d4e5f6');
+    expect(hasComposePlanId('nothing here')).toBe(false);
+    expect(hasComposePlanId('Check plan-0123456789ab any time.')).toBe(true);
+    expect(extractComposePlanId('no handle')).toBeNull();
   });
 });
 
@@ -263,7 +261,7 @@ describe('smith confirmations and receipts', () => {
     expect(smithConfirmationHint('compose_accept')).toMatch(/exactly once/i);
     expect(smithConfirmationHint('compose_discard')).toMatch(/destructive/i);
     expect(smithConfirmationHint('compose_cancel')).toMatch(/remains/i);
-    expect(smithConfirmationHint('orchestrator_accept')).toMatch(/exactly once/i);
+    expect(smithConfirmationHint('compose_accept')).toMatch(/exactly once/i);
     expect(smithConfirmationHint('start')).toMatch(/approval/i);
   });
 

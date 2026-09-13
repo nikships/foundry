@@ -67,7 +67,7 @@ interface ExecutorInput {
   agents: AgentDef[];
   envelopeDefs: EnvelopeDef[];
   request: string;
-  /** Present when the run starts from an Orchestrator-generated plan. */
+  /** Present when the run starts from a Smith-composed plan. */
   plan?: GeneratedRunPlan | null;
   /** Immutable external source captured before preflight. */
   source?: RunSource | null;

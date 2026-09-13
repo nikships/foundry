@@ -14,7 +14,7 @@ import { Tracer } from '../../../../src/main/trace/tracer.js';
 import { createComposeSessions } from '../../../../src/main/smith/compose/session.js';
 import { ProposalStore } from '../../../../src/main/smith/compose/proposals.js';
 import type { GeneratedRunPlan } from '../../../../src/shared/types.js';
-import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import type { ComposeState } from '../../../../src/shared/ipc-contract.js';
 import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
 
 function samplePlan(planId: string, projectId: string): GeneratedRunPlan {
@@ -117,8 +117,8 @@ describe('concurrent proposal generation', () => {
 
     // Complete the first via the progress path (late completion shape).
     now = 2000;
-    const live = livePlans.get(firstId) as OrchestratorState;
-    const done: OrchestratorState = {
+    const live = livePlans.get(firstId) as ComposeState;
+    const done: ComposeState = {
       ...live,
       status: 'done',
       detail: 'plan ready',
@@ -139,7 +139,7 @@ describe('concurrent proposal generation', () => {
     const listed = liveStore.list('proj_a');
     expect(listed.map((row) => row.planId)).toEqual([firstId, secondId]);
 
-    // Proposals-changed fired for starts and completion; orchestrator-progress
+    // Proposals-changed fired for starts and completion; smith-compose-progress
     // still flows for live turns.
     expect(broadcasts.some((b) => b.channel === 'event:proposals-changed')).toBe(true);
 

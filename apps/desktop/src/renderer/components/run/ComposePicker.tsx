@@ -2,63 +2,63 @@ import { useMemo } from 'react';
 import { modelForEffortPicker } from '@shared/reasoning-effort.js';
 import { useAgentModels } from '../../hooks/useAgentModels.js';
 import {
-  loadOrchestratorChoice,
-  persistOrchestratorChoice,
-  type OrchestratorChoice,
-} from '../../utils/orchestrator-choice.js';
+  loadComposeChoice,
+  persistComposeChoice,
+  type ComposeChoice,
+} from '../../utils/compose-choice.js';
 import ModelPicker from '../common/ModelPicker.js';
 import ReasoningEffortPicker from '../common/ReasoningEffortPicker.js';
-import styles from './OrchestratorPicker.module.css';
+import styles from './ComposePicker.module.css';
 
-export type { OrchestratorChoice };
-export { loadOrchestratorChoice };
+export type { ComposeChoice };
+export { loadComposeChoice };
 
-interface OrchestratorControlsProps {
-  choice: OrchestratorChoice;
+interface ComposeControlsProps {
+  choice: ComposeChoice;
   disabled?: boolean;
-  onChange: (next: OrchestratorChoice) => void;
+  onChange: (next: ComposeChoice) => void;
 }
 
 /**
  * Who plans the run. A small ceremony rather than a settings form: every run
  * answers to one mind, and this is where the operator appoints it.
  */
-export default function OrchestratorPicker({
+export default function ComposePicker({
   choice,
   disabled,
   onChange,
-}: OrchestratorControlsProps): React.JSX.Element {
+}: ComposeControlsProps): React.JSX.Element {
   return (
-    <div className={styles.picker} data-testid="orchestrator-picker">
+    <div className={styles.picker} data-testid="compose-picker">
       <div className={styles.ceremony}>
         <span className={styles.title}>Smith composes on</span>
         <span className={styles.motto}>every run answers to one mind</span>
       </div>
-      <OrchestratorControls choice={choice} disabled={disabled} onChange={onChange} />
+      <ComposeControls choice={choice} disabled={disabled} onChange={onChange} />
     </div>
   );
 }
 
 /** Model and effort controls without the hero ceremony, for compact request sources. */
-export function OrchestratorControls({
+export function ComposeControls({
   choice,
   disabled,
   onChange,
-}: OrchestratorControlsProps): React.JSX.Element {
+}: ComposeControlsProps): React.JSX.Element {
   const { models, refresh } = useAgentModels();
   const effortModel = useMemo(
     () => modelForEffortPicker(choice.model, models),
     [choice.model, models],
   );
-  const change = (next: OrchestratorChoice): void => {
+  const change = (next: ComposeChoice): void => {
     // Persist on an operator change, not on read: first render stays soft.
-    persistOrchestratorChoice(next);
+    persistComposeChoice(next);
     onChange(next);
   };
 
   return (
-    <div className={styles.controls} data-testid="orchestrator-controls">
-      <div className={styles.model} data-testid="orchestrator-model">
+    <div className={styles.controls} data-testid="compose-controls">
+      <div className={styles.model} data-testid="compose-model">
         <ModelPicker
           value={choice.model}
           models={models}
@@ -78,7 +78,7 @@ export function OrchestratorControls({
           model={effortModel}
           disabled={disabled}
           ariaLabel="Smith composition reasoning effort"
-          data-testid="orchestrator-effort"
+          data-testid="compose-effort"
           onChange={(reasoningEffort) => {
             change({ ...choice, reasoningEffort });
           }}

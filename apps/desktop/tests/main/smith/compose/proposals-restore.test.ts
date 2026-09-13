@@ -11,7 +11,7 @@ import { Tracer } from '../../../../src/main/trace/tracer.js';
 import { createComposeSessions } from '../../../../src/main/smith/compose/session.js';
 import { ProposalStore } from '../../../../src/main/smith/compose/proposals.js';
 import type { GeneratedRunPlan } from '../../../../src/shared/types.js';
-import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import type { ComposeState } from '../../../../src/shared/ipc-contract.js';
 import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
 
 function samplePlan(planId: string, projectId: string): GeneratedRunPlan {
@@ -75,6 +75,37 @@ function setup() {
 }
 
 describe('proposal restore on boot', () => {
+  it('maps historical message roles to Smith on read', () => {
+    const h = setup();
+    const tracer = h.tracerFor('proj_a')!;
+    tracer.createProposal({
+      planId: 'plan_legacy',
+      projectId: 'proj_a',
+      prompt: 'legacy',
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      createdAt: 1000,
+    });
+    tracer.updateProposal('plan_legacy', {
+      messagesJson: JSON.stringify([
+        { id: 'm1', role: 'orchestrator', text: 'Old reply', at: 1001 },
+      ]),
+      updatedAt: 1001,
+    });
+    const plans = createComposeSessions(scriptedOneShots([]).factory, () => {});
+    const store = new ProposalStore({
+      tracerFor: h.tracerFor,
+      projectIds: () => ['proj_a'],
+      plans,
+      broadcast: () => {},
+      startRun: async () => ({ ok: false, issues: [] }),
+    });
+
+    expect(store.get('plan_legacy')?.messages).toEqual([
+      { id: 'm1', role: 'smith', text: 'Old reply', at: 1001 },
+    ]);
+  });
+
   it('marks generating interrupted while keeping ready/failed', () => {
     const h = setup();
     const broadcasts: string[] = [];
@@ -113,8 +144,8 @@ describe('proposal restore on boot', () => {
     const thirdId = (third as { planId: string }).planId;
 
     h.setNow(2000);
-    const ready: OrchestratorState = {
-      ...(plans.get(secondId) as OrchestratorState),
+    const ready: ComposeState = {
+      ...(plans.get(secondId) as ComposeState),
       status: 'done',
       detail: 'plan ready',
       plan: samplePlan(secondId, 'proj_a'),
@@ -122,8 +153,8 @@ describe('proposal restore on boot', () => {
       revision: 1,
     };
     store.onProgress(ready);
-    const failed: OrchestratorState = {
-      ...(plans.get(thirdId) as OrchestratorState),
+    const failed: ComposeState = {
+      ...(plans.get(thirdId) as ComposeState),
       status: 'failed',
       detail: 'no plan',
       plan: null,
@@ -190,7 +221,7 @@ describe('proposal restore on boot', () => {
       startRun: async () => ({ ok: false, issues: [] }),
     });
     h.setNow(2000);
-    const done: OrchestratorState = {
+    const done: ComposeState = {
       planId,
       projectId: 'proj_a',
       status: 'done',

@@ -10,7 +10,7 @@ export function useProposal(planId: string | undefined): ProposalSnapshot | null
     let request = 0;
     const refresh = async (): Promise<void> => {
       const current = ++request;
-      const row = planId ? await api.orchestrator.get?.(planId).catch(() => null) : null;
+      const row = planId ? await api.compose.get?.(planId).catch(() => null) : null;
       if (active && current === request) setLive(row ?? null);
     };
     void refresh();

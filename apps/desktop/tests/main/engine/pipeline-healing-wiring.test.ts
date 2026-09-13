@@ -75,7 +75,7 @@ function planFor(pipeline: PipelineDef, projectId: string): GeneratedRunPlan {
     pipeline,
     agents: [],
     warnings: [],
-    model: 'orchestrator/other-model',
+    model: 'compose/other-model',
     reasoningEffort: 'high',
   };
 }

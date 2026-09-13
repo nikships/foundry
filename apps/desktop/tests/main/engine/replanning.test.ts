@@ -115,7 +115,7 @@ function plan(pipelineDef: PipelineDef): GeneratedRunPlan {
       },
     ],
     warnings: [],
-    model: 'orchestrator/test-model',
+    model: 'compose/test-model',
     reasoningEffort: 'high',
   };
 }

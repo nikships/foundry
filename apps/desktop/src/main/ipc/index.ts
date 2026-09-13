@@ -22,7 +22,7 @@ import * as bridge from './bridge.js';
 import * as linear from './linear.js';
 import * as tavily from './tavily.js';
 import * as runs from './runs.js';
-import * as orchestrator from './orchestrator.js';
+import * as compose from './smith-compose.js';
 import * as prs from './prs.js';
 import * as smith from './smith.js';
 import * as geminiLive from './gemini-live.js';
@@ -45,7 +45,7 @@ export function registerIpc(ctx: AppContext): MainInvoker {
   linear.register(ctx, registry.handle);
   tavily.register(ctx, registry.handle);
   runs.register(ctx, registry.handle);
-  orchestrator.register(ctx, registry.handle);
+  compose.register(ctx, registry.handle);
   prs.register(ctx, registry.handle);
   smith.register(ctx, registry.handle);
   geminiLive.register(ctx, registry.handle);

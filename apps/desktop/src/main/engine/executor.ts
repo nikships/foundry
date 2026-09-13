@@ -110,7 +110,7 @@ export interface ExecutorDeps {
   project: ProjectDef;
   pipeline: PipelineDef;
   request: string;
-  /** The active Orchestrator plan; absent for a manual run. */
+  /** The active Compose plan; absent for a manual run. */
   plan?: GeneratedRunPlan | null;
   /** Immutable external issue snapshot, absent for an ordinary prompt run. */
   source?: RunSource | null;

@@ -4,7 +4,7 @@
  * The live `ComposeSession` is only the turn cache; the DB row is the history.
  * Concurrent starts create distinct rows and never cancel siblings. Progress
  * persists via `onProgress` (wired as the `createComposeSessions` callback) and
- * broadcasts both `orchestrator-progress` (live turn) and
+ * broadcasts both `smith-compose-progress` (live turn) and
  * `proposals-changed` (list invalidation), so updates arrive independently of
  * the originating composer or hook. Accept is exactly-once via the in-memory
  * flight lock plus the durable `accepted_run_id` key.
@@ -16,7 +16,7 @@ import type {
   ProposalStatus,
   ValidationIssue,
 } from '@shared/types.js';
-import type { OrchestratorAcceptResult, OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeAcceptResult, ComposeState } from '@shared/ipc-contract.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { PanelRegistry } from '../../session/index.js';
 import { PANEL_MAX_ENTRIES } from '../../session/index.js';
@@ -32,7 +32,7 @@ import {
 export interface ProposalStoreDeps {
   tracerFor(projectId: string): Tracer | null;
   projectIds(): string[];
-  plans: PanelRegistry<ComposeStart, OrchestratorState>;
+  plans: PanelRegistry<ComposeStart, ComposeState>;
   broadcast(channel: string, payload?: unknown): void;
   now?: () => number;
   /**
@@ -40,10 +40,10 @@ export interface ProposalStoreDeps {
    * to `startRun(runStartDeps(ctx), { projectId, pipelineId, request, plan })`,
    * which re-validates via `checkPlanRails`. Injected so tests count starts.
    */
-  startRun(plan: GeneratedRunPlan): Promise<OrchestratorAcceptResult>;
+  startRun(plan: GeneratedRunPlan): Promise<ComposeAcceptResult>;
 }
 
-function toProposalStatus(state: OrchestratorState): {
+function toProposalStatus(state: ComposeState): {
   status: ProposalStatus;
   terminal: boolean;
 } {
@@ -59,12 +59,23 @@ function isFrozen(status: ProposalStatus): boolean {
   return status === 'cancelled' || status === 'discarded' || status === 'accepted';
 }
 
+/** Old proposal rows used the retired persona name; normalize at the read boundary. */
+function normalizeMessages(snapshot: ProposalSnapshot): ProposalSnapshot {
+  return {
+    ...snapshot,
+    messages: snapshot.messages.map((message) => ({
+      ...message,
+      role: (message.role as string) === 'orchestrator' ? ('smith' as const) : message.role,
+    })),
+  };
+}
+
 /**
  * Durable snapshot projected onto the live turn shape for pre-durability
  * callers (companion `state`). `discarded` has no live equivalent and
  * answers `null`. `accepted` reads as `done` with the accepted snapshot.
  */
-export function proposalToLiveState(snapshot: ProposalSnapshot): OrchestratorState | null {
+export function proposalToLiveState(snapshot: ProposalSnapshot): ComposeState | null {
   if (snapshot.status === 'discarded') return null;
   const liveStatus =
     snapshot.status === 'generating'
@@ -90,13 +101,13 @@ export function proposalToLiveState(snapshot: ProposalSnapshot): OrchestratorSta
   };
 }
 
-function acceptIssue(where: string, message: string): OrchestratorAcceptResult {
+function acceptIssue(where: string, message: string): ComposeAcceptResult {
   const issues: ValidationIssue[] = [{ level: 'error', where, message }];
   return { ok: false, issues };
 }
 
 export class ProposalStore {
-  private readonly acceptInFlight = new Map<string, Promise<OrchestratorAcceptResult>>();
+  private readonly acceptInFlight = new Map<string, Promise<ComposeAcceptResult>>();
   private readonly listeners = new Set<(row: ProposalSnapshot) => void>();
   private readonly transitions = new Map<string, string>();
   private readonly issuingScopes = new Map<string, string | undefined>();
@@ -145,8 +156,8 @@ export class ProposalStore {
     this.emitTransition(row);
   }
 
-  private broadcastProgress(state: OrchestratorState): void {
-    this.deps.broadcast(IPC.eventOrchestratorProgress, state);
+  private broadcastProgress(state: ComposeState): void {
+    this.deps.broadcast(IPC.eventSmithComposeProgress, state);
   }
 
   /**
@@ -188,7 +199,7 @@ export class ProposalStore {
    * completion with no renderer attached is just a broadcast: the DB is the
    * source of truth, so no hook needs to have been alive.
    */
-  onProgress(state: OrchestratorState): void {
+  onProgress(state: ComposeState): void {
     this.broadcastProgress(state);
     const tracer = this.deps.tracerFor(state.projectId);
     if (!tracer) return;
@@ -209,7 +220,7 @@ export class ProposalStore {
     }
   }
 
-  private ensureRow(tracer: Tracer, state: OrchestratorState): void {
+  private ensureRow(tracer: Tracer, state: ComposeState): void {
     const at = this.clock();
     try {
       tracer.createProposal({
@@ -226,7 +237,7 @@ export class ProposalStore {
     this.writeProgress(tracer, state);
   }
 
-  private writeProgress(tracer: Tracer, state: OrchestratorState): void {
+  private writeProgress(tracer: Tracer, state: ComposeState): void {
     const mapped = toProposalStatus(state);
     const at = this.clock();
     try {
@@ -251,7 +262,7 @@ export class ProposalStore {
     const tracer = this.deps.tracerFor(projectId);
     if (!tracer) return [];
     try {
-      return tracer.proposalsByProject(projectId);
+      return tracer.proposalsByProject(projectId).map(normalizeMessages);
     } catch {
       return [];
     }
@@ -268,7 +279,7 @@ export class ProposalStore {
       if (!tracer) continue;
       try {
         const snapshot = tracer.proposal(planId);
-        if (snapshot) return { tracer, snapshot };
+        if (snapshot) return { tracer, snapshot: normalizeMessages(snapshot) };
       } catch {
         continue;
       }
@@ -335,7 +346,7 @@ export class ProposalStore {
    * and start nothing. The exact effective plan is persisted as
    * `acceptedPlan` and becomes the run's `plan_json` via `startRun`.
    */
-  accept(planId: string, plan?: GeneratedRunPlan): Promise<OrchestratorAcceptResult> {
+  accept(planId: string, plan?: GeneratedRunPlan): Promise<ComposeAcceptResult> {
     const inflight = this.acceptInFlight.get(planId);
     if (inflight) return inflight;
     const task = this.doAccept(planId, plan).finally(() => {
@@ -348,7 +359,7 @@ export class ProposalStore {
   private async doAccept(
     planId: string,
     override?: GeneratedRunPlan,
-  ): Promise<OrchestratorAcceptResult> {
+  ): Promise<ComposeAcceptResult> {
     const found = this.locate(planId);
     if (!found) return acceptIssue('plan', 'proposal not found');
     if (found.snapshot.acceptedRunId) {

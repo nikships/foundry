@@ -1,12 +1,12 @@
 /**
- * Per-composer Orchestrator controller over durable, parallel proposals.
+ * Per-composer Compose controller over durable, parallel proposals.
  *
  * Each `submit()` opens one independent proposal and returns immediately —
  * it never cancels or replaces siblings, and the composer stays usable for
  * the next prompt. Proposal ownership lives in main (the DB row), not in
  * this hook: navigating away, switching projects, or unmounting never
  * cancels generation, and a remount re-reads durable state via
- * `useProposals`. Live `orchestrator-progress` pushes patch the single row;
+ * `useProposals`. Live `smith-compose-progress` pushes patch the single row;
  * `proposals-changed` reconciles with the DB.
  *
  * The singular `stage`/`planning`/`plan` fields describe the selected
@@ -20,17 +20,17 @@ import type {
   ProposalSnapshot,
   ReasoningEffort,
 } from '@shared/types.js';
-import type { OrchestratorState, PlanChatMessage } from '@shared/ipc-contract.js';
+import type { ComposeState, PlanChatMessage } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
-import type { OrchestratorChoice } from '../components/run/OrchestratorPicker.js';
+import type { ComposeChoice } from '../components/run/ComposePicker.js';
 import { withPhaseModel, withPhaseReasoningEffort } from '../view-models/plan-view.js';
 import { useProposals } from './useProposals.js';
 
-export type OrchestratorStage = 'compose' | 'planning' | 'ready';
+export type ComposeStage = 'compose' | 'planning' | 'ready';
 
-export interface OrchestratorPlanController {
-  stage: OrchestratorStage;
-  planning: OrchestratorState | null;
+export interface ComposePlanController {
+  stage: ComposeStage;
+  planning: ComposeState | null;
   planningLive: boolean;
   requestingPlan: boolean;
   planError: string;
@@ -66,7 +66,7 @@ function isActionable(proposal: ProposalSnapshot): boolean {
   );
 }
 
-function toLiveState(proposal: ProposalSnapshot): OrchestratorState {
+function toLiveState(proposal: ProposalSnapshot): ComposeState {
   const status =
     proposal.status === 'generating'
       ? 'running'
@@ -95,11 +95,8 @@ function toLiveState(proposal: ProposalSnapshot): OrchestratorState {
   };
 }
 
-/** One independent Orchestrator planning session, reusable by any request source. */
-export function useOrchestratorPlan(
-  projectId: string,
-  choice: OrchestratorChoice,
-): OrchestratorPlanController {
+/** One independent Compose planning session, reusable by any request source. */
+export function useComposePlan(projectId: string, choice: ComposeChoice): ComposePlanController {
   const {
     proposals,
     loading: proposalsLoading,
@@ -160,7 +157,7 @@ export function useOrchestratorPlan(
       withModels,
     );
   }, [original, modelOverrides, reasoningOverrides]);
-  const stage: OrchestratorStage = plan
+  const stage: ComposeStage = plan
     ? 'ready'
     : requestingPlan || planning?.status === 'running' || planning?.status === 'failed'
       ? 'planning'
@@ -186,7 +183,7 @@ export function useOrchestratorPlan(
       setPlanError('');
       try {
         const active = choiceRef.current;
-        const result = await api.orchestrator.plan(
+        const result = await api.compose.start(
           projectId,
           prompt,
           active.model,
@@ -214,7 +211,7 @@ export function useOrchestratorPlan(
   const cancelPlan = useCallback(
     (planId: string): void => {
       if (!planId) return;
-      void api.orchestrator.cancel(planId);
+      void api.compose.cancel(planId);
       void refresh();
     },
     [refresh],
@@ -223,9 +220,9 @@ export function useOrchestratorPlan(
   const discardPlan = useCallback(
     (planId: string): void => {
       if (!planId) return;
-      const discard = api.orchestrator.discard;
+      const discard = api.compose.discard;
       if (discard) void discard(planId).finally(() => void refresh());
-      else void api.orchestrator.cancel(planId).finally(() => void refresh());
+      else void api.compose.cancel(planId).finally(() => void refresh());
       if (selectedPlanId === planId) setSelectedPlanId(null);
       void refresh();
     },

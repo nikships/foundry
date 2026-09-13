@@ -11,7 +11,7 @@
  * (Live API function calling is synchronous, a Smith turn is not); the
  * settled answer arrives later over `smith-progress`, gets folded into a
  * short text, and is injected back into the live session so the voice model
- * can narrate it. Full user-level access (orchestrator prompts, assigned
+ * can narrate it. Full user-level access (compose prompts, assigned
  * Linear work + status, saved pipeline runs, context refresh, voice-key
  * state) needs no new voice tool: the operator asks aloud, the model calls
  * `smith_work` with the same capability phrasing as the text chips, and the

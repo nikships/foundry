@@ -182,7 +182,7 @@ function thinkingKind(provider: BridgeProviderId): ThinkingKind {
 /**
  * An agent phase needs a model that emits text and nothing else. Generators
  * stay in CLIProxyAPI's catalog for other clients; offering them here would put
- * a model in the picker and the Orchestrator's cast pool that every phase then
+ * a model in the picker and Smith composition's cast pool that every phase then
  * fails on.
  *
  * The test is "declares an image output", not "declares no text output".

@@ -2,7 +2,7 @@
  * In-memory planning-image checks. Main is the bound: the renderer may refuse
  * a paste early, but a planning turn only sees attachments that pass here.
  *
- * Bytes stay off disk and off `OrchestratorState`. This module never logs `data`.
+ * Bytes stay off disk and off `ComposeState`. This module never logs `data`.
  */
 
 import {

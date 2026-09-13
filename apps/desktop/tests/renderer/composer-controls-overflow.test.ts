@@ -13,7 +13,7 @@ const runsCss = readFileSync(
   'utf8',
 );
 const pickerCss = readFileSync(
-  resolve(import.meta.dirname, '../../src/renderer/components/run/OrchestratorPicker.module.css'),
+  resolve(import.meta.dirname, '../../src/renderer/components/run/ComposePicker.module.css'),
   'utf8',
 );
 const smithCss = readFileSync(
@@ -41,7 +41,7 @@ function composerInner(
   return column - cardPad;
 }
 
-describe('orchestrator composer control overflow', () => {
+describe('compose composer control overflow', () => {
   it('wraps the composer row and sizes the picker from content, not 0%', () => {
     const row = rule(runsCss, '.composer-controls');
     expect(row).toMatch(/flex-wrap:\s*wrap/);

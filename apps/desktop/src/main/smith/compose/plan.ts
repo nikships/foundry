@@ -439,7 +439,7 @@ export function parseRefineReply(value: unknown, planId: string): RefineParseRes
 export function buildRefinePrompt(input: {
   basePrompt: string;
   currentPlan: ParsedPlanReply;
-  conversation: { role: 'operator' | 'orchestrator'; text: string }[];
+  conversation: { role: 'operator' | 'smith'; text: string }[];
 }): string {
   // JSON-encoded so a multi-line message cannot forge "Operator:" turns.
   const transcript = input.conversation
@@ -505,13 +505,13 @@ function modelIsEnabled(wanted: string, enabled: readonly string[]): boolean {
  */
 export function configuredCastModels(
   models: readonly ModelInfo[],
-  pins: { defaultModel: string; orchestratorModel: string } = {
+  pins: { defaultModel: string; composeModel: string } = {
     defaultModel: 'inherit',
-    orchestratorModel: 'inherit',
+    composeModel: 'inherit',
   },
 ): { models: ModelInfo[]; preferredModelIds: string[] } {
   const enabledIds = models.map((model) => model.id);
-  const preferredModelIds = [...new Set([pins.defaultModel, pins.orchestratorModel])].filter(
+  const preferredModelIds = [...new Set([pins.defaultModel, pins.composeModel])].filter(
     (id) => id && id !== 'inherit' && modelIsEnabled(id, enabledIds),
   );
   return { models: [...models], preferredModelIds };

@@ -129,8 +129,8 @@ describe('plan-view', () => {
     expect(view.summary).toBe('3 phases · 2 synthesized agents');
     expect(view.refinedRequest).toContain('deterministic');
     expect(view.rationale).toContain('bounded implementation');
-    expect(view.orchestratorCredit).toBe('claude-opus-4 · high');
-    expect(view.orchestratorCredit).toContain(plan.reasoningEffort);
+    expect(view.composeCredit).toBe('claude-opus-4 · high');
+    expect(view.composeCredit).toContain(plan.reasoningEffort);
     expect(view.acceptance).toBe('Accepted when the report returned by "review" reports success.');
 
     expect(view.phases.map((phase) => phase.name)).toEqual(['build', 'test', 'review']);
@@ -197,14 +197,14 @@ describe('plan-view', () => {
     expect(planPreviewPositions(3)).toEqual(planPreviewPositions(3));
   });
 
-  it('credits an inherit orchestrator as the default model and its effort', () => {
+  it('credits an inherit compose as the default model and its effort', () => {
     const plan = generatedPlan();
     plan.model = 'inherit';
     plan.reasoningEffort = 'medium';
     const view = planCardView(plan);
 
-    expect(view.orchestratorCredit).toBe('the default model · medium');
-    expect(view.orchestratorCredit).toContain(plan.reasoningEffort);
+    expect(view.composeCredit).toBe('the default model · medium');
+    expect(view.composeCredit).toContain(plan.reasoningEffort);
   });
 
   it('re-casts one agent phase onto another model and leaves the rest identical', () => {

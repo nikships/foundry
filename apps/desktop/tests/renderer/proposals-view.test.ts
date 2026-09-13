@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ProposalSnapshot } from '@shared/types.js';
-import type { OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeState } from '@shared/ipc-contract.js';
 import {
   applyProposalProgress,
   proposalTitle,
@@ -34,7 +34,7 @@ function proposal(over: Partial<ProposalSnapshot> = {}): ProposalSnapshot {
   };
 }
 
-function liveState(over: Partial<OrchestratorState> = {}): OrchestratorState {
+function liveState(over: Partial<ComposeState> = {}): ComposeState {
   return {
     planId: 'plan_1',
     projectId: 'proj_a',

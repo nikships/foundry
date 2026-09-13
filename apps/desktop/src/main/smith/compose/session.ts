@@ -4,7 +4,7 @@
  *
  * Planning is not a run: no worktree, no pipeline yet, no trace rows. The
  * session opens read-only at the project checkout on the operator-chosen
- * model, asks for a plan, and pushes progress over `orchestrator-progress`.
+ * model, asks for a plan, and pushes progress over `smith-compose-progress`.
  * A turn that does not submit a schema-valid result, or whose result fails the
  * store/preflight rails, goes back as a correction bounded by the same
  * `envelopeRetries` budget an envelope gets. A plan that cannot validate
@@ -21,7 +21,7 @@ import type {
   ValidationIssue,
 } from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
-import type { OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeState } from '@shared/ipc-contract.js';
 import { modelLabel } from '@shared/model-label.js';
 import type { OneShotFactory, OneShotResult } from '../../pi/oneshot.js';
 import {
@@ -47,7 +47,7 @@ import {
   type PlanRailsInputs,
 } from './plan.js';
 
-export type { OrchestratorState };
+export type { ComposeState };
 
 export interface ComposeSessionDeps {
   projectId: string;
@@ -63,7 +63,7 @@ export interface ComposeSessionDeps {
   roster: AgentDef[];
   envelopeDefs: EnvelopeDef[];
   scaffold?: boolean;
-  /** In-memory planning attachments. Never copied onto OrchestratorState. */
+  /** In-memory planning attachments. Never copied onto ComposeState. */
   images?: PlanImageAttachment[];
   /**
    * The models this install can reach, minus the operator's hidden ones. Read
@@ -75,7 +75,7 @@ export interface ComposeSessionDeps {
   ghAvailable?: () => Promise<boolean>;
   /** How each turn is opened. Injected so a test drives one with no model. */
   oneShot: OneShotFactory;
-  onChange: (state: OrchestratorState) => void;
+  onChange: (state: ComposeState) => void;
 }
 
 export type ComposeStart = Omit<ComposeSessionDeps, 'onChange' | 'oneShot'>;
@@ -84,7 +84,7 @@ export class ComposeSession {
   // Kebab rather than the usual underscore id: the generated pipeline is
   // `generated-<planId>` and must pass the store's kebab-case id rail.
   readonly planId = `plan-${shortId()}`;
-  private readonly panel: PanelSession<OrchestratorState>;
+  private readonly panel: PanelSession<ComposeState>;
   /** The first turn's full ask, restated on every correction and follow-up. */
   private basePrompt: string | null = null;
   /** The rails the accepted plan passed, reused verbatim for a revision. */
@@ -93,7 +93,7 @@ export class ComposeSession {
   private refining = false;
 
   constructor(private readonly deps: ComposeSessionDeps) {
-    this.panel = new PanelSession<OrchestratorState>(
+    this.panel = new PanelSession<ComposeState>(
       {
         planId: this.planId,
         projectId: deps.projectId,
@@ -129,7 +129,7 @@ export class ComposeSession {
     );
   }
 
-  snapshot(): OrchestratorState {
+  snapshot(): ComposeState {
     return this.panel.snapshot();
   }
 
@@ -172,7 +172,7 @@ export class ComposeSession {
 
     const castPool = configuredCastModels(enabledModels, {
       defaultModel: this.deps.defaultModel,
-      orchestratorModel: model,
+      composeModel: model,
     });
     const allowedModelIds = castPool.models.map((candidate) => candidate.id);
     const promptInputs: PlanPromptInputs = {
@@ -429,7 +429,7 @@ export class ComposeSession {
     }
     state.messages.push({
       id: shortId(),
-      role: 'orchestrator',
+      role: 'smith',
       text,
       ...(reply ? { revisedPlan: true } : {}),
       at: this.panel.now(),
@@ -444,7 +444,7 @@ export class ComposeSession {
       state.status = 'done';
       state.detail = 'plan unchanged';
     }
-    state.messages.push({ id: shortId(), role: 'orchestrator', text, at: this.panel.now() });
+    state.messages.push({ id: shortId(), role: 'smith', text, at: this.panel.now() });
     this.panel.emit();
   }
 }
@@ -462,8 +462,8 @@ function correctionPrompt(basePrompt: string, previous: string, issues: Validati
 
 export function createComposeSessions(
   oneShot: OneShotFactory,
-  onProgress: (state: OrchestratorState) => void,
-): PanelRegistry<ComposeStart, OrchestratorState> {
+  onProgress: (state: ComposeState) => void,
+): PanelRegistry<ComposeStart, ComposeState> {
   return createPanelRegistry({
     create: (deps, onChange) => new ComposeSession({ ...deps, oneShot, onChange }),
     idOf: (session) => session.planId,

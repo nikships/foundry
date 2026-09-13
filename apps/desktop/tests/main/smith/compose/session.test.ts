@@ -17,7 +17,7 @@ import type {
   PlanImageAttachment,
   ProjectCommand,
 } from '../../../../src/shared/types.js';
-import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import type { ComposeState } from '../../../../src/shared/ipc-contract.js';
 import { SMITH_COMPOSE_PROMPT } from '../../../../src/main/smith/compose/plan.js';
 import { ComposeSession } from '../../../../src/main/smith/compose/session.js';
 import { generatedCompositionIssues } from '../../../../src/main/smith/compose/plan.js';
@@ -54,7 +54,7 @@ const model = (id: string, displayName: string, intelligence?: number): ModelInf
 });
 
 /**
- * What the fixture install can reach; the Orchestrator must appoint from it.
+ * What the fixture install can reach; Smith must appoint from it.
  * One rated and one unrated, because roughly half the real catalog is unrated
  * and the prompt has to read sensibly for both.
  */
@@ -132,16 +132,16 @@ async function run(opts: {
   roster?: AgentDef[];
   models?: ModelInfo[];
   defaultModel?: string;
-  orchestratorModel?: string;
+  composeModel?: string;
   ghAvailable?: () => Promise<boolean>;
   prompt?: string;
   images?: PlanImageAttachment[];
 }): Promise<{
   session: ComposeSession;
-  state: OrchestratorState;
+  state: ComposeState;
   oneShots: ReturnType<typeof scriptedOneShots>;
   prompts: string[];
-  states: OrchestratorState[];
+  states: ComposeState[];
 }> {
   const oneShots = scriptedOneShots(opts.turns);
   const prompts: string[] = [];
@@ -155,12 +155,12 @@ async function run(opts: {
       },
     };
   };
-  const states: OrchestratorState[] = [];
+  const states: ComposeState[] = [];
   const session = new ComposeSession({
     projectId: 'p1',
     projectPath: '/tmp/somewhere',
     prompt: opts.prompt ?? 'add a changes file',
-    model: opts.orchestratorModel ?? 'inherit',
+    model: opts.composeModel ?? 'inherit',
     defaultModel: opts.defaultModel ?? 'inherit',
     reasoningEffort: 'high',
     contextSummary: 'A small demo repository.',
@@ -225,7 +225,7 @@ describe('ComposeSession', () => {
     );
   });
 
-  it('gives the Orchestrator the commands, roster, and few-shot pipelines', async () => {
+  it('gives Smith the commands, roster, and few-shot pipelines', async () => {
     const oneShots = scriptedOneShots([submitted(validReply())]);
     const prompts: string[] = [];
     const factory: typeof oneShots.factory = (opts) => {
@@ -306,7 +306,7 @@ describe('ComposeSession', () => {
       turns: [submitted(mixed)],
       models: [...enabled, model('openai/gpt-5', 'GPT 5')],
       defaultModel: 'anthropic/claude-opus-4',
-      orchestratorModel: 'anthropic/claude-haiku-4',
+      composeModel: 'anthropic/claude-haiku-4',
     });
 
     expect(state.status).toBe('done');
@@ -1139,7 +1139,7 @@ describe('ComposeSession', () => {
       role: 'operator',
       text: 'why opus for the build phase?',
     });
-    expect(state.messages[1]).toMatchObject({ role: 'orchestrator' });
+    expect(state.messages[1]).toMatchObject({ role: 'smith' });
     expect(state.messages[1]!.revisedPlan).toBeUndefined();
     expect(state.plan!.pipeline.phases[0]?.model).toBe('anthropic/claude-opus-4');
     // The follow-up restates the full planning context plus the conversation.
@@ -1168,7 +1168,7 @@ describe('ComposeSession', () => {
     const state = session.snapshot();
     expect(state.status).toBe('done');
     expect(state.plan!.pipeline.phases[0]?.model).toBe('anthropic/claude-haiku-4');
-    expect(state.messages[1]).toMatchObject({ role: 'orchestrator', revisedPlan: true });
+    expect(state.messages[1]).toMatchObject({ role: 'smith', revisedPlan: true });
   });
 
   it('sends a revision that fails the rails back as a correction', async () => {

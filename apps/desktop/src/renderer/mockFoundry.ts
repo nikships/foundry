@@ -329,12 +329,12 @@ const MOCK_LINEAR_ISSUES: LinearIssueSnapshot[] = [
 export function createMockFoundryApi(): FoundryApi {
   const listeners = new Map<string, Set<(data?: unknown) => void>>();
   const smithStates = new Map<string, SmithChatState>();
-  const orchestratorTimers = new Map<string, number[]>();
-  const orchestratorChats = new Map<
+  const composeTimers = new Map<string, number[]>();
+  const composeChats = new Map<
     string,
     { messages: PlanChatMessage[]; emit: (status: 'running' | 'done', detail: string) => void }
   >();
-  let orchestratorSequence = 0;
+  let composeSequence = 0;
   let mockRunSequence = 0;
   const mockProposals = new Map<string, ProposalSnapshot>();
 
@@ -767,9 +767,9 @@ export function createMockFoundryApi(): FoundryApi {
         detail: UNAVAILABLE,
       }),
     },
-    orchestrator: {
-      plan: async (projectId, prompt, model, reasoningEffort, _images) => {
-        const planId = `web-plan-${++orchestratorSequence}`;
+    compose: {
+      start: async (projectId, prompt, model, reasoningEffort, _images) => {
+        const planId = `web-plan-${++composeSequence}`;
         const pipeline = mockPipelines[0]!;
         const plan: GeneratedRunPlan = {
           planId,
@@ -835,7 +835,7 @@ export function createMockFoundryApi(): FoundryApi {
           } else {
             touch({ status: 'generating', detail, revision, messages: transcript });
           }
-          notify('orchestrator-progress', {
+          notify('smith-compose-progress', {
             planId,
             projectId,
             status,
@@ -856,20 +856,20 @@ export function createMockFoundryApi(): FoundryApi {
           window.setTimeout(() => emit('running', 'Reading the issue and choosing phases…'), 40),
           window.setTimeout(() => emit('done', 'Plan ready.'), 500),
         ];
-        orchestratorTimers.set(planId, timers);
-        orchestratorChats.set(planId, { messages, emit });
+        composeTimers.set(planId, timers);
+        composeChats.set(planId, { messages, emit });
         notify('proposals-changed', { projectId });
         return { planId };
       },
-      message: async (planId, text) => {
-        const chat = orchestratorChats.get(planId);
+      revise: async (planId, text) => {
+        const chat = composeChats.get(planId);
         if (!chat) return 'session not found';
         chat.messages.push({ id: `m${Date.now()}`, role: 'operator', text, at: Date.now() });
         chat.emit('running', 'considering your message');
         window.setTimeout(() => {
           chat.messages.push({
             id: `m${Date.now()}`,
-            role: 'orchestrator',
+            role: 'smith',
             text: 'web preview — Smith keeps the fixture proposal as it stands.',
             at: Date.now(),
           });
@@ -878,7 +878,7 @@ export function createMockFoundryApi(): FoundryApi {
         return null;
       },
       cancel: async (planId) => {
-        orchestratorChats.delete(planId);
+        composeChats.delete(planId);
         const stored = mockProposals.get(planId);
         if (stored && stored.status === 'generating') {
           mockProposals.set(planId, {
@@ -890,10 +890,10 @@ export function createMockFoundryApi(): FoundryApi {
           });
           notify('proposals-changed', { projectId: stored.projectId });
         }
-        const timers = orchestratorTimers.get(planId);
+        const timers = composeTimers.get(planId);
         if (!timers) return Boolean(stored);
         timers.forEach((timer) => window.clearTimeout(timer));
-        orchestratorTimers.delete(planId);
+        composeTimers.delete(planId);
         return true;
       },
       list: async (projectId) =>
@@ -947,9 +947,9 @@ export function createMockFoundryApi(): FoundryApi {
         if (!stored || stored.status === 'accepted') return false;
         if (stored.status === 'discarded') return true;
         if (stored.status === 'generating') {
-          orchestratorChats.delete(planId);
-          orchestratorTimers.get(planId)?.forEach((timer) => window.clearTimeout(timer));
-          orchestratorTimers.delete(planId);
+          composeChats.delete(planId);
+          composeTimers.get(planId)?.forEach((timer) => window.clearTimeout(timer));
+          composeTimers.delete(planId);
         }
         mockProposals.set(planId, {
           ...stored,

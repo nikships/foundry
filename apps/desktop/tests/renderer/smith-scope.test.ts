@@ -53,8 +53,8 @@ describe('smith capability scope', () => {
 
   it('asks for a project scope for plans, pipelines, and context refresh', () => {
     for (const capability of [
-      'orchestrator-plan',
-      'orchestrator-list',
+      'compose-plan',
+      'compose-list',
       'pipeline-run',
       'linear-pipeline-run',
       'refresh-context',

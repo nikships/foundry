@@ -4,7 +4,7 @@ import type { ReadinessInspectResult } from '@shared/types.js';
 import type { CompanionHostState } from '@shared/companion.js';
 import type { LinearConnectionState } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
-import type { OrchestratorPlanController } from '../hooks/useOrchestratorPlan.js';
+import type { ComposePlanController } from '../hooks/useComposePlan.js';
 import { useApp } from '../stores/app.js';
 import {
   attachmentsFromClipboardSources,
@@ -16,10 +16,8 @@ import { safeGetItem, safeSetItem } from '../utils/local-store.js';
 import EmptyState from '../components/common/EmptyState.js';
 import BaseSyncBar from '../components/project/BaseSyncBar.js';
 import ManualComposer from '../components/run/ManualComposer.js';
-import OrchestratorAttachments from '../components/run/OrchestratorAttachments.js';
-import OrchestratorPicker, {
-  type OrchestratorChoice,
-} from '../components/run/OrchestratorPicker.js';
+import ComposeAttachments from '../components/run/ComposeAttachments.js';
+import ComposePicker, { type ComposeChoice } from '../components/run/ComposePicker.js';
 import ProposalList from '../components/run/ProposalList.js';
 import { Button } from '../components/ui/Button.js';
 import { readinessBanner, showReadinessOnRuns } from '../view-models/readiness-view.js';
@@ -28,11 +26,14 @@ import styles from './RunsScreen.module.css';
 const LinearComposer = lazy(() => import('../components/run/LinearComposer.js'));
 
 const MODE_KEY = 'foundry.runs.mode';
-type RunsMode = 'orchestrator' | 'manual' | 'linear';
+type RunsMode = 'smith' | 'manual' | 'linear';
 
 function loadMode(): RunsMode {
   const saved = safeGetItem(MODE_KEY);
-  return saved === 'manual' || saved === 'linear' ? saved : 'orchestrator';
+  if (saved === 'manual' || saved === 'linear' || saved === 'smith') return saved;
+  // M-06 renamed the persisted composer tab without stranding existing users.
+  if (saved === 'orchestrator') return 'smith';
+  return 'smith';
 }
 
 function companionPill(companion: CompanionHostState): {
@@ -108,7 +109,7 @@ function SourceTabs({
     label: string;
     icon: React.JSX.Element;
   }> = [
-    { id: 'orchestrator', label: 'Smith composes', icon: <Sparkles size={11} /> },
+    { id: 'smith', label: 'Smith composes', icon: <Sparkles size={11} /> },
     { id: 'manual', label: 'Manual pipeline', icon: <Workflow size={11} /> },
     { id: 'linear', label: 'Linear issue', icon: <CircleDot size={11} /> },
   ];
@@ -164,7 +165,7 @@ function OrchestratedComposer({
   header,
   request,
   choice,
-  orchestrator,
+  compose,
   onChoiceChange,
   onRequestChange,
   onOpen,
@@ -173,9 +174,9 @@ function OrchestratedComposer({
 }: {
   header: ReactNode;
   request: string;
-  choice: OrchestratorChoice;
-  orchestrator: OrchestratorPlanController;
-  onChoiceChange: (choice: OrchestratorChoice) => void;
+  choice: ComposeChoice;
+  compose: ComposePlanController;
+  onChoiceChange: (choice: ComposeChoice) => void;
   onRequestChange: (request: string) => void;
   onOpen: (runId: string) => void;
   baseSyncing: boolean;
@@ -187,7 +188,7 @@ function OrchestratedComposer({
   // independent proposal and the field stays usable for the next prompt.
   const composeBlocked = !project
     ? 'Add a project first'
-    : !request.trim() && orchestrator.images.length === 0
+    : !request.trim() && compose.images.length === 0
       ? 'Describe what to build'
       : baseSyncing
         ? `Updating ${project.baseRef} first`
@@ -195,13 +196,13 @@ function OrchestratedComposer({
 
   const submitPlan = (): void => {
     if (composeBlocked) return;
-    void orchestrator.submit(request);
+    void compose.submit(request);
   };
 
   const retryPrompt = (prompt: string): void => {
     if (!project || baseSyncing) return;
     if (prompt.trim()) onRequestChange(prompt);
-    void orchestrator.submit(prompt);
+    void compose.submit(prompt);
   };
 
   const handleOpen = (runId: string): void => {
@@ -239,13 +240,13 @@ function OrchestratedComposer({
     }
     void (async () => {
       const sources = await readClipboardImageSources(files);
-      const { attachments, errors } = attachmentsFromClipboardSources(sources, orchestrator.images);
-      if (attachments.length) orchestrator.addImages(attachments);
+      const { attachments, errors } = attachmentsFromClipboardSources(sources, compose.images);
+      if (attachments.length) compose.addImages(attachments);
       setAttachError(errors[0] ?? '');
     })();
   };
 
-  const hasProposals = orchestrator.proposals.length > 0;
+  const hasProposals = compose.proposals.length > 0;
 
   return (
     <div className={styles.composerColumn}>
@@ -264,9 +265,9 @@ function OrchestratedComposer({
           aria-keyshortcuts="Meta+Enter Control+Enter"
           data-testid="run-request"
         />
-        <OrchestratorAttachments images={orchestrator.images} onRemove={orchestrator.removeImage} />
+        <ComposeAttachments images={compose.images} onRemove={compose.removeImage} />
         <div className={styles.composerControls}>
-          <OrchestratorPicker choice={choice} disabled={!project} onChange={onChoiceChange} />
+          <ComposePicker choice={choice} disabled={!project} onChange={onChoiceChange} />
           <Button
             variant="primary"
             className={styles.planButton}
@@ -285,15 +286,15 @@ function OrchestratedComposer({
             {attachError}
           </p>
         )}
-        {orchestrator.planError && (
+        {compose.planError && (
           <p className={styles.planError} role="alert">
-            {orchestrator.planError}
+            {compose.planError}
           </p>
         )}
       </section>
 
       <ProposalList
-        proposals={orchestrator.proposals}
+        proposals={compose.proposals}
         baseSyncing={baseSyncing}
         focusPlanId={focusPlanId}
         onOpen={handleOpen}
@@ -306,9 +307,9 @@ function OrchestratedComposer({
 export default function RunsScreen({
   request,
   onRequestChange,
-  orchestratorChoice,
-  onOrchestratorChoiceChange,
-  orchestrator,
+  composeChoice,
+  onComposeChoiceChange,
+  compose,
   onOpen,
   onAddProject,
   onNewProject,
@@ -317,9 +318,9 @@ export default function RunsScreen({
 }: {
   request: string;
   onRequestChange: (request: string) => void;
-  orchestratorChoice: OrchestratorChoice;
-  onOrchestratorChoiceChange: (choice: OrchestratorChoice) => void;
-  orchestrator: OrchestratorPlanController;
+  composeChoice: ComposeChoice;
+  onComposeChoiceChange: (choice: ComposeChoice) => void;
+  compose: ComposePlanController;
   onOpen: (runId: string) => void;
   onAddProject?: () => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
@@ -398,14 +399,14 @@ export default function RunsScreen({
         </EmptyState>
       ) : (
         <div className={styles.composerRegion}>
-          {mode === 'orchestrator' && (
+          {mode === 'smith' && (
             <div className={styles.modePanel}>
               <OrchestratedComposer
                 header={tabs}
                 request={request}
-                choice={orchestratorChoice}
-                orchestrator={orchestrator}
-                onChoiceChange={onOrchestratorChoiceChange}
+                choice={composeChoice}
+                compose={compose}
+                onChoiceChange={onComposeChoiceChange}
                 onRequestChange={onRequestChange}
                 onOpen={onOpen}
                 baseSyncing={baseSyncing}
@@ -437,8 +438,8 @@ export default function RunsScreen({
                 <LinearComposer
                   active
                   header={tabs}
-                  choice={orchestratorChoice}
-                  onChoiceChange={onOrchestratorChoiceChange}
+                  choice={composeChoice}
+                  onChoiceChange={onComposeChoiceChange}
                   onOpen={onOpen}
                   onOpenSettings={onOpenSettings}
                   onConnectionChange={setLinearConnection}

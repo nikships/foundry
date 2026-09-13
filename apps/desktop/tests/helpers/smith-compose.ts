@@ -11,7 +11,7 @@ import { defaultSettings } from '../../src/main/store/settings.js';
 import type { AppContext } from '../../src/main/context.js';
 import type { ComposeStart } from '../../src/main/smith/compose/session.js';
 import type { GeneratedRunPlan } from '../../src/shared/types.js';
-import type { OrchestratorState } from '../../src/shared/ipc-contract.js';
+import type { ComposeState } from '../../src/shared/ipc-contract.js';
 
 /** Real durable store/approval queue; controllable live turn for tool boundary tests. */
 export function composeHarness(scope: string | undefined = 'project', bypass = false) {
@@ -86,7 +86,7 @@ export function composeHarness(scope: string | undefined = 'project', bypass = f
   const ready = (planId = 'plan-1', projectId = 'project') => {
     const fixture = runPlanFixture(projectId);
     const plan = { ...fixture.plan!, planId };
-    const state: OrchestratorState = {
+    const state: ComposeState = {
       planId,
       projectId,
       status: 'done',

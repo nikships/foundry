@@ -18,7 +18,7 @@ Smith is the native operator agent. It exposes typed app capabilities. Normal mo
 - `compose-tools.ts` is the in-process `smith_compose` tool for project and global Smith chats only, never run sessions. `compose`/`revise`/`get`/`list` are immediate; `accept`/`discard`/`cancel` stay approval-gated. It calls `ProposalStore` directly, not the IPC invoker. Soft cap: 3 generating rows per chat. An expired composition session refuses revision rather than replacing the row.
 - `compose/after-start.ts` is the shared start path for the Runs composer IPC and `smith_compose` compose, including `warmStartPrep`.
 - `compose/replan.ts` proposes pipeline repairs; the engine alone validates and applies them in the run's existing worktree.
-- IPC names, progress channels, and historical `OrchestratorState` remain unchanged until the atomic contract migration. Composition does not open a persistent chat.
+- IPC names, progress channels, and historical `ComposeState` remain unchanged until the atomic contract migration. Composition does not open a persistent chat.
 - `run_plan` is main-minted from proposal transitions, never model-presentable. Only already-open project chats (and the issuing global chat) receive bounded, secret-checked snapshots. Renderer actions resolve the durable row; missing rows remain inert snapshots.
 
 ## Capabilities

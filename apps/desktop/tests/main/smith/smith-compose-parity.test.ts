@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { composeHarness } from '../../helpers/smith-compose.js';
-import { register } from '../../../src/main/ipc/orchestrator.js';
+import { register } from '../../../src/main/ipc/smith-compose.js';
 import type { Handle } from '../../../src/main/ipc/shared.js';
 import { IPC } from '../../../src/shared/ipc-contract.js';
 import { warmStartPrep } from '../../../src/main/engine/operations.js';
@@ -17,7 +17,7 @@ describe('smith compose entry-point parity', () => {
       const handle: Handle = (channel, fn) => handlers.set(channel, fn);
       register(desktop.ctx, handle);
       const input = { prompt: 'Improve help', model, reasoningEffort: 'high' as const };
-      const startPlan = handlers.get(IPC.orchestratorPlan) as (
+      const startPlan = handlers.get(IPC.smithComposeStart) as (
         projectId: string,
         prompt: string,
         model: string | undefined,
