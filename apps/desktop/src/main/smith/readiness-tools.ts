@@ -190,7 +190,7 @@ export function readinessCheckTool(deps: Pick<ReadinessToolDeps, 'project'>): To
       'Evaluate how agent-ready this repository is: the static readiness checklist plus the ' +
       '.agents/agent-ready.json marker as committed on the base ref. The committed marker on ' +
       'the base ref is the only readiness truth — a marker in the working tree proves nothing. ' +
-      'Read-only.',
+      'Read-only, with no arguments. Checks only the current project; use readiness_manage inspect with projectId for another project.',
     parameters: NO_PARAMS,
     execute: async () => {
       const project = deps.project();
@@ -238,7 +238,9 @@ export function readinessRemediateTool(
       'Start (or continue) making this repository agent-ready. A write-capable remediation ' +
       'agent runs on an isolated foundry-ready/<id> worktree — never in the checkout — then the ' +
       'checklist is re-verified, the marker is committed last, and a pull request is opened. ' +
-      'A paused or partly-done onboarding keeps its branch; calling this again continues it.',
+      'Requires approval and takes no arguments; it targets the current project. ' +
+      'A paused or partly-done onboarding keeps its branch; calling this again continues it. ' +
+      'Read readiness_manage state first. An inProgress result means existing work is still running, not complete; do not start it again.',
     parameters: NO_PARAMS,
     execute: async () => {
       const session = deps.session(createProgressForwarder(deps.onProgress));
@@ -272,7 +274,9 @@ export function readinessPrStatusTool(
     description:
       'Check whether the readiness pull request has merged and, when it has, finalize: ' +
       'fast-forward the base branch and re-read the committed marker there. A merged PR alone ' +
-      'is not proof — readiness completes only when the marker is valid on the base ref.',
+      'is not proof — readiness completes only when the marker is valid on the base ref. ' +
+      'Requires approval because it can change Git state. Takes no arguments and targets the current project. ' +
+      'For a read-only progress check use readiness_manage state instead.',
     parameters: NO_PARAMS,
     execute: async () => {
       const session = deps.session(createProgressForwarder(deps.onProgress));
@@ -340,13 +344,22 @@ export function readinessManageTool(deps: SmithActionToolDeps): ToolDefinition {
   return defineTool({
     name: 'readiness_manage',
     label: 'Readiness management',
-    description: 'Inspect or manage project readiness. Mutating operations require approval.',
+    description: [
+      'Read now: inspect checks the committed readiness marker; state reads the current readiness session.',
+      'Approval: evaluate(options?) starts evaluation; retry restarts evaluation and removes the prior readiness worktree; cancel stops work; skip skips onboarding and removes its worktree; dismiss records a completed, valid result; confirm_merge checks the PR, updates the base, and verifies the marker.',
+      'projectId defaults to the current project and is required in All projects scope. evaluate/retry return a sessionId while work continues; use state for progress instead of repeating the action.',
+      'skip does not prove readiness. confirm_merge is not a read-only check. Use readiness_remediate in a project conversation to start or continue remediation.',
+    ].join('\n'),
     parameters: {
       type: 'object',
       properties: {
         operation: { type: 'string', enum: [...READINESS_MANAGE_OPERATIONS] },
         projectId: { type: 'string' },
-        options: { type: 'object' },
+        options: {
+          type: 'object',
+          description:
+            'For evaluate only: optional model, reasoningEffort, and saveAsDefault. Use catalog_models for valid values. Omit saveAsDefault unless the operator asks to change defaults.',
+        },
       },
       required: ['operation'],
       additionalProperties: false,

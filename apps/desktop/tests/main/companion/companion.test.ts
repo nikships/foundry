@@ -301,6 +301,7 @@ class TestSmithChat {
       activeModel: this.model === 'inherit' ? 'scripted' : this.model,
       reasoningEffort: this.reasoningEffort,
       activeReasoningEffort: this.reasoningEffort,
+      permissionMode: 'ask',
       running: this.running,
       error: null,
       transcript: this.transcript.map((entry) => ({ ...entry })),

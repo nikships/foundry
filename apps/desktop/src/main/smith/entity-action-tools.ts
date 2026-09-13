@@ -194,7 +194,7 @@ export function smithEntitiesTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_entities',
     label: 'Smith entities',
     description:
-      'Inspect and manage agents, envelopes, and pipelines. Operations: agent_stale(projectId?), agent_validate(agent), agent_preview(agent), agent_rename(from,to,projectId?), agent_remove/duplicate/reset(name,projectId?), agent_upload_mark(filePath), agent_remove_mark(emblem), envelope_usage/preview/remove/duplicate(name), envelope_validate(definition), pipeline_stale(projectId?), pipeline_validate(pipeline,projectId?), pipeline_dry_run(pipelineId,projectId,request), pipeline_remove/duplicate/reset(id,projectId?).',
+      'Validate, preview, or maintain definitions. Use smith_list/smith_show to read definitions and smith_propose to create or edit them. Read now: agent_stale(projectId?), agent_validate/agent_preview(agent), envelope_usage/envelope_preview(name), envelope_validate(definition), pipeline_stale(projectId?), pipeline_validate(pipeline,projectId?), pipeline_dry_run(pipelineId,projectId?,request). A dry run inspects the plan; it does not start a run. Approval: agent_rename(from,to,projectId?), agent_remove/agent_duplicate/agent_reset(name,projectId?), agent_upload_mark(filePath), agent_remove_mark(emblem), envelope_remove/envelope_duplicate(name), pipeline_remove/pipeline_duplicate/pipeline_reset(id,projectId?). projectId defaults to chat scope; dry runs require an explicit project in All projects scope. Envelope operations are global. Read the stored entity and its usage before removal or reset.',
     parameters: {
       type: 'object',
       properties: {

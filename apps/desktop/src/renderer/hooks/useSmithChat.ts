@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { SmithChatState, SmithScreenContext } from '@shared/ipc-contract.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type {
+  SmithChatState,
+  SmithPermissionMode,
+  SmithScreenContext,
+} from '@shared/ipc-contract.js';
 import type { ReasoningEffort } from '@shared/types.js';
 import { api } from '../api.js';
 
@@ -21,10 +25,13 @@ export function useSmithChat(projectId: string | undefined): {
   newChat: () => Promise<void>;
   setModel: (model: string) => Promise<void>;
   setReasoningEffort: (effort: ReasoningEffort) => Promise<void>;
+  setPermissionMode: (mode: SmithPermissionMode) => Promise<void>;
 } {
   const [state, setState] = useState<SmithChatState | null>(null);
+  const activeProjectId = useRef(projectId);
 
   useEffect(() => {
+    activeProjectId.current = projectId;
     let cancelled = false;
     setState(null);
     void api.smith.state(projectId).then((next) => {
@@ -44,7 +51,7 @@ export function useSmithChat(projectId: string | undefined): {
 
   const apply = useCallback(async (work: () => Promise<SmithChatState | null>): Promise<void> => {
     const next = await work();
-    if (next) setState(next);
+    if (next && next.projectId === activeProjectId.current) setState(next);
   }, []);
 
   const send = useCallback(
@@ -79,5 +86,11 @@ export function useSmithChat(projectId: string | undefined): {
     [apply, projectId],
   );
 
-  return { state, send, cancel, newChat, setModel, setReasoningEffort };
+  const setPermissionMode = useCallback(
+    (mode: SmithPermissionMode): Promise<void> =>
+      apply(() => api.smith.setPermissionMode(projectId, mode)),
+    [apply, projectId],
+  );
+
+  return { state, send, cancel, newChat, setModel, setReasoningEffort, setPermissionMode };
 }

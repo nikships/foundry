@@ -9,6 +9,50 @@ import {
 import { launchFoundry } from './harness.js';
 
 test.describe('smith / chat', () => {
+  test('confirms YOLO mode, keeps it scoped, and resets it on New chat', async () => {
+    // No pending proposal: one would disable the scope picker, and this test
+    // is about YOLO scoping, not proposals.
+    const fixture = seedOnboardedFixture(undefined, 'none');
+    let app: ElectronApplication | undefined;
+    try {
+      const launched = await launchFoundry(fixture.userDataDir);
+      app = launched.app;
+      const { window } = launched;
+      await window.getByTestId('nav-smith').click();
+      const mode = window.getByTestId('smith-permission-mode');
+      const scope = window.getByTestId('smith-scope');
+      const projectId = await scope.inputValue();
+      await expect(mode).toHaveAttribute('aria-pressed', 'false');
+      await mode.click();
+      const confirmation = window.getByRole('dialog', { name: 'Enable YOLO mode for this chat?' });
+      await expect(confirmation).toContainText('delete data');
+      await window.getByTestId('confirm-cancel').click();
+      await expect(confirmation).toBeHidden();
+      await expect(mode).toHaveAttribute('aria-pressed', 'false');
+
+      await mode.click();
+      await window.getByTestId('confirm-accept').click();
+      await expect(confirmation).toBeHidden();
+      await expect(mode).toHaveAttribute('aria-pressed', 'true');
+      await expect(window.getByText('YOLO is on for this chat:', { exact: false })).toBeVisible();
+      await scope.selectOption('__all__');
+      await expect(mode).toHaveAttribute('aria-pressed', 'false');
+      await scope.selectOption(projectId);
+      await expect(mode).toHaveAttribute('aria-pressed', 'true');
+      await mode.click();
+      await expect(mode).toHaveAttribute('aria-pressed', 'false');
+      await expect(confirmation).toBeHidden();
+
+      await mode.click();
+      await window.getByTestId('confirm-accept').click();
+      await expect(confirmation).toBeHidden();
+      await window.getByTestId('smith-new-chat').click();
+      await expect(mode).toHaveAttribute('aria-pressed', 'false');
+    } finally {
+      await app?.close();
+    }
+  });
+
   test('folds tool output and preserves the reading position during work', async () => {
     const fixture = seedOnboardedFixture(undefined, 'none');
     const { app, window } = await launchFoundry(fixture.userDataDir);
@@ -21,6 +65,7 @@ test.describe('smith / chat', () => {
         activeModel: 'fixture/model',
         reasoningEffort: 'medium',
         activeReasoningEffort: 'medium',
+        permissionMode: 'ask',
         running: true,
         error: null,
         transcript: [

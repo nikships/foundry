@@ -1,0 +1,25 @@
+.control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  padding: var(--s2);
+  flex: none;
+}
+
+.detail,
+.warning {
+  flex: 1;
+  min-width: 180px;
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+.detail {
+  color: var(--text-dim);
+}
+
+.warning {
+  color: var(--red);
+}

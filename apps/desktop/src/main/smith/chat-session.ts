@@ -33,6 +33,7 @@ import type { ReasoningEffort, SmithArtifact } from '@shared/types.js';
 import type {
   SmithChatEntry,
   SmithChatState,
+  SmithPermissionMode,
   SmithScreenContext,
   SmithTranscriptEntry,
 } from '@shared/ipc-contract.js';
@@ -49,7 +50,12 @@ import type {
 } from '../pi/transport.js';
 import { shortId } from '../session/panel-session.js';
 import type { ReadinessProgressEvent } from './readiness-tools.js';
-import { SMITH_CHAT_HARNESS, scopeContextBlock, screenContextBlock } from './system-prompt.js';
+import {
+  SMITH_CHAT_HARNESS,
+  permissionContextBlock,
+  scopeContextBlock,
+  screenContextBlock,
+} from './system-prompt.js';
 
 export type SmithScope =
   | { kind: 'project'; projectId: string; projectPath: string }
@@ -212,6 +218,7 @@ export class SmithChatSession {
   private sessionId: string | null = null;
   private modelOverride: string | null = null;
   private reasoningEffortOverride: ReasoningEffort | null = null;
+  private currentPermissionMode: SmithPermissionMode = 'ask';
   private turnActive = false;
   private cancelRequested = false;
   /**
@@ -281,6 +288,18 @@ export class SmithChatSession {
     return this.turnActive;
   }
 
+  get permissionMode(): SmithPermissionMode {
+    return this.currentPermissionMode;
+  }
+
+  setPermissionMode(mode: SmithPermissionMode): void {
+    if (mode === 'bypass' && this.turnActive) {
+      throw new Error('Stop the Smith turn before enabling YOLO mode.');
+    }
+    this.currentPermissionMode = mode;
+    this.emit();
+  }
+
   /** A clone for IPC reads and pushes; callers never receive the live array. */
   snapshot(): SmithChatState {
     const projectId = scopeProjectId(this.deps.scope);
@@ -290,6 +309,7 @@ export class SmithChatSession {
       activeModel: this.activeModel,
       reasoningEffort: this.reasoningEffort,
       activeReasoningEffort: this.activeReasoningEffort,
+      permissionMode: this.permissionMode,
       running: this.turnActive,
       error: this.lastError,
       transcript: visibleTranscript(this.transcript),
@@ -315,7 +335,10 @@ export class SmithChatSession {
       // there is a transport to interrupt. Do not start a paid turn after it.
       if (this.cancelRequested) return cancelledOutcome();
       const result = await started.send(text, {
-        ...(ctx.screen ? { systemPrompt: screenContextBlock(ctx.screen) } : {}),
+        systemPrompt: [
+          permissionContextBlock(this.permissionMode),
+          ...(ctx.screen ? [screenContextBlock(ctx.screen)] : []),
+        ].join('\n\n'),
       });
       if (this.generation !== generation) return cancelledOutcome();
       return {
@@ -363,6 +386,7 @@ export class SmithChatSession {
     this.transcript = [];
     this.lastError = null;
     this.reasoningEffortOverride = null;
+    this.currentPermissionMode = 'ask';
     this.persistState();
     this.emit();
     if (!transport) return;

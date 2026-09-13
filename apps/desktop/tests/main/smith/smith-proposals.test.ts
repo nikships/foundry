@@ -27,6 +27,190 @@ const input = (over: Partial<EntityProposalInput> = {}): ProposalInput => ({
 });
 
 describe('ProposalQueue', () => {
+  it('automatically saves entities without exposing an approval card', async () => {
+    const save = vi.fn(async () => ({ ok: true as const, entity: { name: 'planner' } }));
+    const queue = new ProposalQueue(
+      () => {},
+      save,
+      undefined,
+      () => true,
+    );
+    const pending = queue.propose(input());
+    expect(queue.list()).toEqual([]);
+    await expect(pending).resolves.toEqual({
+      approved: true,
+      result: { ok: true, entity: { name: 'planner' } },
+    });
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    'write',
+    'destructive',
+    'credential',
+    'shell',
+    'git',
+    'external',
+    'network',
+    'lifecycle',
+    'maintenance',
+  ] as const)('automatically executes %s actions and records their actual result', async (risk) => {
+    const settled = vi.fn();
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+      settled,
+      () => true,
+    );
+    const execute = vi.fn(() => ({
+      ok: true as const,
+      modelResult: { ok: true, completed: true },
+    }));
+    await expect(
+      queue.propose(
+        {
+          type: 'action',
+          operation: 'test',
+          title: 'Test action',
+          summary: 'Test action.',
+          args: {},
+          risk,
+        },
+        execute,
+      ),
+    ).resolves.toMatchObject({ approved: true, result: { completed: true } });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(queue.list()).toEqual([]);
+    expect(settled).toHaveBeenCalledWith(
+      expect.objectContaining({ risk }),
+      expect.objectContaining({ outcome: 'succeeded' }),
+    );
+  });
+
+  it('returns automatic entity failures instead of waiting for an invisible retry card', async () => {
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: false, error: 'save refused' }),
+      undefined,
+      () => true,
+    );
+    await expect(queue.propose(input())).resolves.toEqual({
+      approved: true,
+      result: { ok: false, error: 'save refused' },
+    });
+    expect(queue.list()).toEqual([]);
+    await expect(queue.propose(input())).resolves.toMatchObject({ result: { ok: false } });
+  });
+
+  it('records a failed automatic action and releases the slot', async () => {
+    const settled = vi.fn();
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+      settled,
+      () => true,
+    );
+    await expect(
+      queue.propose(
+        {
+          type: 'action',
+          operation: 'merge',
+          title: 'Merge',
+          summary: 'Merge run.',
+          args: {},
+          risk: 'git',
+        },
+        () => {
+          throw new Error('merge refused');
+        },
+      ),
+    ).resolves.toEqual({ approved: true, result: { ok: false, error: 'merge refused' } });
+    expect(settled).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ outcome: 'failed', error: 'merge refused' }),
+    );
+    expect(queue.list()).toEqual([]);
+  });
+
+  it('keeps the global single-executor slot while an automatic action runs', async () => {
+    let finish!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const queue = new ProposalQueue(
+      () => {},
+      async () => {
+        await wait;
+        return { ok: true, entity: {} };
+      },
+      undefined,
+      () => true,
+    );
+    const pending = queue.propose(input());
+    expect(queue.list()).toEqual([]);
+    await expect(queue.propose(input())).rejects.toThrow('proposal_pending');
+    finish();
+    await expect(pending).resolves.toMatchObject({ approved: true });
+  });
+
+  it.each(['set_api_key', 'pairing'] as const)(
+    'keeps %s interactive in YOLO mode',
+    async (operation) => {
+      const execute = vi.fn(() => ({ ok: true as const, modelResult: { ok: true } }));
+      const queue = new ProposalQueue(
+        () => {},
+        async () => ({ ok: true, entity: {} }),
+        undefined,
+        () => true,
+      );
+      const pending = queue.propose(
+        {
+          type: 'action',
+          operation,
+          title: 'Private input',
+          summary: 'Private input.',
+          args: {},
+          risk: 'credential',
+          ...(operation === 'set_api_key'
+            ? { secretRequest: { kind: 'api-key' as const, label: 'API key' } }
+            : {}),
+        },
+        execute,
+      );
+      expect(queue.list()).toHaveLength(1);
+      expect(execute).not.toHaveBeenCalled();
+      if (operation === 'set_api_key') {
+        await expect(queue.answer(queue.list()[0]!.id, { approved: true })).resolves.toMatchObject({
+          ok: false,
+        });
+        expect(execute).not.toHaveBeenCalled();
+      }
+      await queue.answer(queue.list()[0]!.id, { approved: false });
+      await expect(pending).resolves.toMatchObject({ approved: false });
+    },
+  );
+
+  it('does not retroactively approve a card and reads the mode for each new proposal', async () => {
+    let bypass = false;
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+      undefined,
+      () => bypass,
+    );
+    const pending = queue.propose(input());
+    bypass = true;
+    expect(queue.list()).toHaveLength(1);
+    await queue.answer(queue.list()[0]!.id, { approved: false });
+    await pending;
+    await expect(queue.propose(input())).resolves.toMatchObject({ approved: true });
+    bypass = false;
+    const next = queue.propose(input());
+    expect(queue.list()).toHaveLength(1);
+    await queue.answer(queue.list()[0]!.id, { approved: false });
+    await next;
+  });
+
   it('exposes exactly the one pending proposal as a list', async () => {
     const onChanged = vi.fn();
     const queue = new ProposalQueue(onChanged, async () => ({ ok: true, entity: {} }));

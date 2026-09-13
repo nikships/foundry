@@ -363,6 +363,7 @@ export function createMockFoundryApi(): FoundryApi {
         activeModel: mockSettings.smithModel,
         reasoningEffort: mockSettings.smithReasoningEffort,
         activeReasoningEffort: mockSettings.smithReasoningEffort,
+        permissionMode: 'ask',
         running: false,
         error: null,
         transcript: [],
@@ -1053,7 +1054,12 @@ export function createMockFoundryApi(): FoundryApi {
       cancel: async (projectId) => putSmith(projectId, { running: false }),
       newChat: async (projectId) =>
         smithScopeExists(projectId)
-          ? putSmith(projectId, { running: false, error: null, transcript: [] })
+          ? putSmith(projectId, {
+              running: false,
+              error: null,
+              transcript: [],
+              permissionMode: 'ask',
+            })
           : null,
       state: async (projectId) => (smithScopeExists(projectId) ? smithSnapshot(projectId) : null),
       setModel: async (projectId, model) =>
@@ -1062,6 +1068,13 @@ export function createMockFoundryApi(): FoundryApi {
         smithScopeExists(projectId)
           ? putSmith(projectId, { reasoningEffort: effort, activeReasoningEffort: effort })
           : null,
+      setPermissionMode: async (projectId, mode) => {
+        if (!smithScopeExists(projectId)) return null;
+        if (mode === 'bypass' && smithSnapshot(projectId).running) {
+          throw new Error('Stop the Smith turn before enabling YOLO mode.');
+        }
+        return putSmith(projectId, { permissionMode: mode });
+      },
       proposalsList: async () => [],
       answerProposal: async () => ({ ok: false, error: 'proposal not found' }),
     },

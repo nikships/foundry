@@ -158,18 +158,39 @@ export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_projects',
     label: 'Smith projects',
     description:
-      'Inspect and manage Foundry projects. Operations: list, show(projectId), add, github_account, choose_parent, create_github(input), save(project), remove/export(projectId), try_command(projectId,argv), sniff_commands/ask_commands(projectId), cancel_detection/detection(detectionId), setup_get/save/sniff/try/ask(projectId,script?), setup_progress/setup_cancel(setupId), check/scope_copies/base_inspect/base_sync/refresh_context(projectId), reveal(path). refresh_context rebuilds the repository fact card run agents receive.',
+      'Inspect and manage projects. Always supply projectId when an operation names it; this tool does not use the chat scope as a default. Read now: list, show(projectId), github_account, detection(detectionId), setup_get/setup_sniff(projectId), setup_progress(setupId), check/scope_copies/base_inspect(projectId). Approval: add opens a folder chooser; choose_parent opens a parent-folder chooser; create_github(input), save(project), remove/export(projectId), try_command(projectId,argv), sniff_commands/ask_commands(projectId), cancel_detection(detectionId), setup_save/setup_try(projectId,script), setup_ask(projectId), setup_cancel(setupId), base_sync/refresh_context(projectId), reveal(path). Read show before save and preserve other fields. Use returned detectionId/setupId to inspect progress, not to start the same work again. refresh_context rebuilds the repository fact card for run agents.',
     parameters: {
       type: 'object',
       properties: {
         operation: { type: 'string', enum: [...SMITH_PROJECT_OPERATIONS] },
-        projectId: { type: 'string' },
-        input: { type: 'object' },
-        project: { type: 'object' },
-        argv: { type: 'array', items: { type: 'string' } },
+        projectId: {
+          type: 'string',
+          description:
+            'Explicit project ID from list or screen context. Required even in project chat when the operation takes projectId.',
+        },
+        input: {
+          type: 'object',
+          description:
+            'For create_github: {name, visibility:"private"|"public", parentDir, owner?, description?}. Use github_account for owners and choose_parent for the parentDir. The new checkout is parentDir/name.',
+        },
+        project: {
+          type: 'object',
+          description:
+            'For save: full project definition from show, with only the requested changes. Not a patch.',
+        },
+        argv: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'For try_command: executable and separate arguments, not one shell command string.',
+        },
         detectionId: { type: 'string' },
         setupId: { type: 'string' },
-        script: { type: 'string' },
+        script: {
+          type: 'string',
+          description:
+            'Required for setup_save and setup_try. An empty string clears the saved script with setup_save.',
+        },
         path: { type: 'string' },
       },
       required: ['operation'],

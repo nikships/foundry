@@ -49,6 +49,7 @@ interface PendingEntry {
   executor: ProposalExecutor;
   resolve: (outcome: ProposalOutcome) => void;
   executing: boolean;
+  automatic: boolean;
 }
 
 export class ProposalQueue {
@@ -59,10 +60,11 @@ export class ProposalQueue {
     private readonly save: SaveHandler,
     /** Receives every settled action so main can record a receipt. */
     private readonly onActionSettled?: ActionSettledHandler,
+    private readonly bypassApprovals: (proposal: SmithProposal) => boolean = () => false,
   ) {}
 
   list(): SmithProposal[] {
-    return this.pending ? [this.pending.proposal] : [];
+    return this.pending && !this.pending.automatic ? [this.pending.proposal] : [];
   }
 
   propose(input: ProposalInput, executor?: ProposalExecutor): Promise<ProposalOutcome> {
@@ -74,10 +76,14 @@ export class ProposalQueue {
       createdAt: new Date().toISOString(),
     } as SmithProposal;
     const run = executor ?? this.entityExecutor(proposal);
+    const automatic =
+      this.bypassApprovals(proposal) &&
+      !(proposal.type === 'action' && (proposal.secretRequest || proposal.operation === 'pairing'));
 
     return new Promise<ProposalOutcome>((resolve) => {
-      this.pending = { proposal, executor: run, resolve, executing: false };
-      this.onChanged();
+      this.pending = { proposal, executor: run, resolve, executing: false, automatic };
+      if (automatic) void this.answer(proposal.id, { approved: true });
+      else this.onChanged();
     });
   }
 
@@ -118,7 +124,7 @@ export class ProposalQueue {
     const durationMs = Date.now() - startedAt;
 
     if (!executed.ok) {
-      if (executed.retryable) {
+      if (executed.retryable && !entry.automatic) {
         entry.executing = false;
         return { ok: false, error: executed.error };
       }

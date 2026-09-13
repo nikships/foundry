@@ -105,6 +105,8 @@ export class SmithService {
       // promise to satisfy the async handler contract.
       (proposal) => Promise.resolve(deps.save(proposal)),
       (proposal, execution) => this.recordReceipt(proposal, execution),
+      (proposal) =>
+        this.chats.get(proposal.projectId ?? GLOBAL_SCOPE_KEY)?.permissionMode === 'bypass',
     );
     const seed = deps.seedProposal ?? readSmithProposalSeed();
     if (seed) {

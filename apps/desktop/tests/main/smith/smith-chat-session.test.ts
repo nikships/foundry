@@ -474,10 +474,66 @@ describe('screen context', () => {
     expect(turn.text).not.toContain('run_42');
   });
 
-  it('sends no standing context when the caller supplied none', async () => {
+  it('sends the current permission mode even without screen context', async () => {
     const h = harness({});
     await h.session.send('hello');
-    expect(h.scripted.turnRequests[0]!.systemPrompt).toBeUndefined();
+    expect(h.scripted.turnRequests[0]!.systemPrompt).toContain('Normal mode is ON');
+  });
+});
+
+describe('Smith permission mode', () => {
+  it('starts in normal mode and updates the system context for each turn', async () => {
+    const h = harness({ turns: ['first', 'second'] });
+    expect(h.session.snapshot().permissionMode).toBe('ask');
+    h.session.setPermissionMode('bypass');
+    expect(h.session.snapshot().permissionMode).toBe('bypass');
+    await h.session.send('do the work');
+    expect(h.scripted.turnRequests[0]!.systemPrompt).toContain('YOLO mode is ON');
+    h.session.setPermissionMode('ask');
+    await h.session.send('check the work');
+    expect(h.scripted.turnRequests[1]!.systemPrompt).toContain('Normal mode is ON');
+  });
+
+  it('resets on new chat and does not restore permission mode from disk', async () => {
+    const h = harness({});
+    h.session.setPermissionMode('bypass');
+    await h.session.send('hello');
+    const saved = JSON.parse(readFileSync(join(h.stateDir, 'chat-state.json'), 'utf8'));
+    expect(saved).not.toHaveProperty('permissionMode');
+    writeFileSync(
+      join(h.stateDir, 'chat-state.json'),
+      JSON.stringify({ ...saved, permissionMode: 'bypass' }),
+    );
+    expect(h.remake().snapshot().permissionMode).toBe('ask');
+    await h.session.newChat();
+    expect(h.session.snapshot().permissionMode).toBe('ask');
+  });
+
+  it('blocks enabling during a turn but permits disabling it immediately', async () => {
+    const h = harness({ stallOnTurns: [0] });
+    h.session.setPermissionMode('bypass');
+    const running = h.session.send('work');
+    expect(h.session.isTurnActive).toBe(true);
+    h.session.setPermissionMode('ask');
+    expect(h.session.permissionMode).toBe('ask');
+    expect(() => h.session.setPermissionMode('bypass')).toThrow('Stop the Smith turn');
+    await h.session.cancel();
+    await running;
+  });
+
+  it('does not bypass tool allowlists or project write boundaries', async () => {
+    const outside = tempDir('smith-yolo-outside-');
+    const h = harness({
+      asks: [
+        [
+          { tool: 'smith:setPermissionMode', input: { mode: 'bypass' } },
+          { tool: 'write', input: { path: join(outside, 'escape.txt') } },
+        ],
+      ],
+    });
+    h.session.setPermissionMode('bypass');
+    await h.session.send('try disallowed tools');
+    expect(h.scripted.askReplies.map((reply) => reply.decision.outcome)).toEqual(['deny', 'deny']);
   });
 });
 

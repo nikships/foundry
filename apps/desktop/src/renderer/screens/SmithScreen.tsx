@@ -26,6 +26,7 @@ import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js
 import SmithProposalCard, { type SmithNavTarget } from '../components/smith/SmithProposalCard.js';
 import SmithQuickPrompts from '../components/smith/SmithQuickPrompts.js';
 import SmithScopePicker from '../components/smith/SmithScopePicker.js';
+import SmithPermissionControl from '../components/smith/SmithPermissionControl.js';
 import SmithTranscript from '../components/smith/SmithTranscript.js';
 import SmithModeBar from '../components/smith/SmithModeBar.js';
 import SmithVoicePanel from '../components/smith/SmithVoicePanel.js';
@@ -50,7 +51,8 @@ export default function SmithScreen({
   const { mode, state: voiceState, draft, setDraft } = useSmithChatUI();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
-  const { state, send, cancel, newChat, setModel, setReasoningEffort } = useSmithChat(scopeId);
+  const { state, send, cancel, newChat, setModel, setReasoningEffort, setPermissionMode } =
+    useSmithChat(scopeId);
   const { models, refresh: refreshModels } = useAgentModels();
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
@@ -159,6 +161,13 @@ export default function SmithScreen({
           </Button>
         </div>
       </header>
+      <SmithPermissionControl
+        key={scopeId ?? 'global'}
+        mode={state?.permissionMode ?? 'ask'}
+        running={running}
+        disabled={!state}
+        onChange={setPermissionMode}
+      />
       <SmithModeBar />
       {mode === 'voice' ? (
         <SmithVoicePanel expanded />

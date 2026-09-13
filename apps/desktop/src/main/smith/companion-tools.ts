@@ -18,7 +18,7 @@ export function smithCompanionTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_companion',
     label: 'Smith Companion',
     description:
-      'Operate Companion: state, start, stop, pairing(refresh?), unpair(deviceId). Pairing secrets are shown privately to the operator and never returned to Smith.',
+      'Read Companion state without approval. start, stop, pairing(refresh?), and unpair(deviceId) require approval. Read state for the exact deviceId before unpair. pairing shows private pairing data to the operator; refresh:true replaces the pairing token. Pairing secrets are never returned to Smith; do not ask the operator to paste them into chat.',
     parameters: {
       type: 'object',
       properties: {
