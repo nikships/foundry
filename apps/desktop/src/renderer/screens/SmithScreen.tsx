@@ -161,14 +161,17 @@ export default function SmithScreen({
           </Button>
         </div>
       </header>
-      <SmithPermissionControl
-        key={scopeId ?? 'global'}
-        mode={state?.permissionMode ?? 'ask'}
-        running={running}
-        disabled={!state}
-        onChange={setPermissionMode}
+      <SmithModeBar
+        trailing={
+          <SmithPermissionControl
+            key={scopeId ?? 'global'}
+            mode={state?.permissionMode ?? 'ask'}
+            running={running}
+            disabled={!state}
+            onChange={setPermissionMode}
+          />
+        }
       />
-      <SmithModeBar />
       {mode === 'voice' ? (
         <SmithVoicePanel expanded />
       ) : (

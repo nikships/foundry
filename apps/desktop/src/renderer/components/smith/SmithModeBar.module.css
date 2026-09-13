@@ -2,20 +2,38 @@
   display: flex;
   flex: none;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: nowrap;
   gap: var(--s2);
   padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--line-faint);
+  min-width: 0;
 }
 
-.modes,
-.connection {
+.modes {
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--s1);
 }
 
-.bar button {
+.trailing {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+}
+
+.connection {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--accent);
+  font-size: var(--text-xs);
+}
+
+.modes button,
+.connection button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -33,7 +51,8 @@
     color var(--fast) var(--ease);
 }
 
-.bar button:hover {
+.modes button:hover,
+.connection button:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
@@ -43,23 +62,15 @@
   color: var(--accent);
 }
 
-.bar button:focus-visible {
+.modes button:focus-visible,
+.connection button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.connection {
-  color: var(--accent);
-  font-size: var(--text-xs);
-}
-
-.hint {
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .bar button {
+  .modes button,
+  .connection button {
     transition: none;
   }
 }

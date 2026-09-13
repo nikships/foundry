@@ -1,8 +1,18 @@
+/**
+ * Text / Voice switch plus the in-chat YOLO control. YOLO used to occupy its
+ * own padded header; it now trails these buttons on the same row so the chat
+ * does not grow a second chrome band for a one-line status.
+ */
+
 import { MessageSquare, Mic, MicOff, Square } from 'lucide-react';
 import { useSmithChatUI } from '../../stores/smith-chat-ui.js';
 import styles from './SmithModeBar.module.css';
 
-export default function SmithModeBar(): React.JSX.Element {
+export default function SmithModeBar({
+  trailing,
+}: {
+  trailing: React.ReactNode;
+}): React.JSX.Element {
   const { mode, setMode, state, stop, toggleMute } = useSmithChatUI();
   const connected = state.status === 'live' || state.status === 'connecting';
   return (
@@ -25,6 +35,7 @@ export default function SmithModeBar(): React.JSX.Element {
           <Mic size={14} /> Voice
         </button>
       </div>
+      <div className={styles.trailing}>{trailing}</div>
       {connected ? (
         <div className={styles.connection}>
           {state.status === 'live' ? (
@@ -49,9 +60,7 @@ export default function SmithModeBar(): React.JSX.Element {
             <Square size={12} /> End
           </button>
         </div>
-      ) : (
-        <span className={styles.hint}>One conversation</span>
-      )}
+      ) : null}
     </div>
   );
 }

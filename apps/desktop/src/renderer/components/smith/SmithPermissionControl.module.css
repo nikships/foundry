@@ -1,19 +1,22 @@
 .control {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--s2);
-  padding: var(--s2);
-  flex: none;
+  min-width: 0;
 }
 
 .detail,
 .warning {
-  flex: 1;
-  min-width: 180px;
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
-  font-size: var(--text-sm);
-  line-height: var(--leading);
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .detail {

@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SmithPermissionMode } from '@shared/ipc-contract.js';
 import { confirmManager } from '../../hooks/useConfirmAction.js';
-import { SMITH_YOLO_ACTIVE_COPY, SMITH_YOLO_WARNING } from '../../view-models/smith-copy.js';
+import {
+  SMITH_YOLO_ACTIVE_COPY,
+  SMITH_YOLO_OFF_COPY,
+  SMITH_YOLO_WARNING,
+} from '../../view-models/smith-copy.js';
 import { Button } from '../ui/Button.js';
 import styles from './SmithPermissionControl.module.css';
 
@@ -20,6 +24,7 @@ export default function SmithPermissionControl({
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
   const bypass = mode === 'bypass';
+  const status = error ?? (bypass ? SMITH_YOLO_ACTIVE_COPY : SMITH_YOLO_OFF_COPY);
 
   useEffect(() => {
     mounted.current = true;
@@ -66,16 +71,13 @@ export default function SmithPermissionControl({
       >
         YOLO: {bypass ? 'on' : 'off'}
       </Button>
-      <p className={bypass ? styles.warning : styles.detail} role="status">
-        {bypass
-          ? SMITH_YOLO_ACTIVE_COPY
-          : 'Smith asks for approval before app actions. Direct checkout access is unchanged.'}
+      <p
+        className={error || bypass ? styles.warning : styles.detail}
+        role={error ? 'alert' : 'status'}
+        title={status}
+      >
+        {status}
       </p>
-      {error && (
-        <p className={styles.warning} role="alert">
-          {error}
-        </p>
-      )}
     </section>
   );
 }
