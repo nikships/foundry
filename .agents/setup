@@ -21,6 +21,7 @@ install_system_packages() {
   local requirements=(
     curl:curl
     g++:g++
+    git:git
     make:make
     python3:python3
     tar:tar
@@ -58,7 +59,7 @@ install_node() {
   local stage="$tmp_dir/node"
 
   if [[ -x "$node_dir/bin/node" ]] && [[ $("$node_dir/bin/node" --version) == v22.* ]]; then
-    echo "Node $("$node_dir/bin/node" --version) already installed."
+    echo "Node $($node_dir/bin/node --version) already installed."
     return
   fi
 
@@ -87,6 +88,19 @@ EOF
   for command in npm npx corepack; do
     ln -sfn "$node_dir/bin/$command" "$bin_dir/$command"
   done
+}
+
+ensure_pnpm() {
+  local pinned
+  pinned="$("$node_dir/bin/node" -e "console.log(require('$repo_root/package.json').packageManager)")"
+
+  if command -v pnpm >/dev/null 2>&1 && [[ "$(pnpm --version)" == "${pinned#pnpm@}" ]]; then
+    echo "pnpm $(pnpm --version) already matches $pinned."
+    return
+  fi
+
+  corepack enable
+  corepack prepare "$pinned" --activate
 }
 
 write_login_environment() {
@@ -122,7 +136,10 @@ EOF
 }
 
 install_node_dependencies() {
-  corepack pnpm --dir "$repo_root" install --frozen-lockfile
+  (
+    cd "$repo_root"
+    pnpm install --frozen-lockfile
+  )
 
   if [[ ! -x "$repo_root/node_modules/electron/dist/electron" ]]; then
     node "$repo_root/node_modules/electron/install.js"
@@ -142,7 +159,8 @@ run_step 'Node 22 command shims' install_node_shims
 export PATH="$HOME/.local/bin:$node_dir/bin:$PATH"
 export KNIP_DISABLE_RAW_TRANSFER=1
 
+run_step 'pnpm (packageManager pin)' ensure_pnpm
 run_step 'Login-shell environment' write_login_environment
-run_step 'pnpm dependencies' install_node_dependencies
+run_step 'Node dependencies' install_node_dependencies
 
-printf '\nFoundry orb setup complete: Node %s\n' "$(node --version)"
+printf '\nFoundry orb setup complete: Node %s, pnpm %s\n' "$(node --version)" "$(pnpm --version)"
