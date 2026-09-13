@@ -6,6 +6,19 @@ import {
 import { IPC } from '../../../src/shared/ipc-contract.js';
 
 describe('Smith capability coverage', () => {
+  it('makes only plan revisions immediate in M-04', () => {
+    expect(SMITH_CAPABILITY_COVERAGE[IPC.orchestratorMessage]?.mode).toBe('immediate');
+    for (const channel of [
+      IPC.orchestratorPlan,
+      IPC.orchestratorAccept,
+      IPC.orchestratorCancel,
+      IPC.orchestratorDiscard,
+      IPC.runsKill,
+      IPC.runsMergeWorktree,
+    ]) {
+      expect(SMITH_CAPABILITY_COVERAGE[channel]?.mode).toBe('approval');
+    }
+  });
   it('classifies every non-Smith invoke exactly once and treats events separately', () => {
     expect(uncoveredSmithInvokeChannels()).toEqual([]);
 

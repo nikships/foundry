@@ -168,12 +168,19 @@ test.describe('Runs / Orchestrator', () => {
           return { ok: true, runId: 'run-e2e-proposal-canvas' };
         });
 
+        let proposal: Record<string, unknown> | null = null;
+        ipcMain.removeHandler('orchestrator:get');
+        ipcMain.handle('orchestrator:get', (_event, id: string) =>
+          proposal?.planId === id ? proposal : null,
+        );
+        ipcMain.removeHandler('orchestrator:list');
+        ipcMain.handle('orchestrator:list', () => (proposal ? [proposal] : []));
         ipcMain.removeHandler('orchestrator:plan');
         ipcMain.handle('orchestrator:plan', (_event, projectId, prompt, model, reasoningEffort) => {
           const planId = 'plan-e2e-proposal-canvas';
           const startedAt = Date.now();
           setTimeout(() => {
-            BrowserWindow.getAllWindows()[0]?.webContents.send('event:orchestrator-progress', {
+            const state = {
               planId,
               projectId,
               status: 'done',
@@ -224,7 +231,19 @@ test.describe('Runs / Orchestrator', () => {
               endedAt: Date.now(),
               messages: [],
               revision: 1,
-            });
+            };
+            proposal = {
+              ...state,
+              status: 'ready',
+              createdAt: startedAt,
+              updatedAt: Date.now(),
+              acceptedRunId: null,
+              acceptedPlan: null,
+            };
+            BrowserWindow.getAllWindows()[0]?.webContents.send(
+              'event:orchestrator-progress',
+              state,
+            );
           }, 20);
           return { planId };
         });
@@ -336,7 +355,7 @@ test.describe('Runs / Orchestrator', () => {
     }
   });
 
-  test('expands the canvas full screen and revises the proposal through the plan chat', async ({
+  test('expands the canvas and refreshes a pinned proposal when a revision arrives', async ({
     browserName: _browserName,
   }, testInfo) => {
     const fixture = seedOnboardedFixture();
@@ -347,7 +366,7 @@ test.describe('Runs / Orchestrator', () => {
       const { window } = launched;
 
       // Replace the planner and its follow-up boundary; renderer, preload,
-      // IPC push channel, plan card, chat, and full-screen shell stay real.
+      // IPC push channel, plan card, pin, and full-screen shell stay real.
       // Mirror `orchestrator:list` so the post-submit refresh cannot wipe the
       // progress-patched card (the composer re-reads the durable list).
       await app.evaluate(({ BrowserWindow, ipcMain }) => {
@@ -417,6 +436,10 @@ test.describe('Runs / Orchestrator', () => {
             ...state,
             messages: [...state.messages],
           });
+          BrowserWindow.getAllWindows()[0]?.webContents.send('event:proposals-changed', {
+            projectId: state.projectId,
+            planId,
+          });
         };
         ipcMain.removeHandler('orchestrator:plan');
         ipcMain.handle('orchestrator:plan', (_event, projectId, prompt, model, reasoningEffort) => {
@@ -444,6 +467,8 @@ test.describe('Runs / Orchestrator', () => {
         ipcMain.handle('orchestrator:list', (_event, projectId: string) =>
           [...mirror.values()].filter((row) => row.projectId === projectId),
         );
+        ipcMain.removeHandler('orchestrator:get');
+        ipcMain.handle('orchestrator:get', (_event, id: string) => mirror.get(id) ?? null);
         ipcMain.removeHandler('orchestrator:message');
         ipcMain.handle('orchestrator:message', (_event, id, text) => {
           if (id !== planId) return 'session not found';
@@ -482,7 +507,7 @@ test.describe('Runs / Orchestrator', () => {
       });
 
       await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
-      await window.getByTestId('run-request').fill('Prove the plan chat end to end.');
+      await window.getByTestId('run-request').fill('Prove pinned plan refresh.');
       await window.getByTestId('run-plan').click();
 
       const planCard = window.getByTestId('plan-card');
@@ -502,21 +527,32 @@ test.describe('Runs / Orchestrator', () => {
       await window.keyboard.press('Escape');
       await expect(fullscreen).not.toBeVisible();
 
-      // Chat: the reply lands in the transcript and the revision replaces the
-      // proposal without leaving the card.
-      await window.getByTestId('plan-chat-input').fill('rename the verify phase to prove');
-      await window.getByTestId('plan-chat-send').click();
-      await expect(window.getByTestId('plan-chat-operator')).toContainText('rename the verify');
-      await expect(window.getByTestId('plan-chat-orchestrator')).toContainText(
-        'Renamed the verify phase',
+      // Smith owns the conversation now. Drive only the composition boundary
+      // here to verify live pin/card invalidation, not model tool selection.
+      await window.getByTestId('plan-discuss').click();
+      const pin = window.getByTestId('smith-pinned-plan');
+      await expect(pin).toContainText('revision 1');
+      await pin.getByRole('button', { name: 'Open card', exact: true }).click();
+      await window.evaluate(() =>
+        globalThis.window.foundry.orchestrator.message(
+          'plan-e2e-chat',
+          'rename the verify phase to prove',
+        ),
       );
-      await expect(window.getByTestId('plan-chat-revised')).toBeVisible();
+      await expect(pin).toContainText('revision 2');
+      const discussion = window
+        .getByTestId('smith-pinned-card')
+        .getByTestId('plan-earlier-discussion');
+      await discussion.getByText('Earlier discussion', { exact: true }).click();
+      await expect(discussion).toContainText('rename the verify');
+      await expect(discussion).toContainText('Renamed the verify phase');
+      await expect(discussion).toContainText('proposal revised');
       await expect(window.getByTestId('plan-canvas-node-prove')).toBeVisible();
       await expect(planCard).toBeVisible();
 
-      const chatProof = testInfo.outputPath('plan-chat-revised.png');
+      const chatProof = testInfo.outputPath('pinned-plan-revised.png');
       await window.screenshot({ path: chatProof, fullPage: true, animations: 'disabled' });
-      await testInfo.attach('plan chat revision', { path: chatProof, contentType: 'image/png' });
+      await testInfo.attach('pinned plan revision', { path: chatProof, contentType: 'image/png' });
     } finally {
       await app?.close();
     }

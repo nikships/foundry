@@ -11,7 +11,7 @@ The React renderer is unprivileged. It never imports Node, Electron, or main-pro
 - `stores/run.tsx` polls by `change_id` and merges by `eventId`.
 - `utils/derive.ts` derives usage, duration, and model from events.
 - `components/inspector/entries.tsx` must explicitly render each trace event.
-- Smith screen and launcher share optional project scope. Secret inputs and private Companion displays stay component-local and out of chat state.
+- Smith screen and launcher share optional project scope and a session-only plan pin per scope. Discuss re-reads the proposal and opens its project chat; Unpin and New chat clear the pin. Secret inputs and private Companion displays stay component-local and out of chat state.
 
 ## Rules
 

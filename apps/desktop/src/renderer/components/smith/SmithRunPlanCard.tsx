@@ -1,35 +1,22 @@
-import { useEffect, useState } from 'react';
-import type { ProposalSnapshot, SmithRunPlanArtifact } from '@shared/types.js';
+import { useState } from 'react';
+import type { SmithRunPlanArtifact } from '@shared/types.js';
 import { smithRunPlanArtifact } from '@shared/smith-run-plan.js';
 import { api } from '../../api.js';
+import { useProposal } from '../../hooks/useProposal.js';
+import { useSmithChatUI } from '../../stores/smith-chat-ui.js';
 import { ProposalRow } from '../run/ProposalList.js';
+import { EarlierPlanDiscussion } from './SmithRunPlanDesign.js';
 import styles from './SmithRunPlanDesign.module.css';
 
 /** Persisted cards are snapshots. Only a fresh durable row supplies actionable plans. */
 export default function SmithRunPlanCard({
   artifact,
-  onOpen,
 }: {
   artifact: SmithRunPlanArtifact;
-  onOpen?: (runId: string) => void;
 }): React.JSX.Element {
-  const [live, setLive] = useState<ProposalSnapshot | null>(null);
+  const { openReceiptLink } = useSmithChatUI();
+  const live = useProposal(artifact.planId);
   const [error, setError] = useState('');
-  useEffect(() => {
-    let active = true;
-    let request = 0;
-    const refresh = async (): Promise<void> => {
-      const current = ++request;
-      const row = await api.orchestrator.get?.(artifact.planId).catch(() => null);
-      if (active && current === request) setLive(row ?? null);
-    };
-    void refresh();
-    const off = api.on('proposals-changed', () => void refresh());
-    return () => {
-      active = false;
-      off();
-    };
-  }, [artifact.planId]);
 
   const regenerate = (): void => {
     void (async () => {
@@ -57,7 +44,9 @@ export default function SmithRunPlanCard({
           proposal={live}
           baseSyncing={false}
           focusRequested={false}
-          onOpen={(runId) => onOpen?.(runId)}
+          onOpen={(runId) =>
+            openReceiptLink({ kind: 'run', label: 'Open run', projectId: live.projectId, runId })
+          }
           onRetry={regenerate}
         />
       ) : (
@@ -72,6 +61,7 @@ export default function SmithRunPlanCard({
             ))}
           </ol>
           <p className={styles.rationale}>{shown.rationale}</p>
+          {live && <EarlierPlanDiscussion messages={live.messages} />}
           {shown.warnings.length > 0 && (
             <ul>
               {shown.warnings.map((warning, index) => (

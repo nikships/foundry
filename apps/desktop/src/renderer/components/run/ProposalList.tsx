@@ -16,7 +16,7 @@ import { useApp } from '../../stores/app.js';
 import { withPhaseModel, withPhaseReasoningEffort } from '../../view-models/plan-view.js';
 import PanelTranscript from '../readiness/PanelTranscript.js';
 import { Button } from '../ui/Button.js';
-import SmithRunPlanDesign from '../smith/SmithRunPlanDesign.js';
+import SmithRunPlanDesign, { EarlierPlanDiscussion } from '../smith/SmithRunPlanDesign.js';
 import styles from './ProposalList.module.css';
 
 function effectivePlanOf(
@@ -51,7 +51,6 @@ export function ProposalRow({
   const { project, refreshAll } = useApp();
   const [starting, setStarting] = useState(false);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
-  const [chatError, setChatError] = useState('');
   const [modelOverrides, setModelOverrides] = useState<Record<string, string>>({});
   const [reasoningOverrides, setReasoningOverrides] = useState<Record<string, ReasoningEffort>>({});
   const rowRef = useRef<HTMLElement | null>(null);
@@ -75,7 +74,6 @@ export function ProposalRow({
     [proposal, modelOverrides, reasoningOverrides],
   );
   const generating = proposal.status === 'generating' && !proposal.plan;
-  const replying = proposal.status === 'generating' && proposal.plan !== null;
 
   const readCurrent = async (): Promise<ProposalSnapshot> => {
     const row = await api.orchestrator.get?.(proposal.planId);
@@ -121,17 +119,6 @@ export function ProposalRow({
     }
   };
 
-  const sendMessage = (text: string): void => {
-    if (!text.trim()) return;
-    setChatError('');
-    void readCurrent()
-      .then((row) => api.orchestrator.message(row.planId, text))
-      .then((refused) => {
-        if (refused) setChatError(refused);
-      })
-      .catch((error: Error) => setChatError(error.message || 'Could not send the message.'));
-  };
-
   if (proposal.status === 'cancelled') {
     return (
       <section
@@ -141,6 +128,7 @@ export function ProposalRow({
         data-proposal-status="cancelled"
       >
         <p className={styles.muted}>Proposal discarded during planning — no run was created.</p>
+        <EarlierPlanDiscussion messages={proposal.messages} />
         <Button size="sm" variant="ghost" onClick={discard} data-testid="proposal-dismiss">
           Dismiss
         </Button>
@@ -171,6 +159,7 @@ export function ProposalRow({
           </Button>
         </div>
         <PanelTranscript entries={proposal.entries} live={false} />
+        <EarlierPlanDiscussion messages={proposal.messages} />
       </section>
     );
   }
@@ -238,9 +227,6 @@ export function ProposalRow({
         }
         issues={issues}
         messages={proposal.messages}
-        replying={replying}
-        chatError={chatError}
-        onSendMessage={sendMessage}
         onPhaseModelChange={(phaseName, model) =>
           act((row) => {
             if (row.status === 'ready' && row.revision === proposal.revision)

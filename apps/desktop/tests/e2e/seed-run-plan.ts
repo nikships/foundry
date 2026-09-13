@@ -10,6 +10,16 @@ import { seedOnboardedFixture, type SeededFixture } from './seed.js';
 export function seedRunPlanFixture(userDataDir?: string, snapshotOnly = false): SeededFixture {
   const fixture = seedOnboardedFixture(userDataDir, 'none');
   const row = runPlanFixture(fixture.projectId);
+  row.messages = [
+    { id: 'old-operator', role: 'operator', text: 'Keep the shortcuts.', at: 1 },
+    {
+      id: 'old-smith',
+      role: 'orchestrator',
+      text: 'The shortcuts are preserved.',
+      at: 2,
+      revisedPlan: true,
+    },
+  ];
   const db = openDb(projectDbPath(fixture.supportDir, fixture.projectPath));
   try {
     const tracer = new Tracer(db, projectRunsDir(fixture.supportDir, fixture.projectPath));
@@ -20,6 +30,7 @@ export function seedRunPlanFixture(userDataDir?: string, snapshotOnly = false): 
         planJson: JSON.stringify(row.plan),
         revision: row.revision,
         updatedAt: row.updatedAt,
+        messagesJson: JSON.stringify(row.messages),
       });
     }
     db.pragma('wal_checkpoint(TRUNCATE)');

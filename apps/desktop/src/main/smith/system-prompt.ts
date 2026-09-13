@@ -259,5 +259,12 @@ export function screenContextBlock(ctx: SmithScreenContext): string {
     `The operator is currently viewing: ${ctx.route}${entity}.`,
     'When the message says "this run", "this pipeline", or similar without a',
     'name, it refers to what this screen shows.',
+    ...(ctx.plan
+      ? [
+          `A plan is pinned: ${JSON.stringify(ctx.plan.planId)} (revision ${ctx.plan.revision}).`,
+          "'This plan', 'the proposal', or an unnamed revision request refers to it.",
+          'Use smith_runs orchestrator_message for changes (immediate) and orchestrator_get for the current state. If the planning session expired, explain the refusal; do not claim a revision succeeded.',
+        ]
+      : []),
   ].join('\n');
 }

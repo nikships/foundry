@@ -52,7 +52,7 @@ function ArtifactBody({
 }): React.JSX.Element {
   switch (artifact.kind) {
     case 'run_plan':
-      return <SmithRunPlanCard artifact={artifact} onOpen={onOpenInspector} />;
+      return <SmithRunPlanCard artifact={artifact} />;
     case 'pipeline_design':
       return <PipelineDesign pipeline={artifact.pipeline} compact={compact} />;
     case 'agent_design':

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { GeneratedRunPlan, ReasoningEffort, ValidationIssue } from '@shared/types.js';
 import type { PlanChatMessage } from '@shared/ipc-contract.js';
 import { useApp } from '../../stores/app.js';
+import { useSmithChatUI } from '../../stores/smith-chat-ui.js';
 import { overriddenPhases, planCardView } from '../../view-models/plan-view.js';
 import {
   isMissingProjectCommandWarning,
@@ -11,9 +12,28 @@ import ProjectCommandsModal from '../project/ProjectCommandsModal.js';
 import { Button } from '../ui/Button.js';
 import { ModalShell } from '../ui/ModalShell.js';
 import PlanCanvas from '../run/PlanCanvas.js';
-import PlanChat from '../run/PlanChat.js';
 import PlanPhaseSheet from '../run/PlanPhaseSheet.js';
 import styles from './SmithRunPlanDesign.module.css';
+
+export function EarlierPlanDiscussion({
+  messages,
+}: {
+  messages: PlanChatMessage[];
+}): React.JSX.Element | null {
+  if (messages.length === 0) return null;
+  return (
+    <details className={styles.section} data-testid="plan-earlier-discussion">
+      <summary>Earlier discussion</summary>
+      {messages.map((message) => (
+        <p key={message.id} className={styles.brief}>
+          <strong>{message.role === 'operator' ? 'You' : 'Smith'}: </strong>
+          {message.text}
+          {message.revisedPlan && <em> · proposal revised</em>}
+        </p>
+      ))}
+    </details>
+  );
+}
 
 /**
  * Smith's proposal, laid out for confirmation: the refined brief,
@@ -30,9 +50,6 @@ export default function SmithRunPlanDesign({
   startBlocked,
   issues,
   messages,
-  replying,
-  chatError,
-  onSendMessage,
   onPhaseModelChange,
   onPhaseReasoningEffortChange,
   onResetPhaseOverrides,
@@ -54,11 +71,6 @@ export default function SmithRunPlanDesign({
   issues: ValidationIssue[];
   /** The back-and-forth about this proposal, in order. */
   messages: PlanChatMessage[];
-  /** True while Smith is considering a follow-up message. */
-  replying: boolean;
-  /** Why the last message was refused, or empty. */
-  chatError: string;
-  onSendMessage: (text: string) => void;
   onPhaseModelChange: (phaseName: string, model: string) => void;
   onPhaseReasoningEffortChange: (phaseName: string, effort: ReasoningEffort) => void;
   onResetPhaseOverrides: () => void;
@@ -70,12 +82,14 @@ export default function SmithRunPlanDesign({
   /** Read-only lifecycle summary for that source. */
   sourceDetail?: string;
 }): React.JSX.Element {
-  const { agentColor, project, refreshAll } = useApp();
+  const { agentColor, projects, refreshAll } = useApp();
+  const { discussPlan } = useSmithChatUI();
+  const [discussError, setDiscussError] = useState('');
   const [configuringCommands, setConfiguringCommands] = useState(false);
   const [inspecting, setInspecting] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
-  const planProject = project?.id === plan.projectId ? project : null;
+  const planProject = projects.find((project) => project.id === plan.projectId) ?? null;
   const missingCommandRefs = useMemo(
     () => (planProject ? missingProjectCommandRefs(plan.pipeline, planProject.commands) : []),
     [plan.pipeline, planProject],
@@ -171,16 +185,7 @@ export default function SmithRunPlanDesign({
         </p>
       </div>
 
-      <div className={styles.section}>
-        <p className={styles.label}>Discuss this plan</p>
-        <PlanChat
-          messages={messages}
-          replying={replying}
-          error={chatError}
-          disabled={starting}
-          onSend={onSendMessage}
-        />
-      </div>
+      <EarlierPlanDiscussion messages={messages} />
 
       {view.agents.length > 0 && (
         <div className={styles.section}>
@@ -257,6 +262,18 @@ export default function SmithRunPlanDesign({
 
       <div className={styles.actions}>
         <Button
+          disabled={starting}
+          onClick={() => {
+            setDiscussError('');
+            void discussPlan(planId ?? plan.planId).catch((error: Error) =>
+              setDiscussError(error.message),
+            );
+          }}
+          data-testid="plan-discuss"
+        >
+          Discuss in Smith →
+        </Button>
+        <Button
           variant="primary"
           disabled={starting || Boolean(startBlocked)}
           title={startBlocked ?? undefined}
@@ -272,6 +289,7 @@ export default function SmithRunPlanDesign({
           Discard
         </Button>
         {sourceDetail && <span className={styles.sourceDetail}>{sourceDetail}</span>}
+        {discussError && <span role="alert">{discussError}</span>}
         {startBlocked && <span className={`faint ${styles.blocked}`}>{startBlocked}</span>}
       </div>
 

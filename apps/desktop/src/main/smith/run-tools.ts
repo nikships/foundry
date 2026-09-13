@@ -1,6 +1,12 @@
 import { IPC } from '@shared/ipc-contract.js';
 import { splitLinearAssignedIntent } from '@shared/linear.js';
-import type { AppSettings, ReasoningEffort, SmithActionRisk } from '@shared/types.js';
+import { smithRunPlanArtifact } from '@shared/smith-run-plan.js';
+import type {
+  AppSettings,
+  ProposalSnapshot,
+  ReasoningEffort,
+  SmithActionRisk,
+} from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
 import { defaultSettings } from '../store/settings.js';
 import { resolveSmithModel } from './compose/model.js';
@@ -121,10 +127,8 @@ const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
   // A restore resets the run branch and overwrites the worktree. The commits
   // stay in the reflog, but nothing about that is a plain write.
   restore_checkpoint: 'git',
-  // Planning and follow-ups spend an agent turn on the operator's model;
-  // that is a privileged action even though the plan itself writes nothing.
+  // Initial composition stays gated until M-05; read-only revisions are immediate.
   orchestrator_plan: 'write',
-  orchestrator_message: 'write',
   orchestrator_cancel: 'write',
   // Accept creates the run exactly once via proposals.accept, never via
   // runs:start directly, so concurrent accepts share one run.
@@ -151,7 +155,7 @@ export function smithRunsTool(deps: RunToolDeps): ToolDefinition {
       'Approval: merge(runId) merges the run worktree into the local base; fix_merge(runId) repairs that merge. For GitHub PRs use smith_prs. open_worktree(runId), reveal_files(runId).',
       'Approval: export_plan(runId,pipeline?,agents?) needs pipeline:true or at least one agent name. restore_checkpoint(runId,checkpointId,acceptPartial?) resets the run worktree; inspect checkpoints first and explain any partial restore.',
       'New run (default): orchestrator_plan(prompt,model?,reasoningEffort?) requires approval and returns a planId while planning continues. Return that handle promptly; do not poll in a tight loop.',
-      'Read plans: orchestrator_list(), orchestrator_get(planId). Approval: orchestrator_message(planId,text), orchestrator_cancel(planId), orchestrator_discard(planId), orchestrator_accept(planId,plan?). Accept starts the run exactly once; plan is an optional full revised plan, not a patch.',
+      'Read plans: orchestrator_list(), orchestrator_get(planId). Revise immediately: orchestrator_message(planId,text), returning a bounded plan summary while the revision runs. Approval: orchestrator_cancel(planId), orchestrator_discard(planId), orchestrator_accept(planId,plan?). Accept starts the run exactly once; plan is an optional full revised plan, not a patch.',
       'Manual pipelines only: start(pipelineId,request) or linear_start(pipelineId,issueId), both with approval.',
       'Read Linear: linear_issues(query?,assigned?), linear_issue(issueId), linear_workflow_states(teamId). For my tickets use assigned:true; query filters key/title. Use issue detail and workflow state.type to report status.',
     ].join('\n'),
@@ -456,7 +460,7 @@ const ORCHESTRATOR_PLAN_ID_SUMMARIES: Record<OrchestratorPlanIdAction, (planId: 
   };
 
 function orchestratorPlanIdAction(
-  deps: SmithActionToolDeps,
+  deps: RunToolDeps,
   op: OrchestratorPlanIdAction,
   params: unknown,
 ): ReturnType<typeof immediate> {
@@ -464,6 +468,9 @@ function orchestratorPlanIdAction(
   if (!gated.ok) return Promise.resolve(json({ ok: false, error: gated.error }));
   const label = op.replaceAll('_', ' ');
   const planId = stringField(params, 'planId') ?? '';
+  if (op === 'orchestrator_message') {
+    return revisePlan(deps, planId, stringField(params, 'text')!);
+  }
   return proposeAction(deps, {
     operation: op,
     title: `${label} proposal`,
@@ -472,6 +479,32 @@ function orchestratorPlanIdAction(
     risk: RISKS[op] ?? 'write',
     execute: () => deps.invoke(ACTION_CHANNELS[op], ...gated.args),
   });
+}
+
+async function revisePlan(
+  deps: RunToolDeps,
+  planId: string,
+  text: string,
+): ReturnType<typeof immediate> {
+  try {
+    const row = await deps.invoke<ProposalSnapshot | null>(IPC.orchestratorGet, planId);
+    if (!row) return json({ ok: false, error: 'Proposal unavailable.' });
+    if (row.status !== 'ready')
+      return json({ ok: false, error: `Cannot revise a ${row.status} proposal.` });
+    const refused = await deps.invoke<string | null>(IPC.orchestratorMessage, planId, text);
+    if (refused) return json({ ok: false, error: refused });
+    deps.onComposed?.(planId, deps.projectId());
+    const current = await deps.invoke<ProposalSnapshot | null>(IPC.orchestratorGet, planId);
+    return json({
+      ok: true,
+      result: current
+        ? { ...smithRunPlanArtifact(current), detail: current.detail.slice(0, 1000) }
+        : null,
+      note: 'Revision requested. The card arrives in this chat when ready; do not poll in a tight loop.',
+    });
+  } catch (error) {
+    return json({ ok: false, error: errorMessage(error) });
+  }
 }
 
 function orchestratorPlanAction(

@@ -256,6 +256,7 @@ describe('orchestrator plan id plumbing', () => {
 describe('smith confirmations and receipts', () => {
   it('explains the cost and exactly-once rule before a plan runs', () => {
     expect(smithConfirmationHint('orchestrator_plan')).toMatch(/agent turn/i);
+    expect(smithConfirmationHint('orchestrator_message')).toMatch(/immediately/i);
     expect(smithConfirmationHint('orchestrator_accept')).toMatch(/exactly once/i);
     expect(smithConfirmationHint('orchestrator_discard')).toMatch(/destructive/i);
     expect(smithConfirmationHint('orchestrator_cancel')).toMatch(/remains/i);

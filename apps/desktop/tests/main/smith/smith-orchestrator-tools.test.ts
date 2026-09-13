@@ -11,12 +11,13 @@ import { SMITH_RUN_OPERATIONS, smithRunsTool } from '../../../src/main/smith/run
 import { ProposalQueue } from '../../../src/main/smith/proposals.js';
 import type { MainInvoker } from '../../../src/main/ipc/shared.js';
 import { defaultSettings } from '../../../src/main/store/settings.js';
+import { runPlanFixture } from '../../helpers/run-plan.js';
 
 const json = (r: unknown) =>
   JSON.parse((r as { content: Array<{ text: string }> }).content[0]!.text);
 
 function setup(projectId: string | null = 'session') {
-  const invoke = vi.fn(async (channel: string) => {
+  const invoke = vi.fn(async (channel: string): Promise<unknown> => {
     if (channel === IPC.settingsGet) {
       return {
         ...defaultSettings(),
@@ -196,13 +197,6 @@ describe('Smith orchestrator operations', () => {
   });
 
   it.each([
-    [
-      'orchestrator_message',
-      { planId: 'plan_1', text: 'Prefer X' },
-      IPC.orchestratorMessage,
-      ['plan_1', 'Prefer X'],
-      'write',
-    ],
     ['orchestrator_cancel', { planId: 'plan_1' }, IPC.orchestratorCancel, ['plan_1'], 'write'],
     ['orchestrator_accept', { planId: 'plan_1' }, IPC.orchestratorAccept, ['plan_1'], 'write'],
     [
@@ -246,10 +240,68 @@ describe('Smith orchestrator operations', () => {
     });
   });
 
-  it('lets plan-keyed actions run from All-projects scope', async () => {
+  it('revises immediately from All-projects scope and returns only bounded plan data', async () => {
     const h = setup(null);
-    await approve(h, { operation: 'orchestrator_message', planId: 'plan_1', text: 'Prefer X' });
+    const row = runPlanFixture();
+    row.plan!.refinedRequest = 'A'.repeat(3000);
+    h.invoke.mockImplementation(async (channel: string) =>
+      channel === IPC.orchestratorGet ? row : null,
+    );
+    const result = json(
+      await h.execute({ operation: 'orchestrator_message', planId: 'plan_1', text: 'Prefer X' }),
+    );
     expect(h.invoke).toHaveBeenCalledWith(IPC.orchestratorMessage, 'plan_1', 'Prefer X');
+    expect(h.queue.list()).toHaveLength(0);
+    expect(result).toMatchObject({
+      ok: true,
+      result: { planId: row.planId, revision: 1, status: 'ready' },
+    });
+    expect(result.result.refinedRequest).toHaveLength(2000);
+    expect(result.result).not.toHaveProperty('plan');
+    expect(result.result).not.toHaveProperty('rawReply');
+    expect(result.result).not.toHaveProperty('entries');
+    expect(JSON.stringify(result)).not.toContain('private raw reply');
+  });
+
+  it.each(['generating', 'accepted', 'discarded', 'cancelled', 'failed', 'missing'] as const)(
+    'refuses revision of %s rows without a model turn or approval',
+    async (status) => {
+      const h = setup();
+      const row = status === 'missing' ? null : { ...runPlanFixture(), status };
+      h.invoke.mockImplementation(async () => row);
+      expect(
+        json(
+          await h.execute({
+            operation: 'orchestrator_message',
+            planId: 'p',
+            text: 'split the build',
+          }),
+        ).ok,
+      ).toBe(false);
+      expect(h.invoke).not.toHaveBeenCalledWith(
+        IPC.orchestratorMessage,
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(h.queue.list()).toHaveLength(0);
+    },
+  );
+
+  it('reports an expired live session rather than claiming a durable row was revised', async () => {
+    const h = setup();
+    h.invoke.mockImplementation(async (channel: string) =>
+      channel === IPC.orchestratorGet ? runPlanFixture() : 'session not found',
+    );
+    expect(
+      json(
+        await h.execute({
+          operation: 'orchestrator_message',
+          planId: 'p',
+          text: 'split the build',
+        }),
+      ),
+    ).toEqual({ ok: false, error: 'session not found' });
+    expect(h.queue.list()).toHaveLength(0);
   });
 
   it('never starts a run directly for a proposal', async () => {

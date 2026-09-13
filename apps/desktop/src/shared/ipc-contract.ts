@@ -243,7 +243,7 @@ export interface OrchestratorState extends PanelStateCore {
   plan: GeneratedRunPlan | null;
   /** The last reply verbatim, so an unusable answer stays diagnosable. */
   rawReply: string;
-  /** The operator's back-and-forth about the accepted plan, in order. */
+  /** History-only discussion, including revision notes; rendered read-only in plan cards. */
   messages: PlanChatMessage[];
   /** Bumps every time an accepted plan lands, so overrides can reset. */
   revision: number;
@@ -271,6 +271,7 @@ export interface SetupState extends PanelStateCore {
  */
 export interface SmithScreenContext {
   route: string;
+  plan?: { planId: string; revision: number };
   entity?: {
     kind: 'run' | 'pipeline' | 'agent' | 'envelope' | 'project' | 'settings';
     id: string;

@@ -189,6 +189,15 @@ describe('scopeContextBlock', () => {
 });
 
 describe('screenContextBlock', () => {
+  it('resolves unnamed revisions to the pinned plan and names only the interim tool', () => {
+    const block = screenContextBlock({ route: 'runs', plan: { planId: 'plan-72', revision: 4 } });
+    expect(block).toContain('A plan is pinned: "plan-72" (revision 4)');
+    expect(block).toContain("'This plan', 'the proposal', or an unnamed revision request");
+    expect(block).toContain('smith_runs orchestrator_message for changes (immediate)');
+    expect(block).toContain('orchestrator_get for the current state');
+    expect(block).not.toContain('smith_compose');
+    expect(screenContextBlock({ route: 'runs' })).not.toContain('A plan is pinned');
+  });
   it('names the route and the entity the operator is looking at', () => {
     const block = screenContextBlock({ route: 'runs', entity: { kind: 'run', id: 'run_42' } });
     expect(block).toContain('## Operator screen context');

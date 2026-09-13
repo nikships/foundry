@@ -28,6 +28,7 @@ import SmithPermissionControl from './SmithPermissionControl.js';
 import SmithTranscript from './SmithTranscript.js';
 import SmithModeBar from './SmithModeBar.js';
 import SmithVoicePanel from './SmithVoicePanel.js';
+import SmithPinnedPlan from './SmithPinnedPlan.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import { SmithEmblem } from '../layout/SidebarEmblems.js';
@@ -84,7 +85,7 @@ export default function SmithBubble({
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
-  const { mode, state: voiceState, draft, setDraft } = useSmithChatUI();
+  const { mode, state: voiceState, draft, setDraft, withPinnedPlan, unpinPlan } = useSmithChatUI();
   const voiceConnected = voiceState.status === 'live' || voiceState.status === 'connecting';
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
@@ -146,7 +147,7 @@ export default function SmithBubble({
     const text = draft.trim();
     if (!text || running) return;
     setDraft('');
-    void send(text, screenContext);
+    void send(text, withPinnedPlan(screenContext));
     inputRef.current?.focus();
   };
 
@@ -176,7 +177,11 @@ export default function SmithBubble({
             <SmithScopePicker running={running} />
             <span className={styles.headSpacer} />
             <HeadAction
-              onClick={() => void newChat()}
+              onClick={() => {
+                unpinPlan();
+                setDraft('');
+                void newChat();
+              }}
               title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
               label="New chat"
               testId="smith-bubble-new-chat"
@@ -232,6 +237,7 @@ export default function SmithBubble({
               />
             }
           />
+          <SmithPinnedPlan key={scopeId ?? 'global'} />
           {mode === 'voice' ? (
             <SmithVoicePanel />
           ) : (

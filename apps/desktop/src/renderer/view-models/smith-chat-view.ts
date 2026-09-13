@@ -238,7 +238,7 @@ export function hasOrchestratorPlanId(text: string): boolean {
 /**
  * Confirmation note for a privileged user-level operation, shown next to the
  * chip so the operator knows what approving will do. Mirrors main's risk
- * classes: plans and messages spend an agent turn, accept creates the run
+ * classes: plans spend an agent turn, revisions are immediate, accept creates the run
  * exactly once, discard is destructive, and key values arrive only via the
  * masked approval card.
  */
@@ -246,7 +246,7 @@ export function smithConfirmationHint(operation: string): string {
   if (operation === 'orchestrator_plan')
     return 'Planning spends an agent turn. Confirm the prompt text before Smith proposes.';
   if (operation === 'orchestrator_message')
-    return 'Follow-ups spend an agent turn. The revised plan arrives as progress.';
+    return 'Read-only revisions run immediately. The revised plan arrives in Smith.';
   if (operation === 'orchestrator_accept')
     return 'Accept creates the run exactly once — a repeat accept returns the same run.';
   if (operation === 'orchestrator_discard')

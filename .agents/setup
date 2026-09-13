@@ -25,6 +25,8 @@ install_system_packages() {
     python3:python3
     tar:tar
     xz:xz-utils
+    Xvfb:xvfb
+    xauth:xauth
   )
   local requirement command package
   local missing=()
@@ -120,7 +122,7 @@ EOF
 }
 
 install_node_dependencies() {
-  npm ci --no-audit --no-fund --prefix "$repo_root"
+  corepack pnpm --dir "$repo_root" install --frozen-lockfile
 
   if [[ ! -x "$repo_root/node_modules/electron/dist/electron" ]]; then
     node "$repo_root/node_modules/electron/install.js"
@@ -141,6 +143,6 @@ export PATH="$HOME/.local/bin:$node_dir/bin:$PATH"
 export KNIP_DISABLE_RAW_TRANSFER=1
 
 run_step 'Login-shell environment' write_login_environment
-run_step 'npm dependencies' install_node_dependencies
+run_step 'pnpm dependencies' install_node_dependencies
 
 printf '\nFoundry orb setup complete: Node %s\n' "$(node --version)"

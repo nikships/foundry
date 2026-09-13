@@ -836,9 +836,6 @@ export default function LinearComposer({
           startBlocked={baseSyncing ? `Updating ${baseRef} first` : null}
           issues={planStartIssues}
           messages={orchestrator.messages}
-          replying={orchestrator.replying}
-          chatError={orchestrator.chatError}
-          onSendMessage={(text) => void orchestrator.sendMessage(text)}
           sourceBadge={`Linear · ${issue.identifier}`}
           sourceDetail={lifecycle}
           onPhaseModelChange={orchestrator.setPhaseModel}

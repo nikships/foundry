@@ -39,9 +39,6 @@ export interface OrchestratorPlanController {
   images: PlanImageAttachment[];
   /** The back-and-forth about the accepted plan, in order. */
   messages: PlanChatMessage[];
-  /** True while the Orchestrator is considering a follow-up message. */
-  replying: boolean;
-  chatError: string;
   /** Every durable proposal for the project, newest first. */
   proposals: ProposalSnapshot[];
   proposalsLoading: boolean;
@@ -54,9 +51,6 @@ export interface OrchestratorPlanController {
   removeImage(index: number): void;
   /** Opens one independent proposal; resolves with its planId (null when refused). */
   submit(prompt: string): Promise<string | null>;
-  /** One follow-up message about the accepted plan. */
-  sendMessage(text: string): Promise<void>;
-  sendMessageTo(planId: string, text: string): Promise<void>;
   cancel(): void;
   discard(): void;
   cancelPlan(planId: string): void;
@@ -114,7 +108,6 @@ export function useOrchestratorPlan(
   } = useProposals(projectId);
   const [requestingPlan, setRequestingPlan] = useState(false);
   const [planError, setPlanError] = useState('');
-  const [chatError, setChatError] = useState('');
   const [images, setImages] = useState<PlanImageAttachment[]>([]);
   const [modelOverrides, setModelOverrides] = useState<Record<string, string>>({});
   const [reasoningOverrides, setReasoningOverrides] = useState<Record<string, ReasoningEffort>>({});
@@ -132,7 +125,6 @@ export function useOrchestratorPlan(
   useEffect(() => {
     setSelectedPlanId(null);
     setPlanError('');
-    setChatError('');
     setModelOverrides({});
     setReasoningOverrides({});
     seenRevisionRef.current = 0;
@@ -174,7 +166,6 @@ export function useOrchestratorPlan(
       ? 'planning'
       : 'compose';
   const planningLive = requestingPlan || planning?.status === 'running';
-  const replying = planning?.status === 'running' && planning.plan !== null;
 
   const addImages = useCallback((next: readonly PlanImageAttachment[]): void => {
     if (next.length === 0) return;
@@ -220,24 +211,6 @@ export function useOrchestratorPlan(
     [images, projectId, refresh],
   );
 
-  const sendMessageTo = useCallback(async (planId: string, text: string): Promise<void> => {
-    if (!planId || !text.trim()) return;
-    setChatError('');
-    try {
-      const refused = await api.orchestrator.message(planId, text);
-      if (refused) setChatError(refused);
-    } catch (error) {
-      setChatError((error as Error).message || 'Could not send the message.');
-    }
-  }, []);
-
-  const sendMessage = useCallback(
-    async (text: string): Promise<void> => {
-      if (selected) await sendMessageTo(selected.planId, text);
-    },
-    [selected, sendMessageTo],
-  );
-
   const cancelPlan = useCallback(
     (planId: string): void => {
       if (!planId) return;
@@ -269,14 +242,12 @@ export function useOrchestratorPlan(
     else {
       setRequestingPlan(false);
       setPlanError('');
-      setChatError('');
     }
     setImages([]);
   }, [selected, discardPlan]);
 
   const selectPlan = useCallback((planId: string | null): void => {
     setSelectedPlanId(planId);
-    setChatError('');
   }, []);
 
   return {
@@ -289,8 +260,6 @@ export function useOrchestratorPlan(
     original,
     images,
     messages: planning?.messages ?? [],
-    replying,
-    chatError,
     proposals,
     proposalsLoading,
     proposalsError,
@@ -300,8 +269,6 @@ export function useOrchestratorPlan(
     addImages,
     removeImage,
     submit,
-    sendMessage,
-    sendMessageTo,
     cancel,
     discard,
     cancelPlan,

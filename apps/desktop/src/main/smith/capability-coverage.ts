@@ -157,8 +157,8 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   // Planning spends an agent turn on the operator's model; that is a
   // privileged action even though the plan itself writes nothing.
   [IPC.orchestratorPlan]: approve('smith_runs', 'orchestrator_plan'),
-  // A follow-up spends another agent turn, exactly like the plan itself.
-  [IPC.orchestratorMessage]: approve('smith_runs', 'orchestrator_message'),
+  // A requested revision is read-only; accept/cancel/discard keep approvals.
+  [IPC.orchestratorMessage]: read('smith_runs', 'orchestrator_message'),
   [IPC.orchestratorCancel]: approve('smith_runs', 'orchestrator_cancel'),
   [IPC.orchestratorList]: read('smith_runs', 'orchestrator_list'),
   [IPC.orchestratorGet]: read('smith_runs', 'orchestrator_get'),

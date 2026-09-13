@@ -1,5 +1,18 @@
-import type { ProjectDef } from '@shared/types.js';
+import type { SmithScreenContext } from '@shared/ipc-contract.js';
+import type { ProjectDef, ProposalSnapshot } from '@shared/types.js';
 import type { SmithCapabilityId } from './smith-chat-view.js';
+
+/** Pins are per scope and live-row backed; a removed row must not remain turn context. */
+export function pinnedSmithContext(
+  screen: SmithScreenContext,
+  row: ProposalSnapshot | null,
+  projectId: string | null,
+): SmithScreenContext {
+  const { plan: _plan, ...base } = screen;
+  return row && row.projectId === projectId
+    ? { ...base, plan: { planId: row.planId, revision: row.revision } }
+    : base;
+}
 
 /** Resolve Smith's persisted/global scope after the project registry changes. */
 export function resolveSmithProjectId(

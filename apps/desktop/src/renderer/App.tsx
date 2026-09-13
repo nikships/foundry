@@ -55,7 +55,8 @@ function ScreenFallback(): React.JSX.Element {
 }
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, refreshAll, selectProject, projects, projectId } = useApp();
+  const { ready, settings, refreshAll, selectProject, selectSmithProject, projects, projectId } =
+    useApp();
   useAgentSounds(Boolean(settings?.soundEffects), projects);
   const [view, setView] = useState<View>('runs');
   const [runRequest, setRunRequest] = useState('');
@@ -221,6 +222,17 @@ function AppInner(): React.JSX.Element {
     if (view !== 'smith') setSmithContext(liveScreenContext);
     go('smith');
   }, [view, liveScreenContext, go]);
+
+  const onDiscussPlan = async (planId: string) => {
+    const row = await api.orchestrator.get?.(planId);
+    if (!row || !projects.some((project) => project.id === row.projectId)) {
+      throw new Error('This proposal or its project is no longer available.');
+    }
+    selectSmithProject(row.projectId);
+    setSmithContext({ route: 'runs' });
+    go('smith');
+    return row;
+  };
 
   const navigateView = useCallback(
     (next: View): void => {
@@ -401,8 +413,10 @@ function AppInner(): React.JSX.Element {
   return (
     <SmithChatUIProvider
       enabled={ready && !needsOnboarding}
-      screenContext={liveScreenContext}
+      screenContext={view === 'smith' ? smithContext : liveScreenContext}
       openSettings={() => openSettingsPane('integrations')}
+      openReceiptLink={openReceiptLink}
+      onDiscussPlan={onDiscussPlan}
     >
       <div className={styles.shell}>
         <div className={styles.titlebar}>
