@@ -60,8 +60,8 @@ import {
   resolveAgentExecution,
 } from '@shared/types.js';
 import type { SetupExecution } from './agent-context.js';
-import type { AllowedModelAppointment, Replanner } from '../orchestrator/replan.js';
-import { generatedCompositionIssues, phaseModelIssues } from '../orchestrator/plan.js';
+import type { AllowedModelAppointment, Replanner } from '../smith/compose/replan.js';
+import { generatedCompositionIssues, phaseModelIssues } from '../smith/compose/plan.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateAgent } from '../store/roster.js';
 import { preflightForRun } from './preflight.js';

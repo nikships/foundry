@@ -6,6 +6,7 @@ import type {
 } from '@shared/types.js';
 import { IPC, type OrchestratorAcceptResult } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
+import { resolveSmithModel } from '../smith/compose/model.js';
 import { enabledModelIds, enabledModels } from '../pi/enabled-models.js';
 import { warmStartPrep } from '../engine/operations.js';
 import { ghStatus } from '../system/gh.js';
@@ -44,7 +45,11 @@ export function register(ctx: Ctx, handle: Handle): void {
       // siblings. The composer stays usable for the next prompt immediately.
       const started = ctx.proposals.start(
         ctx.projects.get(projectId),
-        { prompt, model, reasoningEffort, images },
+        {
+          prompt,
+          ...resolveSmithModel(ctx.settings.get(), 'compose', { model, reasoningEffort }),
+          images,
+        },
         {
           rosterFor: (id) => ctx.rosterFor(id),
           envelopeDefs: ctx.envelopes.list(),

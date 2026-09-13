@@ -23,13 +23,13 @@ import type {
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
 import { modelLabel } from '@shared/model-label.js';
-import type { OneShotFactory, OneShotResult } from '../pi/oneshot.js';
+import type { OneShotFactory, OneShotResult } from '../../pi/oneshot.js';
 import {
   PanelSession,
   createPanelRegistry,
   shortId,
   type PanelRegistry,
-} from '../session/index.js';
+} from '../../session/index.js';
 import {
   SMITH_COMPOSE_PROMPT,
   buildPlanPrompt,
@@ -49,7 +49,7 @@ import {
 
 export type { OrchestratorState };
 
-export interface PlanSessionDeps {
+export interface ComposeSessionDeps {
   projectId: string;
   projectPath: string;
   prompt: string;
@@ -78,9 +78,9 @@ export interface PlanSessionDeps {
   onChange: (state: OrchestratorState) => void;
 }
 
-export type PlanStart = Omit<PlanSessionDeps, 'onChange' | 'oneShot'>;
+export type ComposeStart = Omit<ComposeSessionDeps, 'onChange' | 'oneShot'>;
 
-export class PlanSession {
+export class ComposeSession {
   // Kebab rather than the usual underscore id: the generated pipeline is
   // `generated-<planId>` and must pass the store's kebab-case id rail.
   readonly planId = `plan-${shortId()}`;
@@ -92,7 +92,7 @@ export class PlanSession {
   /** Serializes follow-ups: one refine turn at a time. */
   private refining = false;
 
-  constructor(private readonly deps: PlanSessionDeps) {
+  constructor(private readonly deps: ComposeSessionDeps) {
     this.panel = new PanelSession<OrchestratorState>(
       {
         planId: this.planId,
@@ -460,12 +460,12 @@ function correctionPrompt(basePrompt: string, previous: string, issues: Validati
   ].join('\n');
 }
 
-export function createPlans(
+export function createComposeSessions(
   oneShot: OneShotFactory,
   onProgress: (state: OrchestratorState) => void,
-): PanelRegistry<PlanStart, OrchestratorState> {
+): PanelRegistry<ComposeStart, OrchestratorState> {
   return createPanelRegistry({
-    create: (deps, onChange) => new PlanSession({ ...deps, oneShot, onChange }),
+    create: (deps, onChange) => new ComposeSession({ ...deps, oneShot, onChange }),
     idOf: (session) => session.planId,
     snapshot: (session) => session.snapshot(),
     isLive: (state) => state.status === 'running',

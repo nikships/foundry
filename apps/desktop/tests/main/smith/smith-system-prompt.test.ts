@@ -9,8 +9,8 @@ import {
   compositionRuleBullets,
   isPhaseKind,
   PHASE_KINDS,
-} from '../../../src/main/orchestrator/composition-rules.js';
-import { SMITH_COMPOSE_PROMPT } from '../../../src/main/orchestrator/plan.js';
+} from '../../../src/main/smith/compose/composition-rules.js';
+import { SMITH_COMPOSE_PROMPT } from '../../../src/main/smith/compose/plan.js';
 import {
   SMITH_CHAT_HARNESS,
   permissionContextBlock,

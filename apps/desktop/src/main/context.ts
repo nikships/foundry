@@ -35,8 +35,9 @@ import { EnvelopeStore } from './store/envelopes.js';
 import { RunRegistry } from './engine/registry.js';
 import { createDetections, type DetectStart } from './engine/detect-session.js';
 import { createSetups, type SetupStart } from './engine/setup-session.js';
-import { createPlans, type PlanStart } from './orchestrator/plan-session.js';
-import { ProposalStore, proposalToLiveState } from './orchestrator/proposals.js';
+import { createComposeSessions, type ComposeStart } from './smith/compose/session.js';
+import { ProposalStore, proposalToLiveState } from './smith/compose/proposals.js';
+import { resolveSmithModel } from './smith/compose/model.js';
 import { runDetail, startRun } from './engine/operations.js';
 import { ReadinessSessions } from './readiness/sessions.js';
 import type { PanelRegistry } from './session/index.js';
@@ -87,7 +88,7 @@ export class AppContext {
   readonly registry: RunRegistry;
   readonly detections: PanelRegistry<DetectStart, DetectionState>;
   readonly setups: PanelRegistry<SetupStart, SetupState>;
-  readonly plans: PanelRegistry<PlanStart, OrchestratorState>;
+  readonly plans: PanelRegistry<ComposeStart, OrchestratorState>;
   /**
    * Durable proposal records. The live `plans` registry is only the turn
    * cache; this store is the history that survives navigation, reconnect,
@@ -171,7 +172,7 @@ export class AppContext {
     // and broadcasts both `orchestrator-progress` (live turn) and
     // `proposals-changed` (list invalidation). The closure runs async after
     // construction, so referencing `this.proposals` here is safe.
-    this.plans = createPlans(this.oneShot, (state) => this.proposals.onProgress(state));
+    this.plans = createComposeSessions(this.oneShot, (state) => this.proposals.onProgress(state));
     const smithReadinessObservers = new Map<string, (state: ReadinessState) => void>();
     this.readiness = new ReadinessSessions(this.oneShot, (state) => {
       smithReadinessObservers.get(state.projectId)?.(state);
@@ -238,8 +239,7 @@ export class AppContext {
           const settings = this.settings.get();
           return {
             models: await this.availableModels(),
-            model: settings.defaultModel,
-            reasoningEffort: settings.defaultReasoningEffort,
+            ...resolveSmithModel(settings, 'compose'),
           };
         },
         start: (input) =>
@@ -247,8 +247,7 @@ export class AppContext {
             this.projects.get(input.projectId),
             {
               prompt: input.prompt,
-              model: input.model,
-              reasoningEffort: input.reasoningEffort,
+              ...resolveSmithModel(this.settings.get(), 'compose', input),
             },
             {
               rosterFor: (id) => this.rosterFor(id),
@@ -386,8 +385,9 @@ export class AppContext {
             ? { kind: 'project', projectId: project.id, projectPath: project.path }
             : { kind: 'global', workspace: globalWorkspace },
           stateDir: chatRoot,
-          smithModel: () => this.settings.get().smithModel,
-          smithReasoningEffort: () => this.settings.get().smithReasoningEffort,
+          smithModel: () => resolveSmithModel(this.settings.get(), 'chat').model,
+          smithReasoningEffort: () =>
+            resolveSmithModel(this.settings.get(), 'chat').reasoningEffort,
           toolFactories,
           transport: (request) =>
             lazyTransport(async () => {

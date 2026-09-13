@@ -1,29 +1,29 @@
 /**
- * The Orchestrator's planning session against a scripted one-shot, mirroring
+ * Smith's composition session against a scripted one-shot, mirroring
  * `detect-session.test.ts`: the prompt, the strict-JSON parse, the store +
  * preflight rails, the bounded correction loop, and cancel. Transcript fold
  * and registry sweep live in `panel-session.test.ts`.
  *
  * The session is scripted rather than spawned: what is under test is what
- * `PlanSession` does with a turn, and a real one would need a credential, a
+ * `ComposeSession` does with a turn, and a real one would need a credential, a
  * network, and a model.
  */
 
 import { describe, expect, it } from 'vitest';
-import { FIXED_ENGINE_DEFAULTS } from '../../../src/shared/types.js';
+import { FIXED_ENGINE_DEFAULTS } from '../../../../src/shared/types.js';
 import type {
   AgentDef,
   ModelInfo,
   PlanImageAttachment,
   ProjectCommand,
-} from '../../../src/shared/types.js';
-import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
-import { ORCHESTRATOR_PROMPT, SMITH_COMPOSE_PROMPT } from '../../../src/main/orchestrator/plan.js';
-import { PlanSession } from '../../../src/main/orchestrator/plan-session.js';
-import { generatedCompositionIssues } from '../../../src/main/orchestrator/plan.js';
-import { BUILTIN_AGENTS } from '../../../src/shared/builtin-agents.js';
-import { BUILTIN_PIPELINES } from '../../../src/shared/builtin-pipelines.js';
-import { scriptedOneShots, type ScriptedTurn } from '../../helpers/scripted-oneshot.js';
+} from '../../../../src/shared/types.js';
+import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import { SMITH_COMPOSE_PROMPT } from '../../../../src/main/smith/compose/plan.js';
+import { ComposeSession } from '../../../../src/main/smith/compose/session.js';
+import { generatedCompositionIssues } from '../../../../src/main/smith/compose/plan.js';
+import { BUILTIN_AGENTS } from '../../../../src/shared/builtin-agents.js';
+import { BUILTIN_PIPELINES } from '../../../../src/shared/builtin-pipelines.js';
+import { scriptedOneShots, type ScriptedTurn } from '../../../helpers/scripted-oneshot.js';
 
 const builder = (over: Partial<AgentDef> = {}): AgentDef => ({
   name: 'builder',
@@ -137,7 +137,7 @@ async function run(opts: {
   prompt?: string;
   images?: PlanImageAttachment[];
 }): Promise<{
-  session: PlanSession;
+  session: ComposeSession;
   state: OrchestratorState;
   oneShots: ReturnType<typeof scriptedOneShots>;
   prompts: string[];
@@ -156,7 +156,7 @@ async function run(opts: {
     };
   };
   const states: OrchestratorState[] = [];
-  const session = new PlanSession({
+  const session = new ComposeSession({
     projectId: 'p1',
     projectPath: '/tmp/somewhere',
     prompt: opts.prompt ?? 'add a changes file',
@@ -186,11 +186,10 @@ describe('SMITH_COMPOSE_PROMPT', () => {
     expect(SMITH_COMPOSE_PROMPT).toContain(
       'synthesize the implementation agent rather than using an unrestricted roster builder',
     );
-    expect(ORCHESTRATOR_PROMPT).toBe(SMITH_COMPOSE_PROMPT);
   });
 });
 
-describe('PlanSession', () => {
+describe('ComposeSession', () => {
   it('produces a validated plan with Foundry-owned ids from a good reply', async () => {
     const { session, state } = await run({ turns: [submitted(validReply())] });
 
@@ -239,7 +238,7 @@ describe('PlanSession', () => {
         },
       };
     };
-    const session = new PlanSession({
+    const session = new ComposeSession({
       projectId: 'p1',
       projectPath: '/tmp/somewhere',
       prompt: 'add a changes file',
@@ -394,7 +393,7 @@ describe('PlanSession', () => {
       release = resolve;
     });
     const oneShots = scriptedOneShots([submitted(validReply())]);
-    const session = new PlanSession({
+    const session = new ComposeSession({
       projectId: 'p1',
       projectPath: '/tmp/somewhere',
       prompt: 'add a changes file',
@@ -1069,7 +1068,7 @@ describe('PlanSession', () => {
 
   it('cancels the turn in flight and settles cancelled', async () => {
     const oneShots = scriptedOneShots([{ hangUntilAbort: true }]);
-    const session = new PlanSession({
+    const session = new ComposeSession({
       projectId: 'p1',
       projectPath: '/tmp/somewhere',
       prompt: 'add a changes file',
@@ -1226,7 +1225,7 @@ describe('PlanSession', () => {
     expect(session.message('second question')).toBe('Smith is still replying');
     await until(() => session.snapshot().messages.length === 2);
 
-    const failed = new PlanSession({
+    const failed = new ComposeSession({
       projectId: 'p1',
       projectPath: '/tmp/somewhere',
       prompt: 'add a changes file',
@@ -1250,7 +1249,7 @@ describe('PlanSession', () => {
       { hangUntilAbort: true },
       { structuredOutput: { reply: 'Still here; the proposal stands.', plan: null } },
     ]);
-    const session = new PlanSession({
+    const session = new ComposeSession({
       projectId: 'p1',
       projectPath: '/tmp/somewhere',
       prompt: 'add a changes file',

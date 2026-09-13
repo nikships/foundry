@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PlanImageAttachment } from '@shared/types.js';
-import { startPlan } from '../../../src/main/orchestrator/start.js';
-import type { PlanStart } from '../../../src/main/orchestrator/plan-session.js';
-import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
-import type { PanelRegistry } from '../../../src/main/session/index.js';
+import { startCompose } from '../../../../src/main/smith/compose/start.js';
+import type { ComposeStart } from '../../../../src/main/smith/compose/session.js';
+import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import type { PanelRegistry } from '../../../../src/main/session/index.js';
 
 const PNG_1X1 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -23,10 +23,10 @@ const services = {
   ghAvailable: async () => false,
 };
 
-function registry(): PanelRegistry<PlanStart, OrchestratorState> & {
+function registry(): PanelRegistry<ComposeStart, OrchestratorState> & {
   start: ReturnType<typeof vi.fn>;
 } {
-  const start = vi.fn((deps: PlanStart) => `plan-from-${deps.projectId}`);
+  const start = vi.fn((deps: ComposeStart) => `plan-from-${deps.projectId}`);
   return {
     start,
     get: () => null,
@@ -36,11 +36,11 @@ function registry(): PanelRegistry<PlanStart, OrchestratorState> & {
   };
 }
 
-describe('startPlan', () => {
+describe('startCompose', () => {
   it('refuses an empty prompt with no images', () => {
     const plans = registry();
     expect(
-      startPlan(
+      startCompose(
         plans,
         project,
         { prompt: '   ', model: 'inherit', reasoningEffort: 'medium' },
@@ -56,7 +56,7 @@ describe('startPlan', () => {
       { mediaType: 'image/png', data: PNG_1X1, name: 'shot.png' },
     ];
     expect(
-      startPlan(
+      startCompose(
         plans,
         project,
         { prompt: '  ', model: 'inherit', reasoningEffort: 'medium', images },
@@ -73,7 +73,7 @@ describe('startPlan', () => {
   it('returns a user-visible error for an invalid MIME and does not start', () => {
     const plans = registry();
     expect(
-      startPlan(
+      startCompose(
         plans,
         project,
         {
@@ -94,7 +94,7 @@ describe('startPlan', () => {
     const plans = registry();
     const data = Buffer.alloc(4 * 1024 * 1024 + 1, 1).toString('base64');
     expect(
-      startPlan(
+      startCompose(
         plans,
         project,
         {

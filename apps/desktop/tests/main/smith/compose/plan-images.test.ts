@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PLAN_IMAGE_MAX_BYTES, PLAN_IMAGE_MAX_COUNT } from '@shared/types.js';
-import { validatePlanImages } from '../../../src/main/orchestrator/plan-images.js';
+import { validatePlanImages } from '../../../../src/main/smith/compose/plan-images.js';
 
 const PNG_1X1 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';

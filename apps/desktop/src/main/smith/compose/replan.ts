@@ -2,34 +2,32 @@
  * A fresh, read-only Smith repair turn that may replace a failed run's tail.
  * Its answer is captured through a schema-bound `submit_result` tool.
  *
- * This seam lives under `orchestrator/` for historical reasons: it reuses the
- * planning schema and composition rails, but its persona and model selection
- * are Smith's, not the initial composition feature. Smith proposes;
+ * Repair shares Smith's planning schema, composition rails, and model hierarchy.
+ * Smith proposes;
  * the engine validates and applies the repair directly with no approval detour.
  */
 
 import { z } from 'zod';
 import {
   type AgentDef,
-  type AppSettings,
   type PhaseDef,
   type PipelineAmendment,
   type PipelineDef,
   type ProjectCommand,
   type ReasoningEffort,
 } from '@shared/types.js';
-import type { Envelope } from '../engine/envelopes.js';
-import type { OneShotFactory, OneShotSession } from '../pi/oneshot.js';
-import type { OutputFormat } from '../pi/transport.js';
+import type { Envelope } from '../../engine/envelopes.js';
+import type { OneShotFactory, OneShotSession } from '../../pi/oneshot.js';
+import type { OutputFormat } from '../../pi/transport.js';
 import {
   compositionRuleBullets,
   hydrateSynthesizedAgents,
   rosterLines,
   synthesizedAgentSchema,
 } from './plan.js';
-import { pipelineSchema } from '../store/pipelines.js';
+import { pipelineSchema } from '../../store/pipelines.js';
 import { jsonSchemaWithoutDialect } from '@shared/zod-json-schema.js';
-import { SMITH_HARNESS_PREAMBLE } from '../smith/persona.js';
+import { SMITH_HARNESS_PREAMBLE } from '../persona.js';
 
 /** One concrete model/effort appointment the engine permits in a repair tail. */
 export interface AllowedModelAppointment {
@@ -101,9 +99,6 @@ When there is no defensible repair, opt out explicitly with:
 An empty tail removes nothing; the engine leaves the pipeline unchanged and settles with the original verdict. Do not return an empty tail alongside new agents.
 
 Each synthesized agent has {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase names it. Omit engine-owned ids and colors.`;
-
-/** @deprecated Use SMITH_REPAIR_PROMPT. Removed when composition moves under Smith. */
-export const REPLAN_SYSTEM_PROMPT = SMITH_REPAIR_PROMPT;
 
 function commandLine(command: PhaseDef['command']): string | null {
   if (!command) return null;
@@ -202,28 +197,6 @@ export function buildReplanPrompt(input: ReplanProposalInput): string {
     'Call submit_result exactly once. When no defensible repair exists, submit {"reason":"...","phases":[],"agents":[]} and stop.',
   );
   return parts.join('\n');
-}
-
-/**
- * The model a Smith pipeline-healing turn runs on. A concrete `smithModel`
- * uses `smithReasoningEffort`; a missing/`inherit` Smith model follows the
- * install default (or `inherit` when there is no concrete default), taking the
- * default effort with a concrete default and keeping the Smith effort when
- * both inherit. Never the planning or command-healing model.
- */
-export function resolvePipelineHealingModel(settings: AppSettings): {
-  model: string;
-  reasoningEffort: ReasoningEffort;
-} {
-  const smith = settings.smithModel || 'inherit';
-  if (smith !== 'inherit') {
-    return { model: smith, reasoningEffort: settings.smithReasoningEffort };
-  }
-  const fallback = settings.defaultModel || 'inherit';
-  if (fallback !== 'inherit') {
-    return { model: fallback, reasoningEffort: settings.defaultReasoningEffort };
-  }
-  return { model: 'inherit', reasoningEffort: settings.smithReasoningEffort };
 }
 
 /**

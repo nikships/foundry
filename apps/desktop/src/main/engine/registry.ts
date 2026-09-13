@@ -25,7 +25,8 @@ import { appDbPath, appRunsDir, openDb, projectDbPath, projectRunsDir } from '..
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { healingSupport } from './healing.js';
-import { replanningSupport, resolvePipelineHealingModel } from '../orchestrator/replan.js';
+import { replanningSupport } from '../smith/compose/replan.js';
+import { resolveSmithModel } from '../smith/compose/model.js';
 import { continueDetail, continueEligibility } from './continue-run.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
@@ -233,7 +234,7 @@ export class RunRegistry {
       replanner: this.deps.oneShot
         ? replanningSupport(
             this.deps.oneShot,
-            resolvePipelineHealingModel(settings),
+            resolveSmithModel(settings, 'repair'),
             () => tracer.run(runId)?.worktreePath ?? input.project.path,
           )
         : null,

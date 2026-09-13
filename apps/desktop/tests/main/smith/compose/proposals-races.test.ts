@@ -5,14 +5,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { tempDir } from '../../helpers/tmp.js';
-import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
-import { Tracer } from '../../../src/main/trace/tracer.js';
-import { createPlans } from '../../../src/main/orchestrator/plan-session.js';
-import { ProposalStore } from '../../../src/main/orchestrator/proposals.js';
-import type { GeneratedRunPlan } from '../../../src/shared/types.js';
-import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
-import { scriptedOneShots } from '../../helpers/scripted-oneshot.js';
+import { tempDir } from '../../../helpers/tmp.js';
+import { openDb, projectDbPath, projectRunsDir } from '../../../../src/main/trace/db.js';
+import { Tracer } from '../../../../src/main/trace/tracer.js';
+import { createComposeSessions } from '../../../../src/main/smith/compose/session.js';
+import { ProposalStore } from '../../../../src/main/smith/compose/proposals.js';
+import type { GeneratedRunPlan } from '../../../../src/shared/types.js';
+import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
 
 function samplePlan(planId: string, projectId: string): GeneratedRunPlan {
   return {
@@ -70,7 +70,7 @@ function harness() {
     { hangUntilAbort: true },
     { hangUntilAbort: true },
   ]);
-  const plans = createPlans(oneShots.factory, (state) => store.onProgress(state));
+  const plans = createComposeSessions(oneShots.factory, (state) => store.onProgress(state));
   const store = new ProposalStore({
     tracerFor,
     projectIds: () => ['proj_a'],

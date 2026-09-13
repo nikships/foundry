@@ -3,19 +3,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { FIXED_ENGINE_DEFAULTS } from '../../../src/shared/types.js';
-import type { AppSettings } from '../../../src/shared/types.js';
+import { FIXED_ENGINE_DEFAULTS } from '../../../../src/shared/types.js';
 import {
   AMENDMENT_OUTPUT_FORMAT,
-  REPLAN_SYSTEM_PROMPT,
   SMITH_REPAIR_PROMPT,
   buildReplanPrompt,
   replanningSupport,
-  resolvePipelineHealingModel,
-} from '../../../src/main/orchestrator/replan.js';
-import { scriptedOneShots } from '../../helpers/scripted-oneshot.js';
-import { defaultSettings } from '../../../src/main/store/settings.js';
-import type { PhaseDef } from '../../../src/shared/types.js';
+} from '../../../../src/main/smith/compose/replan.js';
+import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
+import type { PhaseDef } from '../../../../src/shared/types.js';
 
 function codePhase(name: string, argv: string[]): PhaseDef {
   return { name, kind: 'code', description: `Do ${name}.`, command: { argv } };
@@ -164,7 +160,6 @@ describe('Smith repair adapter', () => {
     expect(SMITH_REPAIR_PROMPT).toContain('You are repairing this Foundry pipeline.');
     expect(SMITH_REPAIR_PROMPT).toContain('{"reason":"');
     expect(SMITH_REPAIR_PROMPT).toContain('phases":[]');
-    expect(REPLAN_SYSTEM_PROMPT).toBe(SMITH_REPAIR_PROMPT);
     expect(shots.calls[0]!.systemPrompt).toContain('You are Smith');
     const prompt = shots.prompts[0]!;
     expect(prompt).toContain('Make the thing pass.');
@@ -196,35 +191,5 @@ describe('Smith repair adapter', () => {
     expect(prompt).toContain('secret: secret purpose');
     expect(prompt).not.toContain('SECRET_SYSTEM_PROMPT_MUST_NOT_LEAK');
     expect(prompt).not.toContain('SECRET_USER_PROMPT_MUST_NOT_LEAK');
-  });
-
-  it('resolves the Smith model from settings, not planning or healing models', () => {
-    const base = defaultSettings();
-    const concrete: AppSettings = { ...base, smithModel: 'smith/s', smithReasoningEffort: 'high' };
-    expect(resolvePipelineHealingModel(concrete)).toEqual({
-      model: 'smith/s',
-      reasoningEffort: 'high',
-    });
-    const inherited: AppSettings = {
-      ...base,
-      smithModel: 'inherit',
-      defaultModel: 'def/d',
-      defaultReasoningEffort: 'low',
-      smithReasoningEffort: 'high',
-    };
-    expect(resolvePipelineHealingModel(inherited)).toEqual({
-      model: 'def/d',
-      reasoningEffort: 'low',
-    });
-    const both: AppSettings = {
-      ...base,
-      smithModel: 'inherit',
-      defaultModel: 'inherit',
-      smithReasoningEffort: 'high',
-    };
-    expect(resolvePipelineHealingModel(both)).toEqual({
-      model: 'inherit',
-      reasoningEffort: 'high',
-    });
   });
 });

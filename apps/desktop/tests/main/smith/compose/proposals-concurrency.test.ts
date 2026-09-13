@@ -1,21 +1,21 @@
 /**
  * Concurrent proposal sessions: two starts never cancel siblings.
  *
- * Real `createPlans` + `ProposalStore` over a temp DB, no Electron. The model
+ * Real `createComposeSessions` + `ProposalStore` over a temp DB, no Electron. The model
  * turns hang so both sessions stay live; completion of one is injected via
  * `onProgress` (the same path a late model turn takes), proving the other
  * stays `generating` and both rows remain independently visible.
  */
 
 import { describe, expect, it } from 'vitest';
-import { tempDir } from '../../helpers/tmp.js';
-import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
-import { Tracer } from '../../../src/main/trace/tracer.js';
-import { createPlans } from '../../../src/main/orchestrator/plan-session.js';
-import { ProposalStore } from '../../../src/main/orchestrator/proposals.js';
-import type { GeneratedRunPlan } from '../../../src/shared/types.js';
-import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
-import { scriptedOneShots } from '../../helpers/scripted-oneshot.js';
+import { tempDir } from '../../../helpers/tmp.js';
+import { openDb, projectDbPath, projectRunsDir } from '../../../../src/main/trace/db.js';
+import { Tracer } from '../../../../src/main/trace/tracer.js';
+import { createComposeSessions } from '../../../../src/main/smith/compose/session.js';
+import { ProposalStore } from '../../../../src/main/smith/compose/proposals.js';
+import type { GeneratedRunPlan } from '../../../../src/shared/types.js';
+import type { OrchestratorState } from '../../../../src/shared/ipc-contract.js';
+import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
 
 function samplePlan(planId: string, projectId: string): GeneratedRunPlan {
   return {
@@ -81,7 +81,9 @@ describe('concurrent proposal generation', () => {
 
     // Live turns persist through the store (what `context` wires). The closure
     // runs async after both bindings exist, so the forward reference is safe.
-    const livePlans = createPlans(oneShots.factory, (state) => liveStore.onProgress(state));
+    const livePlans = createComposeSessions(oneShots.factory, (state) =>
+      liveStore.onProgress(state),
+    );
     const liveStore = new ProposalStore({
       tracerFor,
       projectIds: () => ['proj_a'],

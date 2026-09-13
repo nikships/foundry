@@ -10,6 +10,14 @@ Smith is the native operator agent. It exposes typed app capabilities. Normal mo
 - State stays under `<supportDir>/pi/smith/<scope>/`, never `~/.pi`.
 - Unknown tools fail closed. Direct writes are limited to the current checkout or global workspace.
 
+## Composition turns
+
+- `compose/session.ts` owns `ComposeSession`: a bounded, read-only one-shot at the project checkout, with no worktree or write tools. Schema-bound `submit_result` output must pass composition rails within the envelope correction budget.
+- `compose/model.ts` resolves chat, compose, and repair choices: explicit override → Smith → Agent Defaults → `inherit`. Effort follows the selected settings tier unless overridden. Composition and repair permit `inherit`; chat retains the transport's `requireModel` guard.
+- `compose/proposals.ts` owns durable run proposals through `Tracer`, distinct from Smith's action `ProposalQueue`. Accept remains exactly-once through `accepted_run_id` and re-validates with `startRun(plan)`.
+- `compose/replan.ts` proposes pipeline repairs; the engine alone validates and applies them in the run's existing worktree.
+- IPC names, progress channels, and historical `OrchestratorState` remain unchanged until the atomic contract migration. Composition does not open a persistent chat.
+
 ## Capabilities
 
 - Entity reads execute immediately; validated entity create/edit operations use proposals.

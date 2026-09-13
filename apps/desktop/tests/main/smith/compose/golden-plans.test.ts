@@ -5,17 +5,17 @@
  * See golden/README.md for how to record a new fixture without leaking secrets.
  */
 import { describe, expect, it } from 'vitest';
-import { validate as validatePipeline } from '../../../src/main/store/pipelines.js';
-import { preflightForRun } from '../../../src/main/engine/preflight.js';
-import { PlanSession } from '../../../src/main/orchestrator/plan-session.js';
+import { validate as validatePipeline } from '../../../../src/main/store/pipelines.js';
+import { preflightForRun } from '../../../../src/main/engine/preflight.js';
+import { ComposeSession } from '../../../../src/main/smith/compose/session.js';
 import {
   buildPlanPrompt,
   checkPlanRails,
   parsePlanReply,
   type PlanPromptInputs,
-} from '../../../src/main/orchestrator/plan.js';
-import { scriptedOneShots } from '../../helpers/scripted-oneshot.js';
-import type { AgentDef, ModelInfo, ProjectCommand } from '../../../src/shared/types.js';
+} from '../../../../src/main/smith/compose/plan.js';
+import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
+import type { AgentDef, ModelInfo, ProjectCommand } from '../../../../src/shared/types.js';
 
 const model = (id: string, displayName: string): ModelInfo => ({
   id,
@@ -630,7 +630,7 @@ describe('orchestrator-golden', () => {
       if (golden.canary) expect(parsed.reply.refinedRequest).toContain(golden.canary);
 
       const oneShots = scriptedOneShots([{ structuredOutput: golden.reply }]);
-      const session = new PlanSession({
+      const session = new ComposeSession({
         projectId: 'p1',
         projectPath: '/tmp/somewhere',
         prompt: golden.request,

@@ -12,21 +12,21 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { tempDir } from '../../helpers/tmp.js';
-import { openDb, projectDbPath, projectRunsDir, type Db } from '../../../src/main/trace/db.js';
-import { Tracer } from '../../../src/main/trace/tracer.js';
-import { Executor } from '../../../src/main/engine/executor.js';
-import { startRun, type StartRunDeps } from '../../../src/main/engine/operations.js';
-import { defaultProject } from '../../../src/main/store/projects.js';
-import { defaultSettings } from '../../../src/main/store/settings.js';
+import { tempDir } from '../../../helpers/tmp.js';
+import { openDb, projectDbPath, projectRunsDir, type Db } from '../../../../src/main/trace/db.js';
+import { Tracer } from '../../../../src/main/trace/tracer.js';
+import { Executor } from '../../../../src/main/engine/executor.js';
+import { startRun, type StartRunDeps } from '../../../../src/main/engine/operations.js';
+import { defaultProject } from '../../../../src/main/store/projects.js';
+import { defaultSettings } from '../../../../src/main/store/settings.js';
 import type {
   AgentDef,
   GeneratedRunPlan,
   PipelineDef,
   ProjectDef,
   StartRunInput,
-} from '../../../src/shared/types.js';
-import { ScriptedAgent } from '../../helpers/scripted-transport.js';
+} from '../../../../src/shared/types.js';
+import { ScriptedAgent } from '../../../helpers/scripted-transport.js';
 
 function sh(cwd: string, argv: string[]): string {
   try {

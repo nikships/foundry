@@ -14,18 +14,19 @@ import type {
   ReasoningEffort,
 } from '@shared/types.js';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
-import type { PanelRegistry } from '../session/index.js';
+import type { PanelRegistry } from '../../session/index.js';
 import { validatePlanImages } from './plan-images.js';
-import type { PlanStart } from './plan-session.js';
+import type { ComposeStart } from './session.js';
 
-export interface PlanStartInput {
+export interface ComposeStartInput {
   prompt: string;
+  /** Resolved by resolveSmithModel before starting or persisting the turn. */
   model: string;
   reasoningEffort: ReasoningEffort;
   images?: PlanImageAttachment[];
 }
 
-export interface PlanStartProject {
+export interface ComposeStartProject {
   id: string;
   path: string;
   contextSummary?: string | null;
@@ -33,7 +34,7 @@ export interface PlanStartProject {
   scaffold?: boolean;
 }
 
-export interface PlanStartServices {
+export interface ComposeStartServices {
   /** The agents this project runs planning with. */
   rosterFor(projectId: string): AgentDef[];
   envelopeDefs: EnvelopeDef[];
@@ -45,11 +46,11 @@ export interface PlanStartServices {
   ghAvailable(projectPath: string): Promise<boolean>;
 }
 
-export function startPlan(
-  plans: PanelRegistry<PlanStart, OrchestratorState>,
-  project: PlanStartProject | null | undefined,
-  input: PlanStartInput,
-  services: PlanStartServices,
+export function startCompose(
+  plans: PanelRegistry<ComposeStart, OrchestratorState>,
+  project: ComposeStartProject | null | undefined,
+  input: ComposeStartInput,
+  services: ComposeStartServices,
 ): { planId: string } | { error: string } {
   if (!project) return { error: 'project not found' };
   const checked = validatePlanImages(input.images);
@@ -62,7 +63,7 @@ export function startPlan(
     projectId: project.id,
     projectPath,
     prompt: input.prompt,
-    model: input.model || 'inherit',
+    model: input.model,
     defaultModel: services.defaultModel || 'inherit',
     reasoningEffort: input.reasoningEffort,
     contextSummary: project.contextSummary ?? '',

@@ -4,18 +4,18 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  ORCHESTRATOR_PROMPT,
+  SMITH_COMPOSE_PROMPT,
   buildPlanPrompt,
   phaseModelIssues,
   stampedFewShotPipelines,
   type PlanPromptInputs,
-} from '../../../src/main/orchestrator/plan.js';
+} from '../../../../src/main/smith/compose/plan.js';
 import {
   COMPOSITION_RULES,
   compositionRuleBullets,
   generatedCompositionIssues,
-} from '../../../src/main/orchestrator/composition.js';
-import type { AgentDef, ModelInfo, PhaseDef } from '../../../src/shared/types.js';
+} from '../../../../src/main/smith/compose/composition.js';
+import type { AgentDef, ModelInfo, PhaseDef } from '../../../../src/shared/types.js';
 
 const model = (id: string, displayName: string): ModelInfo => ({
   id,
@@ -39,7 +39,7 @@ describe('orchestrator composition rules', () => {
   it('generates prompt bullets from the same functions as the rails', () => {
     const bullets = compositionRuleBullets();
     expect(bullets).toMatchSnapshot();
-    expect(ORCHESTRATOR_PROMPT).toContain(bullets);
+    expect(SMITH_COMPOSE_PROMPT).toContain(bullets);
     expect(COMPOSITION_RULES.map((rule) => rule.id)).toEqual([
       'refined-request',
       'proof',

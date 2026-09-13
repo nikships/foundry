@@ -10,7 +10,7 @@ import {
   type PipelineDef,
   type ValidationIssue,
 } from '@shared/types.js';
-import { envelopeFieldNames } from '../engine/envelopes.js';
+import { envelopeFieldNames } from '../../engine/envelopes.js';
 
 export interface CompositionContext {
   pipeline: Pick<PipelineDef, 'phases'>;

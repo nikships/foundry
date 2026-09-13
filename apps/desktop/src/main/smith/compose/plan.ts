@@ -25,12 +25,12 @@ import {
 } from '@shared/types.js';
 import { BUILTIN_PIPELINES } from '@shared/builtin-pipelines.js';
 import { jsonSchemaWithoutDialect } from '@shared/zod-json-schema.js';
-import { pipelineSchema, validate as validatePipeline } from '../store/pipelines.js';
-import { validate as validateAgent, writeBoundarySchema } from '../store/roster.js';
-import { GATE_DESCRIPTIONS } from '../engine/gates.js';
-import { preflightForRun } from '../engine/preflight.js';
-import type { OutputFormat } from '../pi/transport.js';
-import { SMITH_HARNESS_PREAMBLE } from '../smith/persona.js';
+import { pipelineSchema, validate as validatePipeline } from '../../store/pipelines.js';
+import { validate as validateAgent, writeBoundarySchema } from '../../store/roster.js';
+import { GATE_DESCRIPTIONS } from '../../engine/gates.js';
+import { preflightForRun } from '../../engine/preflight.js';
+import type { OutputFormat } from '../../pi/transport.js';
+import { SMITH_HARNESS_PREAMBLE } from '../persona.js';
 import {
   compositionRuleBullets,
   generatedCompositionIssues,
@@ -72,9 +72,6 @@ Call submit_result exactly once with the complete plan object:
 Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase it runs in is what names the model. Foundry appends the canonical envelope constitution to systemPrompt after you submit.
 Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"reasoningEffort"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal"/"flakeRerun" for code phases. Never emit an engineer/checkpoint phase.
 Do not print the plan as prose or JSON. After submit_result succeeds, stop.`;
-
-/** @deprecated Use SMITH_COMPOSE_PROMPT. Removed when composition moves under Smith. */
-export const ORCHESTRATOR_PROMPT = SMITH_COMPOSE_PROMPT;
 
 export interface PlanPromptInputs {
   request: string;

@@ -21,7 +21,7 @@ The Electron main process owns Git, disk, child processes, CLIs, SQLite, applica
 | `session/`   | Shared live panel session and registry                        |
 | `readiness/` | Agent-readiness evaluation and remediation                    |
 | `bridge/`    | Vendored provider-subscription Bridge                         |
-| `smith/`     | Native operator chat, tools, and proposals                    |
+| `smith/`     | Native operator chat, composition turns, tools, and proposals |
 | `ipc/`       | Typed domain routers                                          |
 | `store/`     | JSON configuration and builtin seeding                        |
 | `system/`    | Environment, processes, doctor, notifications                 |

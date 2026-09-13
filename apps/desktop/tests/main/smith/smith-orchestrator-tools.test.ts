@@ -10,6 +10,7 @@ import { IPC } from '../../../src/shared/ipc-contract.js';
 import { SMITH_RUN_OPERATIONS, smithRunsTool } from '../../../src/main/smith/run-tools.js';
 import { ProposalQueue } from '../../../src/main/smith/proposals.js';
 import type { MainInvoker } from '../../../src/main/ipc/shared.js';
+import { defaultSettings } from '../../../src/main/store/settings.js';
 
 const json = (r: unknown) =>
   JSON.parse((r as { content: Array<{ text: string }> }).content[0]!.text);
@@ -17,7 +18,13 @@ const json = (r: unknown) =>
 function setup(projectId: string | null = 'session') {
   const invoke = vi.fn(async (channel: string) => {
     if (channel === IPC.settingsGet) {
-      return { defaultModel: 'provider/runner', defaultReasoningEffort: 'high' };
+      return {
+        ...defaultSettings(),
+        defaultModel: 'provider/runner',
+        defaultReasoningEffort: 'high',
+        smithModel: 'provider/smith',
+        smithReasoningEffort: 'low',
+      };
     }
     return 'normalized';
   });
@@ -130,12 +137,12 @@ describe('Smith orchestrator operations', () => {
       IPC.orchestratorPlan,
       'session',
       'Draft a fix',
-      'provider/runner',
-      'high',
+      'provider/smith',
+      'low',
     );
   });
 
-  it('honours an explicit model and effort without reading Settings', async () => {
+  it('honours an explicit model and effort over Settings', async () => {
     const h = setup();
     await approve(h, {
       operation: 'orchestrator_plan',
@@ -143,7 +150,7 @@ describe('Smith orchestrator operations', () => {
       model: 'provider/chosen',
       reasoningEffort: 'low',
     });
-    expect(h.invoke).not.toHaveBeenCalledWith(IPC.settingsGet, expect.anything());
+    expect(h.invoke).toHaveBeenCalledWith(IPC.settingsGet);
     expect(h.invoke).toHaveBeenCalledWith(
       IPC.orchestratorPlan,
       'session',

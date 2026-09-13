@@ -11,7 +11,7 @@
  */
 
 import type { SmithPermissionMode, SmithScreenContext } from '@shared/ipc-contract.js';
-import { compositionRuleBullets } from '../orchestrator/composition-rules.js';
+import { compositionRuleBullets } from './compose/composition-rules.js';
 import type { SmithScope } from './chat-session.js';
 import { SMITH_HARNESS_PREAMBLE } from './persona.js';
 

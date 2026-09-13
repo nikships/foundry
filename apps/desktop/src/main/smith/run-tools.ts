@@ -1,8 +1,9 @@
 import { IPC } from '@shared/ipc-contract.js';
 import { splitLinearAssignedIntent } from '@shared/linear.js';
-import { isReasoningEffort } from '@shared/reasoning-effort.js';
 import type { AppSettings, ReasoningEffort, SmithActionRisk } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
+import { defaultSettings } from '../store/settings.js';
+import { resolveSmithModel } from './compose/model.js';
 import { compactSmithRunEvents } from './event-page.js';
 import {
   RUN_AGENT_OPERATIONS,
@@ -495,7 +496,13 @@ function orchestratorPlanAction(
     args: shownArgs,
     risk: RISKS.orchestrator_plan ?? 'write',
     execute: async () => {
-      const resolved = await resolveOrchestratorModel(deps, model, reasoningEffort);
+      const settings = await deps
+        .invoke<AppSettings>(IPC.settingsGet)
+        .catch(() => defaultSettings());
+      const resolved = resolveSmithModel(settings, 'compose', {
+        model: model ?? undefined,
+        reasoningEffort: (reasoningEffort as ReasoningEffort | null) ?? undefined,
+      });
       return deps.invoke(
         IPC.orchestratorPlan,
         projectId,
@@ -505,34 +512,6 @@ function orchestratorPlanAction(
       );
     },
   });
-}
-
-/**
- * What the planning turn runs on: Smith's explicit choice first, otherwise
- * the install's run defaults from Settings — the same choice the composer
- * itself defaults to. Never the chat's own model: Smith answers on
- * smithModel, but a plan must compose for the run catalog.
- */
-async function resolveOrchestratorModel(
-  deps: Pick<SmithActionToolDeps, 'invoke'>,
-  model: string | null,
-  reasoningEffort: string | null,
-): Promise<{ model: string; reasoningEffort: ReasoningEffort }> {
-  const effort = (reasoningEffort as ReasoningEffort | null) ?? null;
-  if (model && effort) return { model, reasoningEffort: effort };
-  try {
-    const settings = await deps.invoke<AppSettings>(IPC.settingsGet);
-    const fallbackModel =
-      typeof settings?.defaultModel === 'string' && settings.defaultModel.trim()
-        ? settings.defaultModel
-        : 'inherit';
-    const fallbackEffort = isReasoningEffort(settings?.defaultReasoningEffort)
-      ? settings.defaultReasoningEffort
-      : 'medium';
-    return { model: model ?? fallbackModel, reasoningEffort: effort ?? fallbackEffort };
-  } catch {
-    return { model: model ?? 'inherit', reasoningEffort: effort ?? 'medium' };
-  }
 }
 
 function linearRunRead(

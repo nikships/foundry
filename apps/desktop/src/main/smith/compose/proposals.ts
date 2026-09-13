@@ -1,9 +1,9 @@
 /**
- * Durable orchestrator proposals: one independent record per `startPlan` call.
+ * Durable composition proposals: one independent record per `startCompose` call.
  *
- * The live `PlanSession` is only the turn cache; the DB row is the history.
+ * The live `ComposeSession` is only the turn cache; the DB row is the history.
  * Concurrent starts create distinct rows and never cancel siblings. Progress
- * persists via `onProgress` (wired as the `createPlans` callback) and
+ * persists via `onProgress` (wired as the `createComposeSessions` callback) and
  * broadcasts both `orchestrator-progress` (live turn) and
  * `proposals-changed` (list invalidation), so updates arrive independently of
  * the originating composer or hook. Accept is exactly-once via the in-memory
@@ -18,21 +18,21 @@ import type {
 } from '@shared/types.js';
 import type { OrchestratorAcceptResult, OrchestratorState } from '@shared/ipc-contract.js';
 import { IPC } from '@shared/ipc-contract.js';
-import type { PanelRegistry } from '../session/index.js';
-import { PANEL_MAX_ENTRIES } from '../session/index.js';
-import type { Tracer } from '../trace/tracer.js';
-import type { PlanStart } from './plan-session.js';
+import type { PanelRegistry } from '../../session/index.js';
+import { PANEL_MAX_ENTRIES } from '../../session/index.js';
+import type { Tracer } from '../../trace/tracer.js';
+import type { ComposeStart } from './session.js';
 import {
-  startPlan,
-  type PlanStartInput,
-  type PlanStartProject,
-  type PlanStartServices,
+  startCompose,
+  type ComposeStartInput,
+  type ComposeStartProject,
+  type ComposeStartServices,
 } from './start.js';
 
 export interface ProposalStoreDeps {
   tracerFor(projectId: string): Tracer | null;
   projectIds(): string[];
-  plans: PanelRegistry<PlanStart, OrchestratorState>;
+  plans: PanelRegistry<ComposeStart, OrchestratorState>;
   broadcast(channel: string, payload?: unknown): void;
   now?: () => number;
   /**
@@ -113,15 +113,15 @@ export class ProposalStore {
   }
 
   /**
-   * Validates via the shared `startPlan` path, then persists the durable row
+   * Validates via the shared `startCompose` path, then persists the durable row
    * before the turn can finish. Never cancels siblings: one row per call.
    */
   start(
-    project: PlanStartProject | null | undefined,
-    input: PlanStartInput,
-    services: PlanStartServices,
+    project: ComposeStartProject | null | undefined,
+    input: ComposeStartInput,
+    services: ComposeStartServices,
   ): { planId: string } | { error: string } {
-    const started = startPlan(this.deps.plans, project, input, services);
+    const started = startCompose(this.deps.plans, project, input, services);
     if ('error' in started) return started;
     const planId = started.planId;
     const projectId = project?.id;
@@ -134,7 +134,7 @@ export class ProposalStore {
         planId,
         projectId,
         prompt: input.prompt,
-        model: input.model || 'inherit',
+        model: input.model,
         reasoningEffort: input.reasoningEffort,
         createdAt: at,
       });
