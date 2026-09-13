@@ -1,5 +1,5 @@
 /**
- * The Orchestrator's planning session: a thin ask-and-parse strategy on
+ * Smith's composition session: a thin ask-and-parse strategy on
  * PanelSession, modeled on detection and setup generation.
  *
  * Planning is not a run: no worktree, no pipeline yet, no trace rows. The
@@ -31,7 +31,7 @@ import {
   type PanelRegistry,
 } from '../session/index.js';
 import {
-  ORCHESTRATOR_PROMPT,
+  SMITH_COMPOSE_PROMPT,
   buildPlanPrompt,
   buildRefinePrompt,
   checkPlanRails,
@@ -220,7 +220,7 @@ export class PlanSession {
       if (accepted) return;
     }
 
-    this.panel.fail(`the Orchestrator could not produce a valid plan within ${attempts} attempts`);
+    this.panel.fail(`Smith could not produce a valid plan within ${attempts} attempts`);
   }
 
   private noteAttempt(attempt: number, attempts: number, model: string): void {
@@ -228,7 +228,7 @@ export class PlanSession {
       kind: 'note',
       text:
         attempt === 1
-          ? `Asking the Orchestrator${model === 'inherit' ? '' : ` (${modelLabel(model)})`}…`
+          ? `Asking Smith to compose${model === 'inherit' ? '' : ` (${modelLabel(model)})`}…`
           : `Sending the validation errors back (attempt ${attempt} of ${attempts})…`,
     });
   }
@@ -238,7 +238,7 @@ export class PlanSession {
     model: string,
     outputFormat = planOutputFormat(),
   ): Promise<OneShotResult | null> {
-    // The Orchestrator reads the operator's own checkout, where nothing
+    // Smith reads the operator's own checkout, where nothing
     // would revert a write, so the session has no tool that could make one.
     // It still carries the operator's installed research tools (e.g.
     // Tavily) when enabled, filtered to the read-only subset a `read`
@@ -250,7 +250,7 @@ export class PlanSession {
       access: 'read',
       model,
       reasoningEffort: this.deps.reasoningEffort,
-      systemPrompt: ORCHESTRATOR_PROMPT,
+      systemPrompt: SMITH_COMPOSE_PROMPT,
       outputFormat,
       prompt,
       ...(this.deps.images?.length ? { images: this.deps.images } : {}),
@@ -330,7 +330,7 @@ export class PlanSession {
     const state = this.panel.state;
     if (!trimmed) return 'a message needs text';
     if (this.refining || state.status === 'running') {
-      return 'the Orchestrator is still replying';
+      return 'Smith is still replying';
     }
     // A cancelled follow-up left the accepted plan standing, so the chat may
     // resume; only a session that never produced a plan has nothing to discuss.
@@ -367,7 +367,7 @@ export class PlanSession {
     const state = this.panel.state;
     const { model } = this.deps;
     const plan = state.plan!;
-    // The plan as it stands, operator re-casts included, so the Orchestrator
+    // The plan as it stands, operator re-casts included, so Smith
     // discusses what the operator is actually looking at.
     const currentPlan: ParsedPlanReply = {
       refinedRequest: plan.refinedRequest,

@@ -150,14 +150,14 @@ export const SMITH_QUICK_PROMPTS: ReadonlyArray<SmithQuickPrompt> = [
   },
   {
     id: 'orchestrator-plan',
-    label: 'Plan a change',
-    prompt: 'Start an orchestrator plan for: <describe the change>.',
+    label: 'Plan a run for…',
+    prompt: 'Ask Smith to compose a run plan for: <describe the change>.',
     hint: 'Draft a run plan; returns a plan ID immediately',
   },
   {
     id: 'orchestrator-list',
     label: 'My plans',
-    prompt: 'List my orchestrator plans and their status.',
+    prompt: 'List my Smith run plans and their status.',
     hint: 'Browse planning proposals for this project',
   },
   {
@@ -200,7 +200,7 @@ export function smithTicketStatusPrompt(issueId: string): string {
 
 /** "Start planning X" with the goal filled in. */
 export function smithOrchestratorPlanPrompt(goal: string): string {
-  return `Start an orchestrator plan for: ${goal.trim()}`;
+  return `Ask Smith to compose a run plan for: ${goal.trim()}`;
 }
 
 /** "Run saved pipeline Y" with the pipeline and request filled in. */
@@ -215,7 +215,7 @@ export function smithLinearPipelineRunPrompt(pipelineId: string, issueId: string
 
 /** Follow-up about a known plan: keeps the plan id attached to the message. */
 export function smithOrchestratorFollowUpPrompt(planId: string, text: string): string {
-  return `For orchestrator plan ${planId.trim()}: ${text.trim()}`;
+  return `For Smith run plan ${planId.trim()}: ${text.trim()}`;
 }
 
 const PLAN_ID_PATTERN = /plan-[0-9a-f]{6,}/i;

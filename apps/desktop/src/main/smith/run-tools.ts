@@ -76,7 +76,7 @@ type RunActionOperation = Exclude<
   | RunAgentOperation
 >;
 
-/** Reasoning efforts the Orchestrator offers for a planning turn. */
+/** Reasoning efforts Smith offers for a composition turn. */
 const ORCHESTRATOR_EFFORTS: readonly ReasoningEffort[] = ['low', 'medium', 'high'];
 
 /** Project-scoped reads keyed by the id they take. */
@@ -439,7 +439,7 @@ function orchestratorRead(
 const ORCHESTRATOR_PLAN_ID_SUMMARIES: Record<OrchestratorPlanIdAction, (planId: string) => string> =
   {
     orchestrator_message: (planId) =>
-      `Send a follow-up message about plan ${planId}. The reply arrives as orchestrator progress and may carry a revised plan.`,
+      `Send a follow-up message about plan ${planId}. The reply arrives as composition progress and may carry a revised plan.`,
     orchestrator_cancel: (planId) =>
       `Stop generation for plan ${planId}. The row remains for review or discard.`,
     // Accept must go through proposals.accept, never runs:start directly, so
@@ -489,9 +489,9 @@ function orchestratorPlanAction(
   if (reasoningEffort) shownArgs.reasoningEffort = reasoningEffort;
   return proposeAction(deps, {
     operation: 'orchestrator_plan',
-    title: 'Start orchestrator plan',
+    title: 'Ask Smith to compose a run plan',
     summary:
-      'Ask the Orchestrator to draft a run plan for this prompt. Returns a planId immediately; the plan (or the failure) arrives as orchestrator progress. Confirm the prompt text before proposing.',
+      'Ask Smith to compose a run plan for this prompt. Returns a planId immediately; the plan (or the failure) arrives as composition progress. Confirm the prompt text before proposing.',
     args: shownArgs,
     risk: RISKS.orchestrator_plan ?? 'write',
     execute: async () => {

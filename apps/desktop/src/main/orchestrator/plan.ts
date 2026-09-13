@@ -1,7 +1,7 @@
 /**
- * What the Orchestrator is told and how its answer is read.
+ * What Smith is told for a composition turn and how the answer is read.
  *
- * The Orchestrator proposes; code disposes. This file owns the standing
+ * Smith proposes; code disposes. This file owns the standing
  * rules, the per-request prompt (context summary, commands, roster, envelope
  * library, gate catalog, builtin shapes as few-shot), the schema-bound
  * `submit_result` answer, and the post-parse rails — the same `validate()` +
@@ -30,6 +30,7 @@ import { validate as validateAgent, writeBoundarySchema } from '../store/roster.
 import { GATE_DESCRIPTIONS } from '../engine/gates.js';
 import { preflightForRun } from '../engine/preflight.js';
 import type { OutputFormat } from '../pi/transport.js';
+import { SMITH_HARNESS_PREAMBLE } from '../smith/persona.js';
 import {
   compositionRuleBullets,
   generatedCompositionIssues,
@@ -45,7 +46,11 @@ export {
 /** Colours handed to synthesized agents, since the model does not pick paint. */
 const SYNTH_COLORS = ['#5ad2dd', '#d2a05a', '#a05ad2', '#7ad25a', '#d25a7a', '#5a8ad2'] as const;
 
-export const ORCHESTRATOR_PROMPT = `You are the Orchestrator: inspect one request and its repository, then compose the smallest run-specific pipeline that fulfils it from the building blocks you are given. For a small request that is typically one build phase plus its proof; for a larger task split the work across two or more build phases or agents rather than forcing all work into a single build. Each build is proven before anything is recorded, and a rejection still halts the run.
+export const SMITH_COMPOSE_PROMPT = `${SMITH_HARNESS_PREAMBLE}
+
+## Composition turn
+
+You are composing a run: inspect one request and its repository, then compose the smallest run-specific pipeline that fulfils it from the building blocks you are given. For a small request that is typically one build phase plus its proof; for a larger task split the work across two or more build phases or agents rather than forcing all work into a single build. Each build is proven before anything is recorded, and a rejection still halts the run.
 
 Composition rules (enforced by code where possible; follow all of them):
 ${compositionRuleBullets()}
@@ -68,6 +73,9 @@ Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","
 Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"reasoningEffort"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal"/"flakeRerun" for code phases. Never emit an engineer/checkpoint phase.
 Do not print the plan as prose or JSON. After submit_result succeeds, stop.`;
 
+/** @deprecated Use SMITH_COMPOSE_PROMPT. Removed when composition moves under Smith. */
+export const ORCHESTRATOR_PROMPT = SMITH_COMPOSE_PROMPT;
+
 export interface PlanPromptInputs {
   request: string;
   contextSummary: string;
@@ -76,7 +84,7 @@ export interface PlanPromptInputs {
   envelopeDefs: EnvelopeDef[];
   /** The configuration-governed pool this plan may cast its agent phases from. */
   models: ModelInfo[];
-  /** Agent Defaults / Orchestrator pins that sit inside the pool, as preference not a shrink-wrap. */
+  /** Agent Defaults / Smith compose override inside the pool, as preference not a shrink-wrap. */
   preferredModelIds?: string[];
   /** Whether gh can open PRs here, which decides the acceptance guidance. */
   ghAvailable?: boolean;
@@ -97,7 +105,7 @@ export function rosterLines(roster: AgentDef[]): string {
 }
 
 /**
- * The enabled catalog as the Orchestrator must copy it: the exact id, plus the
+ * The enabled catalog as Smith must copy it: the exact id, plus the
  * facts it may use without guessing capability from a model name.
  *
  * Context window and per-token price are deliberately absent. Casting is a
@@ -131,7 +139,7 @@ function fewShotEffortFor(agentName: string | undefined, model: ModelInfo): Reas
 
 /**
  * Builtin pipeline shapes with a real pool id and a legal reasoning effort on
- * every agent phase, so the examples the Orchestrator copies would themselves
+ * every agent phase, so the examples Smith copies would themselves
  * pass `phaseModelIssues`.
  */
 export function stampedFewShotPipelines(
@@ -265,7 +273,7 @@ export const synthesizedAgentSchema = z
   })
   .strict();
 
-/** Adds the engine-owned fields the Orchestrator never chooses. */
+/** Adds the engine-owned fields Smith never chooses. */
 export function hydrateSynthesizedAgents(
   agents: z.infer<typeof synthesizedAgentSchema>[],
   colorOffset = 0,
@@ -304,7 +312,7 @@ const PLAN_OUTPUT_FORMAT: OutputFormat = {
   schema: jsonSchemaWithoutDialect(planReplySchema),
 };
 
-/** The Orchestrator answers through a schema-bound tool, not prose JSON. */
+/** Smith answers through a schema-bound tool, not prose JSON. */
 export function planOutputFormat(): OutputFormat {
   return PLAN_OUTPUT_FORMAT;
 }
@@ -354,7 +362,7 @@ export function parsePlanReply(value: unknown, planId: string): PlanParseResult 
         {
           level: 'error',
           where: 'reply',
-          message: 'the Orchestrator did not call submit_result with a plan',
+          message: 'Smith did not call submit_result with a plan',
         },
       ],
     };
@@ -402,7 +410,7 @@ export function parseRefineReply(value: unknown, planId: string): RefineParseRes
         {
           level: 'error',
           where: 'reply',
-          message: 'the Orchestrator did not call submit_result with a reply',
+          message: 'Smith did not call submit_result with a reply',
         },
       ],
     };
@@ -494,7 +502,7 @@ function modelIsEnabled(wanted: string, enabled: readonly string[]): boolean {
 
 /**
  * The cast pool is the enabled catalog (minus hidden). Agent Defaults and
- * Orchestrator pins are preference for expensive phases, not a shrink-wrap
+ * Smith composition pins are preference for expensive phases, not a shrink-wrap
  * around two ids — a live install with both pins on the same Grok id still
  * needs the rest of the catalog so review can be a different family.
  */
@@ -518,7 +526,7 @@ export function configuredCastModels(
  *
  * Inheritance is the thing being prevented: a phase that declines to choose
  * silently falls back to the install default, which is exactly the invisible
- * appointment the Orchestrator is supposed to make explicitly. Checked here
+ * appointment Smith is supposed to make explicitly. Checked here
  * rather than in the pipeline store because a hand-built pipeline may still
  * inherit — this rule belongs to generated plans.
  *

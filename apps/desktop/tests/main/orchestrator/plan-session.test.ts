@@ -18,7 +18,7 @@ import type {
   ProjectCommand,
 } from '../../../src/shared/types.js';
 import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
-import { ORCHESTRATOR_PROMPT } from '../../../src/main/orchestrator/plan.js';
+import { ORCHESTRATOR_PROMPT, SMITH_COMPOSE_PROMPT } from '../../../src/main/orchestrator/plan.js';
 import { PlanSession } from '../../../src/main/orchestrator/plan-session.js';
 import { generatedCompositionIssues } from '../../../src/main/orchestrator/plan.js';
 import { BUILTIN_AGENTS } from '../../../src/shared/builtin-agents.js';
@@ -178,12 +178,15 @@ async function run(opts: {
   return { session, state: session.snapshot(), oneShots, prompts, states };
 }
 
-describe('ORCHESTRATOR_PROMPT', () => {
+describe('SMITH_COMPOSE_PROMPT', () => {
   it('does not treat unrestricted roster writes as a fit for path-bounded work', () => {
-    expect(ORCHESTRATOR_PROMPT).toContain('Unrestricted roster writes');
-    expect(ORCHESTRATOR_PROMPT).toContain(
+    expect(SMITH_COMPOSE_PROMPT).toContain("You are Smith, Foundry's native operator agent");
+    expect(SMITH_COMPOSE_PROMPT).toContain('You are composing a run');
+    expect(SMITH_COMPOSE_PROMPT).toContain('Unrestricted roster writes');
+    expect(SMITH_COMPOSE_PROMPT).toContain(
       'synthesize the implementation agent rather than using an unrestricted roster builder',
     );
+    expect(ORCHESTRATOR_PROMPT).toBe(SMITH_COMPOSE_PROMPT);
   });
 });
 
@@ -1220,7 +1223,7 @@ describe('PlanSession', () => {
 
     expect(session.message('   ')).toBe('a message needs text');
     expect(session.message('first question')).toBeNull();
-    expect(session.message('second question')).toBe('the Orchestrator is still replying');
+    expect(session.message('second question')).toBe('Smith is still replying');
     await until(() => session.snapshot().messages.length === 2);
 
     const failed = new PlanSession({

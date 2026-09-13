@@ -92,6 +92,6 @@ function projectLiveStatus(state: OrchestratorState): {
 export function proposalTitle(proposal: ProposalSnapshot, maxLength = 80): string {
   const prompt = proposal.prompt.trim().split('\n')[0] ?? '';
   const fallback = proposal.detail.trim().split('\n')[0] ?? '';
-  const text = prompt || fallback || 'Orchestrator proposal';
+  const text = prompt || fallback || 'Smith run proposal';
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }

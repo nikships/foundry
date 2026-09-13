@@ -268,7 +268,7 @@ const MOCK_LINEAR_ISSUES: LinearIssueSnapshot[] = [
     identifier: 'FOU-190',
     title: 'Add Linear ticket orchestration integration',
     description:
-      'Let operators choose a Linear issue on the Runs screen and ask the Orchestrator to compose the right pipeline from its title and description.',
+      'Let operators choose a Linear issue on the Runs screen and ask Smith to compose the right pipeline from its title and description.',
     url: 'https://linear.app/foundry/issue/FOU-190',
     updatedAt: nowIso(-600_000),
     team: { id: 'linear-team-demo', name: 'Foundry' },
@@ -777,7 +777,7 @@ export function createMockFoundryApi(): FoundryApi {
           prompt,
           refinedRequest: `${prompt}\n\nPreserve the linked Linear issue context and include focused verification evidence.`,
           rationale:
-            'The issue spans implementation and verification, so the Orchestrator selected the standard build pipeline.',
+            'The issue spans implementation and verification, so Smith selected the standard build pipeline.',
           pipeline,
           agents: [],
           warnings: [],
@@ -870,7 +870,7 @@ export function createMockFoundryApi(): FoundryApi {
           chat.messages.push({
             id: `m${Date.now()}`,
             role: 'orchestrator',
-            text: 'web preview — the fixture Orchestrator keeps the proposal as it stands.',
+            text: 'web preview — Smith keeps the fixture proposal as it stands.',
             at: Date.now(),
           });
           chat.emit('done', 'plan unchanged');

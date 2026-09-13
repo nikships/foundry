@@ -1,5 +1,5 @@
 /**
- * Composition rules as one source: the Orchestrator prompt bullets and the
+ * Composition rules as one source: Smith's composition prompt bullets and the
  * generated-plan rails are the same objects. Changing a rail without the
  * prompt noticing is a snapshot failure, not a silent drift.
  */
@@ -468,7 +468,7 @@ export function envelopeConstitution(envelope: string): string {
   return ENVELOPE_CONSTITUTIONS[envelope] ?? ENVELOPE_CONSTITUTIONS.generic!;
 }
 
-/** The prompt the Orchestrator authored, without the constitution Foundry appends. */
+/** The prompt Smith authored, without the constitution Foundry appends. */
 export function authoredSystemPrompt(systemPrompt: string, envelope: string): string {
   const constitution = envelopeConstitution(envelope);
   const idx = systemPrompt.lastIndexOf(constitution);
@@ -483,7 +483,7 @@ export function injectEnvelopeConstitution(systemPrompt: string, envelope: strin
 }
 
 /**
- * One object per composition rule. `bullet` is what the Orchestrator is told;
+ * One object per composition rule. `bullet` is what Smith is told;
  * `check` is what `generatedCompositionIssues` runs. They cannot drift.
  */
 export const COMPOSITION_RULES: CompositionRule[] = [
@@ -589,7 +589,7 @@ export function compositionRuleBullets(): string {
 
 /**
  * Quality invariants unique to generated plans. Hand-built pipelines remain
- * editable, while an Orchestrator proposal must prove the guarantees its card
+ * editable, while a Smith proposal must prove the guarantees its card
  * claims before it can reach the operator.
  */
 export function generatedCompositionIssues(

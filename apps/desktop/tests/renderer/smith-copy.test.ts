@@ -36,7 +36,7 @@ describe('smith user-level access copy', () => {
   });
   it('names every capability in both surfaces with the approval rule', () => {
     expect(SMITH_USER_ACCESS_COPY).toMatch(/assigned Linear/i);
-    expect(SMITH_USER_ACCESS_COPY).toMatch(/orchestrator plan/i);
+    expect(SMITH_USER_ACCESS_COPY).toMatch(/Smith compose a run plan/i);
     expect(SMITH_USER_ACCESS_COPY).toMatch(/saved pipeline/i);
     expect(SMITH_USER_ACCESS_COPY).toMatch(/voice/i);
     expect(SMITH_USER_ACCESS_COPY).toMatch(/approval/i);

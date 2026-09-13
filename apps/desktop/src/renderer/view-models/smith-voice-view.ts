@@ -32,7 +32,7 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
     {
       name: VOICE_TOOL_NAMES.work,
       description:
-        'Continue your work as Smith using the operator-selected model. Use for anything that reads or changes Foundry: runs, pipelines, agents, projects, files, settings, orchestrator planning prompts, assigned Linear tickets and their status, saved pipeline runs, project context refreshes, the Live Voice key state, or questions about app state. Begins the work and returns a working status; wait for the completion result before stating an outcome. When the result names an orchestrator plan ID, narrate the ID and offer to check its status. Never speak a secret aloud: a proposal that needs a key is completed in the masked card in the app.',
+        'Continue your work as Smith using the operator-selected model. Use for anything that reads or changes Foundry: runs, pipelines, agents, projects, files, settings, run-plan composition prompts, assigned Linear tickets and their status, saved pipeline runs, project context refreshes, the Live Voice key state, or questions about app state. Begins the work and returns a working status; wait for the completion result before stating an outcome. When the result names a Smith run plan ID, narrate the ID and offer to check its status. Never speak a secret aloud: a proposal that needs a key is completed in the masked card in the app.',
       parameters: {
         type: Type.OBJECT,
         properties: {
@@ -228,7 +228,7 @@ export const SMITH_VOICE_CAPABILITY_PROMPTS: ReadonlyArray<SmithVoiceCapabilityP
   {
     id: 'orchestrator-plan',
     utterance: 'Start planning a fix for my ticket.',
-    workText: 'Start an orchestrator plan for the described change.',
+    workText: 'Ask Smith to compose a run plan for the described change.',
   },
   {
     id: 'pipeline-run',
@@ -260,8 +260,8 @@ export function voiceCapabilityWorkText(
         : 'Check the requested Linear ticket and report its status.';
     case 'orchestrator-plan':
       return trimmed
-        ? `Start an orchestrator plan for: ${trimmed}`
-        : 'Start an orchestrator plan for the described change.';
+        ? `Ask Smith to compose a run plan for: ${trimmed}`
+        : 'Ask Smith to compose a run plan for the described change.';
     case 'pipeline-run':
       return trimmed
         ? `Run the requested saved pipeline: ${trimmed}.`

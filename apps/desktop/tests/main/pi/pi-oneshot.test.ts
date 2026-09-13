@@ -510,7 +510,7 @@ describe('running one turn', () => {
     const h = harness();
 
     await expect(h.open().send('look', [{ mediaType: 'image/png', data: 'aaaa' }])).rejects.toThrow(
-      'anthropic/claude-sonnet-4 does not support image input. Choose an image-capable Orchestrator model.',
+      'anthropic/claude-sonnet-4 does not support image input. Choose an image-capable Smith composition model.',
     );
     expect(h.session.prompts).toEqual([]);
     expect(h.session.disposed).toBe(1);

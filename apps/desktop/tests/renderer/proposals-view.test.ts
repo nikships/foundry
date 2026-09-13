@@ -143,6 +143,6 @@ describe('proposalTitle', () => {
     expect(proposalTitle(proposal({ prompt: '  ', detail: 'reading the repo' }))).toBe(
       'reading the repo',
     );
-    expect(proposalTitle(proposal({ prompt: '', detail: '' }))).toBe('Orchestrator proposal');
+    expect(proposalTitle(proposal({ prompt: '', detail: '' }))).toBe('Smith run proposal');
   });
 });

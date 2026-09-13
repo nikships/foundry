@@ -579,7 +579,7 @@ export class CompanionHost {
     url: URL,
   ): Promise<unknown> {
     const orchestrator = this.deps.orchestrator;
-    if (!orchestrator) throw new RouteError(404, 'not_found', 'Orchestrator is not available');
+    if (!orchestrator) throw new RouteError(404, 'not_found', 'Smith composition is not available');
 
     if (method === 'GET' && rest[0] === 'options' && rest.length === 1) {
       return orchestrator.options();

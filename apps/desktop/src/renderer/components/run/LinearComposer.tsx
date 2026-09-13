@@ -248,7 +248,7 @@ function LinearExecutionFooter({
           onClick={() => onExecutionChange('orchestrator')}
           data-testid="linear-execution-orchestrator"
         >
-          Orchestrator
+          Smith composes
         </button>
         <button
           type="button"
@@ -796,9 +796,8 @@ export default function LinearComposer({
 
             {issue && execution === 'orchestrator' && ownStage === 'compose' && (
               <p className={styles.orchestratorHint}>
-                The Orchestrator reads {issue.identifier}&apos;s title as the brief and the
-                description, comments, labels, and parent as untrusted evidence, then composes the
-                pipeline.
+                Smith reads {issue.identifier}&apos;s title as the brief and the description,
+                comments, labels, and parent as untrusted evidence, then composes the pipeline.
               </p>
             )}
             {currentBlocked && !starting && ownStage === 'compose' && (
@@ -818,7 +817,7 @@ export default function LinearComposer({
         <section className={`${styles.planningPanel} card`} data-testid="planning-panel">
           <div className={styles.planningHead}>
             <span className={styles.planningTitle}>
-              {planningFailed ? 'Planning failed' : 'The Orchestrator is planning'}
+              {planningFailed ? 'Planning failed' : 'Smith is composing…'}
             </span>
             <span className={styles.planningDetail}>
               {ownPlanning?.detail ?? 'Opening the planning session…'}

@@ -53,7 +53,7 @@ const INITIAL_FIXTURE_PIPELINE: PipelineDef = {
     {
       name: 'obsolete_check',
       kind: 'code',
-      description: 'Represent the queued tail replaced by the Orchestrator.',
+      description: 'Represent the queued tail replaced by Smith.',
       command: { argv: ['true'] },
     },
   ],

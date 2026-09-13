@@ -5,7 +5,7 @@ import { cx } from '../ui/cx.js';
 import styles from './PlanChat.module.css';
 
 /**
- * The back-and-forth about an accepted proposal: ask the Orchestrator about a
+ * The back-and-forth about an accepted proposal: ask Smith about a
  * trade-off, or have it revise the plan, without discarding and starting
  * over. Regenerate and Start stay where they were — this is the middle path
  * between them.
@@ -69,9 +69,7 @@ export default function PlanChat({
           ))}
           {replying && (
             <div className={cx(styles.message, styles.orchestrator)}>
-              <p className={`${styles.messageText} ${styles.thinking}`}>
-                The Orchestrator is considering…
-              </p>
+              <p className={`${styles.messageText} ${styles.thinking}`}>Smith is considering…</p>
             </div>
           )}
         </div>
@@ -85,14 +83,14 @@ export default function PlanChat({
           disabled={disabled}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
-          aria-label="Message the Orchestrator about this proposal"
+          aria-label="Message Smith about this proposal"
           data-testid="plan-chat-input"
         />
         <button
           type="button"
           className={styles.send}
           disabled={disabled || replying || !draft.trim()}
-          title={replying ? 'The Orchestrator is still replying' : 'Send (Enter)'}
+          title={replying ? 'Smith is still replying' : 'Send (Enter)'}
           aria-label="Send message"
           onClick={send}
           data-testid="plan-chat-send"

@@ -211,9 +211,9 @@ describe('voice work handoff language', () => {
 });
 
 describe('voice user-level capability routing', () => {
-  it('advertises orchestrator, assigned Linear work, pipelines, and key state via smith_work', () => {
+  it('advertises Smith composition, assigned Linear work, pipelines, and key state via smith_work', () => {
     const work = voiceToolDeclarations()[0];
-    expect(work.description).toContain('orchestrator');
+    expect(work.description).toContain('run-plan composition');
     expect(work.description).toMatch(/assigned Linear/i);
     expect(work.description).toMatch(/saved pipeline/i);
     expect(work.description).toMatch(/Voice key/i);

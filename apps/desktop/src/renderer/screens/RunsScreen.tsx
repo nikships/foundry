@@ -108,7 +108,7 @@ function SourceTabs({
     label: string;
     icon: React.JSX.Element;
   }> = [
-    { id: 'orchestrator', label: 'Orchestrator', icon: <Sparkles size={11} /> },
+    { id: 'orchestrator', label: 'Smith composes', icon: <Sparkles size={11} /> },
     { id: 'manual', label: 'Manual pipeline', icon: <Workflow size={11} /> },
     { id: 'linear', label: 'Linear issue', icon: <CircleDot size={11} /> },
   ];
@@ -257,7 +257,7 @@ function OrchestratedComposer({
           value={request}
           onChange={(event) => onRequestChange(event.target.value)}
           rows={hasProposals ? 2 : 4}
-          placeholder="Describe the change. The Orchestrator rewrites it into a behavior-level brief and composes the pipeline."
+          placeholder="Describe the change. Smith rewrites it into a behavior-level brief and composes the pipeline."
           onKeyDown={onRequestKeyDown}
           onPaste={onRequestPaste}
           aria-label="Run request"

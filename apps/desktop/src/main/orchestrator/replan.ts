@@ -4,7 +4,7 @@
  *
  * This seam lives under `orchestrator/` for historical reasons: it reuses the
  * planning schema and composition rails, but its persona and model selection
- * are Smith's, not the Orchestrator's initial-planning feature. Smith proposes;
+ * are Smith's, not the initial composition feature. Smith proposes;
  * the engine validates and applies the repair directly with no approval detour.
  */
 
@@ -29,6 +29,7 @@ import {
 } from './plan.js';
 import { pipelineSchema } from '../store/pipelines.js';
 import { jsonSchemaWithoutDialect } from '@shared/zod-json-schema.js';
+import { SMITH_HARNESS_PREAMBLE } from '../smith/persona.js';
 
 /** One concrete model/effort appointment the engine permits in a repair tail. */
 export interface AllowedModelAppointment {
@@ -77,7 +78,11 @@ export const AMENDMENT_OUTPUT_FORMAT: OutputFormat = {
   schema: jsonSchemaWithoutDialect(amendmentSchema),
 };
 
-export const REPLAN_SYSTEM_PROMPT = `You are Smith, repairing this Foundry pipeline.
+export const SMITH_REPAIR_PROMPT = `${SMITH_HARNESS_PREAMBLE}
+
+## Repair turn
+
+You are repairing this Foundry pipeline.
 
 This is an automatic, run-scoped repair turn. Propose the smallest useful replacement starting at the failed phase. Preserve the completed prefix, the run goal, the acceptance criterion, worktree isolation, and the verification intent. Reuse a roster agent where its summary fits; synthesize a new agent only when none can own a required phase, and new agents are run-local. A code phase's feedbackTo may target only an earlier phase in your replacement tail, never a completed phase. Do not claim the repair succeeded — you only propose it.
 
@@ -96,6 +101,9 @@ When there is no defensible repair, opt out explicitly with:
 An empty tail removes nothing; the engine leaves the pipeline unchanged and settles with the original verdict. Do not return an empty tail alongside new agents.
 
 Each synthesized agent has {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase names it. Omit engine-owned ids and colors.`;
+
+/** @deprecated Use SMITH_REPAIR_PROMPT. Removed when composition moves under Smith. */
+export const REPLAN_SYSTEM_PROMPT = SMITH_REPAIR_PROMPT;
 
 function commandLine(command: PhaseDef['command']): string | null {
   if (!command) return null;
@@ -247,7 +255,7 @@ export function replanningSupport(
         access: 'read',
         model: choice.model,
         reasoningEffort: choice.reasoningEffort,
-        systemPrompt: REPLAN_SYSTEM_PROMPT,
+        systemPrompt: SMITH_REPAIR_PROMPT,
         outputFormat: AMENDMENT_OUTPUT_FORMAT,
       });
       active = session;

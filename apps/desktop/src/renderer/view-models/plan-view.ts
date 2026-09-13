@@ -39,7 +39,7 @@ export interface PlanPhaseView {
   decides: boolean;
   /**
    * Agent phases only: the model this phase is appointed to run on, as the
-   * operator may still override it. `inherit` means the Orchestrator declined
+   * operator may still override it. `inherit` means Smith declined
    * to appoint one, which its rails refuse — it can only appear on a plan
    * generated before that rule existed.
    */

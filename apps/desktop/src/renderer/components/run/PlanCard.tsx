@@ -16,11 +16,11 @@ import PlanPhaseSheet from './PlanPhaseSheet.js';
 import styles from './PlanCard.module.css';
 
 /**
- * The Orchestrator's proposal, laid out for confirmation: the refined brief,
+ * Smith's proposal, laid out for confirmation: the refined brief,
  * the proposed pipeline as an inspectable board, the agents it synthesized,
  * the acceptance rule, and why the pipeline has this shape. Nothing here
  * starts anything — the operator disposes, and may re-cast any agent phase,
- * or talk the proposal over with the Orchestrator, before doing so.
+ * or talk the proposal over with Smith, before doing so.
  */
 export default function PlanCard({
   planId,
@@ -45,7 +45,7 @@ export default function PlanCard({
   /** Durable proposal id for accept-by-id; defaults to the plan's own id. */
   planId?: string;
   plan: GeneratedRunPlan;
-  /** The plan as the Orchestrator proposed it, before any operator override. */
+  /** The plan as Smith proposed it, before any operator override. */
   original: GeneratedRunPlan;
   starting: boolean;
   /** Why starting is refused right now, or null when it may proceed. */
@@ -54,7 +54,7 @@ export default function PlanCard({
   issues: ValidationIssue[];
   /** The back-and-forth about this proposal, in order. */
   messages: PlanChatMessage[];
-  /** True while the Orchestrator is considering a follow-up message. */
+  /** True while Smith is considering a follow-up message. */
   replying: boolean;
   /** Why the last message was refused, or empty. */
   chatError: string;
@@ -172,7 +172,7 @@ export default function PlanCard({
       </div>
 
       <div className={styles.section}>
-        <p className={styles.label}>Discuss with the Orchestrator</p>
+        <p className={styles.label}>Discuss in Smith →</p>
         <PlanChat
           messages={messages}
           replying={replying}

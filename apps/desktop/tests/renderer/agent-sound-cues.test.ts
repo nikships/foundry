@@ -62,7 +62,7 @@ const success = (name: string): { name: string; status: PhaseStatus; kind: Phase
 
 describe('isOrchestratorPingNote', () => {
   it('recognises the ask and the correction retry, not setup notes', () => {
-    expect(isOrchestratorPingNote('Asking the Orchestrator (anthropic/claude)…')).toBe(true);
+    expect(isOrchestratorPingNote('Asking Smith to compose (anthropic/claude)…')).toBe(true);
     expect(isOrchestratorPingNote('Sending the validation errors back (attempt 2 of 4)…')).toBe(
       true,
     );
@@ -79,7 +79,7 @@ describe('snapshotOrchestrator', () => {
       revision: 0,
       plan: null,
       entries: [
-        { id: 'n1', kind: 'note', text: 'Asking the Orchestrator…', at: 1 },
+        { id: 'n1', kind: 'note', text: 'Asking Smith to compose…', at: 1 },
         { id: 't1', kind: 'tool', text: 'read README.md', at: 2, toolKind: 'read' },
         { id: 'x1', kind: 'text', text: 'thinking out loud', at: 3 },
       ],

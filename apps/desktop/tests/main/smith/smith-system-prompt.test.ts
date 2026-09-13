@@ -10,7 +10,7 @@ import {
   isPhaseKind,
   PHASE_KINDS,
 } from '../../../src/main/orchestrator/composition-rules.js';
-import { ORCHESTRATOR_PROMPT } from '../../../src/main/orchestrator/plan.js';
+import { SMITH_COMPOSE_PROMPT } from '../../../src/main/orchestrator/plan.js';
 import {
   SMITH_CHAT_HARNESS,
   permissionContextBlock,
@@ -22,9 +22,8 @@ import type { PhaseKind } from '../../../src/shared/types.js';
 
 describe('SMITH_CHAT_HARNESS', () => {
   it('states the Smith identity and its place inside the app', () => {
-    expect(SMITH_CHAT_HARNESS).toContain("You are Smith, Foundry's entity-smith");
-    expect(SMITH_CHAT_HARNESS).toContain('inside the');
-    expect(SMITH_CHAT_HARNESS).toContain('Foundry app');
+    expect(SMITH_CHAT_HARNESS).toContain("You are Smith, Foundry's native operator agent");
+    expect(SMITH_CHAT_HARNESS).toContain('Foundry turns a prompt into reviewed code');
   });
 
   it('keeps the Foundry vocabulary the skill taught', () => {
@@ -33,8 +32,8 @@ describe('SMITH_CHAT_HARNESS', () => {
     }
   });
 
-  it('teaches Orchestrator as the default and Manual as opt-in', () => {
-    expect(SMITH_CHAT_HARNESS).toContain('For a new isolated run, use the Orchestrator by default');
+  it('teaches Smith composition as the default and Manual as opt-in', () => {
+    expect(SMITH_CHAT_HARNESS).toContain('For a new isolated run, compose a plan by default');
     expect(SMITH_CHAT_HARNESS).toContain(
       'pipeline only when the operator asks for a manual pipeline',
     );
@@ -42,8 +41,8 @@ describe('SMITH_CHAT_HARNESS', () => {
     expect(SMITH_CHAT_HARNESS).toContain('smith_present');
     expect(SMITH_CHAT_HARNESS).toContain('orchestrator_accept');
     const what = SMITH_CHAT_HARNESS.split('## How you work')[0]!;
-    expect(what.toLowerCase().indexOf('orchestrator')).toBeGreaterThan(-1);
-    expect(what.toLowerCase().indexOf('orchestrator')).toBeLessThan(
+    expect(what.toLowerCase()).not.toContain('orchestrator');
+    expect(what.toLowerCase().indexOf('compose')).toBeLessThan(
       what.toLowerCase().indexOf('manual'),
     );
   });
@@ -81,7 +80,7 @@ describe('SMITH_CHAT_HARNESS', () => {
     );
     expect(SMITH_CHAT_HARNESS).toContain('reasoningEffort');
     expect(SMITH_CHAT_HARNESS).toContain(compositionRuleBullets());
-    expect(ORCHESTRATOR_PROMPT).toContain(compositionRuleBullets());
+    expect(SMITH_COMPOSE_PROMPT).toContain(compositionRuleBullets());
   });
 
   it('carries the entity schemas: fields, enums, and reserved names', () => {

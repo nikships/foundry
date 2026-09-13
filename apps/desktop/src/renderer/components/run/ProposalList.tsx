@@ -171,7 +171,7 @@ function ProposalRow({
         aria-live="polite"
       >
         <div className={styles.planningHead} data-testid="planning-panel">
-          <span className={styles.planningTitle}>The Orchestrator is planning</span>
+          <span className={styles.planningTitle}>Smith is composing…</span>
           <span className={styles.planningDetail}>
             {proposal.detail || 'Opening the planning session…'}
           </span>

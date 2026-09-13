@@ -31,7 +31,7 @@ export default function OrchestratorPicker({
   return (
     <div className={styles.picker} data-testid="orchestrator-picker">
       <div className={styles.ceremony}>
-        <span className={styles.title}>The Orchestrator</span>
+        <span className={styles.title}>Smith composes on</span>
         <span className={styles.motto}>every run answers to one mind</span>
       </div>
       <OrchestratorControls choice={choice} disabled={disabled} onChange={onChange} />
@@ -63,7 +63,7 @@ export function OrchestratorControls({
           value={choice.model}
           models={models}
           allowInherit
-          inheritLabel="The default model"
+          inheritLabel="Smith's model"
           showNotes={false}
           disabled={disabled}
           onChange={(model) => {
@@ -77,7 +77,7 @@ export function OrchestratorControls({
           value={choice.reasoningEffort}
           model={effortModel}
           disabled={disabled}
-          ariaLabel="Orchestrator reasoning effort"
+          ariaLabel="Smith composition reasoning effort"
           data-testid="orchestrator-effort"
           onChange={(reasoningEffort) => {
             change({ ...choice, reasoningEffort });

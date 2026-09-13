@@ -8,6 +8,7 @@ import type { AppSettings } from '../../../src/shared/types.js';
 import {
   AMENDMENT_OUTPUT_FORMAT,
   REPLAN_SYSTEM_PROMPT,
+  SMITH_REPAIR_PROMPT,
   buildReplanPrompt,
   replanningSupport,
   resolvePipelineHealingModel,
@@ -159,9 +160,11 @@ describe('Smith repair adapter', () => {
       ...baseInput(),
       previousIssues: ['phases[1] broken: missing command'],
     });
-    expect(REPLAN_SYSTEM_PROMPT).toMatch(/^You are Smith, repairing this Foundry pipeline\./);
-    expect(REPLAN_SYSTEM_PROMPT).toContain('{"reason":"');
-    expect(REPLAN_SYSTEM_PROMPT).toContain('phases":[]');
+    expect(SMITH_REPAIR_PROMPT).toMatch(/^You are Smith, Foundry's native operator agent\./);
+    expect(SMITH_REPAIR_PROMPT).toContain('You are repairing this Foundry pipeline.');
+    expect(SMITH_REPAIR_PROMPT).toContain('{"reason":"');
+    expect(SMITH_REPAIR_PROMPT).toContain('phases":[]');
+    expect(REPLAN_SYSTEM_PROMPT).toBe(SMITH_REPAIR_PROMPT);
     expect(shots.calls[0]!.systemPrompt).toContain('You are Smith');
     const prompt = shots.prompts[0]!;
     expect(prompt).toContain('Make the thing pass.');

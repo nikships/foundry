@@ -40,7 +40,7 @@ export interface SmithCueSnapshot {
 
 export function isOrchestratorPingNote(text: string): boolean {
   return (
-    text.startsWith('Asking the Orchestrator') ||
+    text.startsWith('Asking Smith to compose') ||
     text.startsWith('Sending the validation errors back')
   );
 }
