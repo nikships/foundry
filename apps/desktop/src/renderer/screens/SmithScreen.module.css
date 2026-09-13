@@ -42,6 +42,8 @@
   align-items: center;
   gap: var(--s3);
   flex: none;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .modelPicker {
@@ -116,6 +118,9 @@
   gap: var(--s2);
   padding-top: var(--s3);
   border-top: 1px solid var(--line-faint);
+  width: 100%;
+  max-width: 840px;
+  margin: 0 auto;
 }
 
 /*

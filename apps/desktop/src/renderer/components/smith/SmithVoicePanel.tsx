@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Mic, MicOff, Square, X, ArrowUpRight } from 'lucide-react';
-import type { SmithScreenContext } from '@shared/ipc-contract.js';
-import { useSmithVoice, type SmithVoiceState } from '../../hooks/useSmithVoice.js';
-import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
+import type { SmithVoiceState } from '../../hooks/useSmithVoice.js';
+import { useSmithChatUI } from '../../stores/smith-chat-ui.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import { VoiceOrb } from './VoiceOrb.js';
-import styles from './SmithVoiceOverlay.module.css';
+import styles from './SmithVoicePanel.module.css';
 
 function voicePresentation(state: SmithVoiceState): { title: string; detail: string } {
   if (state.status === 'error')
@@ -73,7 +72,7 @@ function VoicePanelContent({
           type="button"
           className={styles.close}
           onClick={close}
-          aria-label="Close Smith voice"
+          aria-label="Return to text chat"
           data-testid="smith-voice-close"
         >
           <X size={16} />
@@ -109,7 +108,6 @@ function VoicePanelContent({
           type="button"
           className={styles.notice}
           onClick={() => {
-            // On the Smith screen onOpenSmith is a no-op navigation; close reveals the full-page chat.
             close();
             onOpenSmith();
           }}
@@ -159,113 +157,42 @@ function VoicePanelContent({
         <span className={styles.micDot} data-on={live && !state.muted} />
         {live
           ? state.muted
-            ? 'Mic muted · Closing this panel keeps voice connected.'
-            : 'Mic on · Closing this panel keeps voice connected.'
+            ? 'Mic muted. Text mode keeps voice connected.'
+            : 'Mic on. Text mode keeps voice connected.'
           : 'Audio is sent to Gemini only while voice is connected.'}
       </footer>
     </>
   );
 }
 
-export default function SmithVoiceOverlay({
-  screenContext,
-  onOpenSmith,
-  onOpenSettings,
-  variant,
+export default function SmithVoicePanel({
+  expanded = false,
 }: {
-  screenContext: SmithScreenContext;
-  onOpenSmith: () => void;
-  onOpenSettings: (pane: string) => void;
-  variant: 'popover' | 'fullscreen';
+  expanded?: boolean;
 }): React.JSX.Element {
-  const { state, start, stop, toggleMute, readLevel, setScreenContext } = useSmithVoice();
-  const [open, setOpen] = useState(false);
-  const launcherRef = useRef<HTMLButtonElement>(null);
+  const { state, start, stop, toggleMute, readLevel, setMode, openSettings } = useSmithChatUI();
   const closeRef = useRef<HTMLButtonElement>(null);
-  const presentation = voicePresentation(state);
-  const live = state.status === 'live';
-  const connecting = state.status === 'connecting';
-
-  useEffect(() => {
-    setScreenContext(screenContext);
-  }, [screenContext, setScreenContext]);
-  useEffect(() => {
-    if (open) closeRef.current?.focus();
-  }, [open]);
-  const close = useCallback(() => {
-    setOpen(false);
-    launcherRef.current?.focus();
-  }, []);
-  useEscapeToClose(close, open);
-  const settings = (): void => {
-    close();
-    onOpenSettings('integrations');
-  };
-
-  const content = (
-    <VoicePanelContent
-      state={state}
-      presentation={presentation}
-      live={live}
-      connecting={connecting}
-      closeRef={closeRef}
-      close={close}
-      start={start}
-      stop={stop}
-      toggleMute={toggleMute}
-      settings={settings}
-      readLevel={readLevel}
-      onOpenSmith={onOpenSmith}
-    />
-  );
-
+  const close = (): void => setMode('text');
   return (
-    <div className={styles.anchor}>
-      {open &&
-        (variant === 'fullscreen' ? (
-          <div className={styles.fullscreen} data-testid="smith-voice-fullscreen">
-            <section
-              id="smith-voice-panel"
-              className={cx(styles.panel, styles.panelFullscreen)}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Smith voice"
-              data-testid="smith-voice-panel"
-            >
-              {content}
-            </section>
-          </div>
-        ) : (
-          <section
-            id="smith-voice-panel"
-            className={styles.panel}
-            role="dialog"
-            aria-label="Smith voice"
-            data-testid="smith-voice-panel"
-          >
-            {content}
-          </section>
-        ))}
-      <button
-        ref={launcherRef}
-        type="button"
-        className={cx(styles.launcher, live && styles.launcherLive)}
-        aria-expanded={open}
-        aria-controls="smith-voice-panel"
-        aria-label={
-          live
-            ? state.muted
-              ? 'Smith voice connected, microphone muted'
-              : 'Smith voice live, microphone on'
-            : 'Open Smith voice mode'
-        }
-        data-testid="smith-voice-launcher"
-        title={live ? 'Smith voice is live' : 'Smith voice mode'}
-        onClick={() => (open ? close() : setOpen(true))}
-      >
-        {state.muted ? <MicOff size={15} /> : <Mic size={15} />}
-        {live && <span className={styles.liveDot} />}
-      </button>
-    </div>
+    <section
+      className={cx(styles.panel, expanded && styles.expanded)}
+      aria-label="Smith voice"
+      data-testid="smith-voice-panel"
+    >
+      <VoicePanelContent
+        state={state}
+        presentation={voicePresentation(state)}
+        live={state.status === 'live'}
+        connecting={state.status === 'connecting'}
+        closeRef={closeRef}
+        close={close}
+        start={start}
+        stop={stop}
+        toggleMute={toggleMute}
+        settings={openSettings}
+        readLevel={readLevel}
+        onOpenSmith={close}
+      />
+    </section>
   );
 }

@@ -20,10 +20,13 @@ import type { SmithReceiptLink } from '@shared/types.js';
 import { api } from '../../api.js';
 import { useApp } from '../../stores/app.js';
 import { useSmithChat } from '../../hooks/useSmithChat.js';
+import { useSmithChatUI } from '../../stores/smith-chat-ui.js';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
 import SmithProposalCard, { type SmithNavTarget } from './SmithProposalCard.js';
 import SmithScopePicker from './SmithScopePicker.js';
 import SmithTranscript from './SmithTranscript.js';
+import SmithModeBar from './SmithModeBar.js';
+import SmithVoicePanel from './SmithVoicePanel.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import { SmithEmblem } from '../layout/SidebarEmblems.js';
@@ -34,12 +37,14 @@ function HeadAction({
   title,
   label,
   testId,
+  disabled,
   children,
 }: {
   onClick: () => void;
   title: string;
   label: string;
   testId: string;
+  disabled?: boolean;
   /** Path data for a 16×16 viewBox glyph. */
   children: React.ReactNode;
 }): React.JSX.Element {
@@ -51,6 +56,7 @@ function HeadAction({
       title={title}
       aria-label={label}
       data-testid={testId}
+      disabled={disabled}
     >
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
         {children}
@@ -77,15 +83,17 @@ export default function SmithBubble({
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
+  const { mode, state: voiceState, draft, setDraft } = useSmithChatUI();
+  const voiceConnected = voiceState.status === 'live' || voiceState.status === 'connecting';
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
   const { state, send, cancel, newChat } = useSmithChat(scopeId);
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState('');
   const [proposalPending, setProposalPending] = useState(false);
   /** A turn settled while the popover was closed; cleared on open. */
   const [finishedWhileClosed, setFinishedWhileClosed] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const launcherRef = useRef<HTMLButtonElement | null>(null);
   const wasRunningRef = useRef(false);
   const openRef = useRef(open);
   openRef.current = open;
@@ -123,12 +131,15 @@ export default function SmithBubble({
     setFinishedWhileClosed(false);
   }, []);
 
-  const close = useCallback((): void => setOpen(false), []);
+  const close = useCallback((): void => {
+    setOpen(false);
+    launcherRef.current?.focus();
+  }, []);
   useEscapeToClose(close, open);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
+    if (open && mode === 'text') inputRef.current?.focus();
+  }, [open, mode]);
 
   const submit = (): void => {
     const text = draft.trim();
@@ -139,7 +150,7 @@ export default function SmithBubble({
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
     }
@@ -168,6 +179,7 @@ export default function SmithBubble({
               title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
               label="New chat"
               testId="smith-bubble-new-chat"
+              disabled={voiceConnected}
             >
               <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.3" />
               <path
@@ -208,93 +220,106 @@ export default function SmithBubble({
               />
             </HeadAction>
           </header>
+          <SmithModeBar />
+          {mode === 'voice' ? (
+            <SmithVoicePanel />
+          ) : (
+            <>
+              <SmithTranscript
+                key={scopeId ?? 'global'}
+                entries={transcript}
+                running={running}
+                compact
+                onOpenInspector={onOpenInspector}
+                onOpenReceiptLink={
+                  onOpenReceiptLink
+                    ? (link: SmithReceiptLink) => {
+                        // Following a link navigates the app behind the popover, so
+                        // leaving it open would hide the screen it just opened.
+                        close();
+                        onOpenReceiptLink(link);
+                      }
+                    : undefined
+                }
+                emptyState={
+                  <div className={styles.empty}>
+                    {smithProject ? (
+                      <p>
+                        Ask Smith anything about {smithProject.name} — entities, readiness, runs.
+                      </p>
+                    ) : (
+                      <p>Ask Smith to inspect and manage Foundry across all projects.</p>
+                    )}
+                  </div>
+                }
+                tail={
+                  <div className={styles.cardSlot}>
+                    <SmithProposalCard
+                      projectId={scopeId}
+                      onCompleted={onCompleted}
+                      compact
+                      onRequestChanges={(prefill) => {
+                        setDraft((prev) => prev || prefill);
+                        inputRef.current?.focus();
+                      }}
+                    />
+                  </div>
+                }
+              />
 
-          <SmithTranscript
-            entries={transcript}
-            running={running}
-            compact
-            onOpenInspector={onOpenInspector}
-            onOpenReceiptLink={
-              onOpenReceiptLink
-                ? (link: SmithReceiptLink) => {
-                    // Following a link navigates the app behind the popover, so
-                    // leaving it open would hide the screen it just opened.
-                    close();
-                    onOpenReceiptLink(link);
+              {state?.error && (
+                <div className={styles.errorBanner} role="alert">
+                  {state.error}
+                </div>
+              )}
+
+              <footer className={styles.composer}>
+                <textarea
+                  ref={inputRef}
+                  className={`textarea ${styles.input}`}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder={
+                    smithProject ? 'Message Smith…' : 'Message Smith across all projects…'
                   }
-                : undefined
-            }
-            emptyState={
-              <div className={styles.empty}>
-                {smithProject ? (
-                  <p>Ask Smith anything about {smithProject.name} — entities, readiness, runs.</p>
-                ) : (
-                  <p>Ask Smith to inspect and manage Foundry across all projects.</p>
-                )}
-              </div>
-            }
-            tail={
-              <div className={styles.cardSlot}>
-                <SmithProposalCard
-                  projectId={scopeId}
-                  onCompleted={onCompleted}
-                  compact
-                  onRequestChanges={(prefill) => {
-                    setDraft((prev) => prev || prefill);
-                    inputRef.current?.focus();
-                  }}
+                  rows={1}
+                  aria-label="Message Smith"
+                  data-testid="smith-bubble-input"
                 />
-              </div>
-            }
-          />
-
-          {state?.error && (
-            <div className={styles.errorBanner} role="alert">
-              {state.error}
-            </div>
+                {running ? (
+                  <Button size="sm" onClick={() => void cancel()} data-testid="smith-bubble-cancel">
+                    Stop
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!draft.trim()}
+                    onClick={submit}
+                    data-testid="smith-bubble-send"
+                  >
+                    Send
+                  </Button>
+                )}
+              </footer>
+            </>
           )}
-
-          <footer className={styles.composer}>
-            <textarea
-              ref={inputRef}
-              className={`textarea ${styles.input}`}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={smithProject ? 'Message Smith…' : 'Message Smith across all projects…'}
-              rows={1}
-              aria-label="Message Smith"
-              data-testid="smith-bubble-input"
-            />
-            {running ? (
-              <Button size="sm" onClick={() => void cancel()} data-testid="smith-bubble-cancel">
-                Stop
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={!draft.trim()}
-                onClick={submit}
-                data-testid="smith-bubble-send"
-              >
-                Send
-              </Button>
-            )}
-          </footer>
         </div>
       )}
 
       <button
+        ref={launcherRef}
         type="button"
         className={styles.launcher}
         onClick={() => (open ? close() : openPopover())}
         title="Smith"
-        aria-label={open ? 'Close Smith chat' : 'Open Smith chat'}
+        aria-label={`${open ? 'Close' : 'Open'} Smith chat${voiceConnected ? (voiceState.muted ? ', microphone muted' : ', voice connected') : ''}`}
         aria-expanded={open}
         data-testid="smith-bubble"
       >
         <SmithEmblem size={17} className={styles.launcherMark} />
+        {voiceConnected && <span className={styles.voiceDot} aria-hidden />}
         {badge && (
           <span
             className={cx(styles.badge, proposalPending && styles.badgeProposal)}

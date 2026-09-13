@@ -5,39 +5,40 @@
  * rows, and readiness sub-agent turns as a visually distinct bordered block —
  * the same seam the Inspector draws around run phases.
  *
- * Owns the scroll container and the tail-follow behaviour: it follows the tail
- * while Smith is working, but stops once the turn settles so a reader who
- * scrolled up to inspect a tool call is not yanked back down.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, LoaderCircle } from 'lucide-react';
 import type { SmithTranscriptEntry } from '@shared/ipc-contract.js';
 import type { SmithReceiptLink } from '@shared/types.js';
-import {
-  SMITH_TOOL_ICON,
-  groupTranscript,
-  type SmithTranscriptGroup,
-} from '../../view-models/smith-chat-view.js';
+import { groupTranscript, type SmithTranscriptGroup } from '../../view-models/smith-chat-view.js';
 import MarkdownText from '../common/MarkdownText.js';
 import SmithArtifactCard from './SmithArtifactCard.js';
+import SmithActivity from './SmithActivity.js';
+import { smithActivityItems } from '../../view-models/smith-activity-view.js';
 import { cx } from '../ui/cx.js';
 import styles from './SmithTranscript.module.css';
 
 function TranscriptRows({
   group,
+  running,
   compact,
   onOpenReceiptLink,
   onOpenInspector,
 }: {
   group: SmithTranscriptGroup;
+  running: boolean;
   compact?: boolean;
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   return (
     <>
-      {group.entries.map((entry) =>
-        entry.kind === 'artifact' ? (
+      {smithActivityItems(group.entries).map((item) => {
+        if (item.kind === 'activity')
+          return <SmithActivity key={item.id} entries={item.entries} running={running} />;
+        const entry = item.entry;
+        return entry.kind === 'artifact' ? (
           <SmithArtifactCard
             key={entry.id}
             artifact={entry.artifact}
@@ -47,16 +48,6 @@ function TranscriptRows({
           />
         ) : (
           <div key={entry.id} className={cx(styles.line, styles[entry.kind])}>
-            {entry.kind === 'tool' && (
-              <span
-                className={cx(
-                  styles.lineIcon,
-                  entry.done ? (entry.failed ? styles.iconFailed : styles.iconOk) : styles.iconWait,
-                )}
-              >
-                {SMITH_TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
-              </span>
-            )}
             {entry.kind === 'text' ? (
               <div className="selectable">
                 <MarkdownText text={entry.text} />
@@ -65,19 +56,21 @@ function TranscriptRows({
               <span className={cx(styles.lineText, 'selectable')}>{entry.text}</span>
             )}
           </div>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
 
 function TranscriptTurn({
   group,
+  running,
   compact,
   onOpenReceiptLink,
   onOpenInspector,
 }: {
   group: SmithTranscriptGroup;
+  running: boolean;
   compact?: boolean;
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
   onOpenInspector?: (runId: string) => void;
@@ -99,6 +92,7 @@ function TranscriptTurn({
   const rows = (
     <TranscriptRows
       group={group}
+      running={running}
       compact={compact}
       onOpenInspector={onOpenInspector}
       onOpenReceiptLink={onOpenReceiptLink}
@@ -141,31 +135,82 @@ export default function SmithTranscript({
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const tailRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const followRef = useRef(true);
+  const operatorRef = useRef<string | undefined>(undefined);
+  const [showLatest, setShowLatest] = useState(false);
   const groups = useMemo(() => groupTranscript(entries), [entries]);
+  const operatorId = entries.findLast((entry) => entry.source === 'operator')?.id;
+  const operatorGroup = groups.findLastIndex((group) => group.source === 'operator');
+
+  const scrollToLatest = (): void => {
+    followRef.current = true;
+    setShowLatest(false);
+    tailRef.current?.scrollTo({ top: tailRef.current.scrollHeight });
+  };
+
+  useLayoutEffect(() => {
+    if (operatorId !== operatorRef.current) {
+      followRef.current = true;
+      operatorRef.current = operatorId;
+      setShowLatest(false);
+    }
+    if (followRef.current) tailRef.current?.scrollTo({ top: tailRef.current.scrollHeight });
+  }, [entries, running, operatorId]);
 
   useEffect(() => {
-    if (!running) return;
-    tailRef.current?.scrollTo({ top: tailRef.current.scrollHeight });
-  }, [entries, running]);
+    const observer = new ResizeObserver(() => {
+      if (followRef.current) tailRef.current?.scrollTo({ top: tailRef.current.scrollHeight });
+    });
+    if (contentRef.current) observer.observe(contentRef.current);
+    if (tailRef.current) observer.observe(tailRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <div
-      className={cx(styles.transcript, compact && styles.compact, 'scroll')}
-      ref={tailRef}
-      data-testid="smith-transcript"
-    >
-      {entries.length === 0 && !running && emptyState}
-      {groups.map((group) => (
-        <TranscriptTurn
-          key={group.id}
-          group={group}
-          compact={compact}
-          onOpenReceiptLink={onOpenReceiptLink}
-          onOpenInspector={onOpenInspector}
-        />
-      ))}
-      {running && <div className={cx(styles.line, styles.note, styles.pulse)}>…</div>}
-      {tail}
+    <div className={styles.thread}>
+      <div
+        className={cx(styles.transcript, compact && styles.compact, 'scroll')}
+        ref={tailRef}
+        data-testid="smith-transcript"
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          const following = element.scrollHeight - element.scrollTop - element.clientHeight < 64;
+          followRef.current = following;
+          setShowLatest(!following);
+        }}
+      >
+        <div ref={contentRef} className={styles.content}>
+          {entries.length === 0 && !running && emptyState}
+          {groups.map((group, index) => (
+            <TranscriptTurn
+              key={group.id}
+              group={group}
+              running={running && index > operatorGroup}
+              compact={compact}
+              onOpenReceiptLink={onOpenReceiptLink}
+              onOpenInspector={onOpenInspector}
+            />
+          ))}
+          {running && (
+            <div className={styles.working} role="status" data-testid="smith-working">
+              <LoaderCircle size={14} className={styles.spinner} />
+              <span>
+                Smith is working
+                <span className={styles.dots} aria-hidden>
+                  ...
+                </span>
+              </span>
+            </div>
+          )}
+          {tail}
+        </div>
+      </div>
+      {showLatest && (
+        <button type="button" className={styles.latest} onClick={scrollToLatest}>
+          <ArrowDown size={14} /> Latest message
+        </button>
+      )}
     </div>
   );
 }
