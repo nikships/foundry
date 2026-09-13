@@ -1,4 +1,5 @@
 import { expect, test, type ElectronApplication } from '@playwright/test';
+import type { SmithChatState } from '../../src/shared/ipc-contract.js';
 import {
   E2E_SMITH_ARTIFACT_PIPELINE,
   E2E_SMITH_MESSAGE,
@@ -8,6 +9,81 @@ import {
 import { launchFoundry } from './harness.js';
 
 test.describe('smith / chat', () => {
+  test('folds tool output and preserves the reading position during work', async () => {
+    const fixture = seedOnboardedFixture(undefined, 'none');
+    const { app, window } = await launchFoundry(fixture.userDataDir);
+    try {
+      await window.getByTestId('smith-bubble').click();
+      await expect(window.getByTestId('smith-bubble-input')).toBeVisible();
+      const snapshot: SmithChatState = {
+        projectId: fixture.projectId,
+        model: 'fixture/model',
+        activeModel: 'fixture/model',
+        reasoningEffort: 'medium',
+        activeReasoningEffort: 'medium',
+        running: true,
+        error: null,
+        transcript: [
+          { id: 'operator', source: 'operator', kind: 'text', text: 'Check the project.', at: 1 },
+          {
+            id: 'reply',
+            source: 'smith',
+            kind: 'text',
+            text: 'Earlier message.\n\n'.repeat(80),
+            at: 2,
+          },
+          {
+            id: 'tool',
+            source: 'smith',
+            kind: 'tool',
+            toolKind: 'command',
+            text: 'pnpm test\n' + 'Output line.\n'.repeat(200),
+            at: 3,
+          },
+        ],
+      };
+      const publish = async (): Promise<void> => {
+        await app.evaluate(({ BrowserWindow }, next) => {
+          BrowserWindow.getAllWindows()[0]?.webContents.send('event:smith-progress', next);
+        }, snapshot);
+      };
+      await publish();
+      const activity = window.getByTestId('smith-activity');
+      await expect(activity).toHaveAttribute('open', '');
+      await expect(activity.locator('pre')).toBeHidden();
+      await expect(window.getByTestId('smith-bubble-new-chat')).toBeEnabled();
+      await expect(window.getByTestId('smith-working')).toContainText('Smith is working');
+      await window.getByTestId('smith-transcript').evaluate((element) => {
+        element.scrollTop = 0;
+        element.dispatchEvent(new Event('scroll'));
+      });
+      await expect(window.getByRole('button', { name: 'Latest message' })).toBeVisible();
+      await publish();
+      await expect
+        .poll(() => window.getByTestId('smith-transcript').evaluate((element) => element.scrollTop))
+        .toBe(0);
+      await window.getByRole('button', { name: 'Latest message' }).click();
+      await expect(window.getByRole('button', { name: 'Latest message' })).toBeHidden();
+      snapshot.running = false;
+      const tool = snapshot.transcript.at(-1);
+      if (tool?.kind === 'tool') tool.done = true;
+      await publish();
+      await expect(activity).not.toHaveAttribute('open');
+      await expect(activity).toContainText('Work complete');
+      await activity.locator(':scope > summary').click();
+      await activity.locator('details > summary').click();
+      await expect(activity.locator('pre')).toBeVisible();
+      expect(
+        await activity.locator('pre').evaluate((element) => element.clientHeight),
+      ).toBeLessThanOrEqual(200);
+      await publish();
+      await expect(activity).toHaveAttribute('open', '');
+      await expect(window.getByTestId('smith-bubble-new-chat')).toBeEnabled();
+    } finally {
+      await app.close();
+    }
+  });
+
   test('opens the chat screen and bubble against a seeded transcript and proposal', async () => {
     const fixture = seedOnboardedFixture();
     let app: ElectronApplication | undefined;

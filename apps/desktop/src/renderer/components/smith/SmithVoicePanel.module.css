@@ -1,13 +1,3 @@
-.anchor {
-  position: fixed;
-  top: 0;
-  right: calc(var(--s5) + 40px);
-  z-index: 70;
-  padding-top: calc((var(--titlebar-h) - 32px) / 2);
-  -webkit-app-region: no-drag;
-}
-
-.launcher,
 .close {
   width: 32px;
   height: 32px;
@@ -19,49 +9,45 @@
   color: var(--text-dim);
   cursor: pointer;
 }
-
-.launcher {
-  position: relative;
-}
-.launcher:hover,
 .close:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
-.launcher[aria-expanded='true'] {
-  background: var(--bg-active);
-  border-color: var(--line);
-}
-.launcherLive {
-  color: var(--accent);
-}
-.launcher:focus-visible,
 .close:focus-visible,
 .notice:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-
 .panel {
-  position: absolute;
-  top: calc(var(--titlebar-h) - 2px);
-  right: -40px;
-  width: min(380px, calc(100vw - 2 * var(--s5)));
-  max-height: calc(100dvh - var(--titlebar-h) - var(--s4));
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-radius: var(--r-xl);
-  background: var(--bg-panel);
-  border: 1px solid var(--line);
-  box-shadow:
-    0 24px 80px #0009,
-    0 0 0 1px #0003;
-  padding: var(--s5);
+  padding: var(--s4);
   display: flex;
   flex-direction: column;
+  gap: var(--s3);
+}
+.panel > * {
+  flex-shrink: 0;
+}
+
+.expanded {
+  width: min(680px, 100%);
+  align-self: center;
+  padding: var(--s5);
   gap: var(--s4);
 }
 
+.expanded .orb {
+  width: min(420px, 90%);
+  height: auto;
+  aspect-ratio: 4 / 3;
+}
+
+.expanded .status {
+  font-size: var(--text-2xl);
+}
 .head {
   display: flex;
   align-items: center;
@@ -163,8 +149,7 @@
   font-size: 10px;
   line-height: 1.6;
 }
-.micDot,
-.liveDot {
+.micDot {
   display: inline-block;
   width: 5px;
   height: 5px;
@@ -172,15 +157,9 @@
   background: var(--text-dim);
   flex-shrink: 0;
 }
-.micDot[data-on='true'],
-.liveDot {
+.micDot[data-on='true'] {
   background: var(--accent);
   box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
-}
-.liveDot {
-  position: absolute;
-  top: 3px;
-  right: 3px;
 }
 .errorText {
   font-size: var(--text-sm);
@@ -209,86 +188,16 @@
   line-height: 1.5;
 }
 
-.fullscreen {
-  position: fixed;
-  inset: var(--titlebar-h) 0 0 0;
-  z-index: 70;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: var(--bg-base);
-  padding: var(--s5) var(--s5) var(--s8);
-  animation: fullscreen-in var(--fast) var(--ease);
-}
-
-@keyframes fullscreen-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.panelFullscreen {
-  position: relative;
-  top: auto;
-  right: auto;
-  width: min(680px, 100%);
-  max-height: none;
-  overflow: visible;
-  padding: var(--s6);
-  gap: var(--s5);
-}
-
-.panelFullscreen .orb {
-  width: min(420px, 90%);
-  height: 280px;
-  aspect-ratio: 4 / 3;
-  margin: 0 auto;
-}
-
-.panelFullscreen .status {
-  font-size: var(--text-2xl);
-}
-
-.panelFullscreen .caption {
-  max-height: 260px;
-}
-
-.panelFullscreen .actions {
-  flex-wrap: wrap;
-}
-
 @media (max-height: 700px) {
   .orb {
     height: 140px;
     width: 187px;
   }
-  .panel {
-    gap: var(--s3);
-  }
   .caption {
     max-height: 120px;
   }
-  .fullscreen {
-    align-items: flex-start;
-    padding: var(--s4) var(--s4) var(--s6);
-  }
-  .panelFullscreen {
-    gap: var(--s3);
-    padding: var(--s5);
-  }
-  .panelFullscreen .orb {
-    height: 160px;
-    width: auto;
-    aspect-ratio: 4 / 3;
-  }
-  .panelFullscreen .caption {
-    max-height: 140px;
+  .expanded .orb {
+    width: 210px;
+    height: auto;
   }
 }

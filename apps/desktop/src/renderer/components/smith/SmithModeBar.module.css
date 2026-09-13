@@ -1,0 +1,65 @@
+.bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.modes,
+.connection {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: 30px;
+  padding: var(--s1) var(--s2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.bar button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.modes button[aria-pressed='true'] {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.bar button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.connection {
+  color: var(--accent);
+  font-size: var(--text-xs);
+}
+
+.hint {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar button {
+    transition: none;
+  }
+}

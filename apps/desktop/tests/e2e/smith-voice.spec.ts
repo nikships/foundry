@@ -64,6 +64,14 @@ async function emit(window: Page, serverContent: object): Promise<void> {
   }, serverContent);
 }
 
+async function openVoice(window: Page): Promise<void> {
+  const launcher = window.getByTestId('smith-bubble');
+  if ((await launcher.isVisible()) && (await launcher.getAttribute('aria-expanded')) === 'false') {
+    await launcher.click();
+  }
+  await window.getByTestId('smith-mode-voice').click();
+}
+
 test('voice: captions, playback, mute, navigation, interruption, disconnect and reconnect', async () => {
   const { app, window } = await launchFoundry(seedOnboardedFixture().userDataDir);
   try {
@@ -78,7 +86,7 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
     });
     await controlledMicrophone(window);
     await controlledSocket(window);
-    await window.getByTestId('smith-voice-launcher').click();
+    await openVoice(window);
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
     expect(await tracks(window)).toEqual([]);
     await window.getByTestId('smith-voice-start').click();
@@ -123,9 +131,9 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
       )
       .toBe(true);
     await window.getByTestId('smith-voice-close').click();
-    await expect(window.getByTestId('smith-voice-launcher')).toBeFocused();
+    await expect(window.getByTestId('smith-bubble-input')).toBeFocused();
     await window.keyboard.press('Meta+5');
-    await window.getByTestId('smith-voice-launcher').click();
+    await openVoice(window);
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Microphone muted');
     await window.getByTestId('smith-voice-mute').click();
     expect(await tracks(window)).toEqual([{ enabled: true, state: 'live' }]);
@@ -160,7 +168,7 @@ test('voice: cancelling a pending token cannot revive an old connection', async 
           }),
       );
     });
-    await window.getByTestId('smith-voice-launcher').click();
+    await openVoice(window);
     await window.getByTestId('smith-voice-start').click();
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Connecting to Smith');
     await expect
@@ -187,7 +195,7 @@ test('voice: cancelling a pending token cannot revive an old connection', async 
   }
 });
 
-test('voice: fullscreen on the Smith screen, popover elsewhere', async () => {
+test('voice: stays inside Smith chat across modes and navigation', async () => {
   const { app, window } = await launchFoundry(seedOnboardedFixture().userDataDir);
   try {
     await expect(window.getByTestId('run-composer')).toBeVisible();
@@ -201,77 +209,63 @@ test('voice: fullscreen on the Smith screen, popover elsewhere', async () => {
     });
     await controlledMicrophone(window);
     await controlledSocket(window);
-
-    // 1. On Runs screen: voice opens as anchored popover (not fullscreen)
-    await window.getByTestId('smith-voice-launcher').click();
-    await expect(window.getByTestId('smith-voice-panel')).toBeVisible();
+    await window.getByTestId('smith-bubble').click();
+    await window.getByTestId('smith-bubble-input').fill('Keep this draft');
+    await window.getByTestId('smith-mode-voice').click();
+    const popover = window.getByTestId('smith-popover');
+    await expect(popover.getByTestId('smith-voice-panel')).toBeVisible();
+    await expect(window.getByTestId('smith-voice-launcher')).toHaveCount(0);
     await expect(window.getByTestId('smith-voice-fullscreen')).toHaveCount(0);
-    await window.getByTestId('smith-voice-close').click();
-    await expect(window.getByTestId('smith-voice-panel')).toHaveCount(0);
-    await expect(window.getByTestId('smith-voice-launcher')).toBeFocused();
-
-    // 2. Navigate to Smith full-page chat screen (Meta+5)
-    await window.keyboard.press('Meta+5');
-    await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'smith');
-
-    // 3. On Smith screen: voice opens as fullscreen takeover
-    await window.getByTestId('smith-voice-launcher').click();
-    const fullscreen = window.getByTestId('smith-voice-fullscreen');
-    await expect(fullscreen).toBeVisible();
-    const panel = fullscreen.getByTestId('smith-voice-panel');
-    await expect(panel).toBeVisible();
-    await expect(panel).toHaveAttribute('role', 'dialog');
-    await expect(panel).toHaveAttribute('aria-modal', 'true');
-    await expect(panel).toHaveAttribute('aria-label', 'Smith voice');
-    await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
-
-    // Start session and mute
+    expect(app.windows()).toHaveLength(1);
     await window.getByTestId('smith-voice-start').click();
     await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
     await window.getByTestId('smith-voice-mute').click();
-    await expect(window.getByTestId('smith-voice-status')).toHaveText('Microphone muted');
+    await window.getByTestId('smith-mode-text').click();
+    await expect(window.getByTestId('smith-bubble-input')).toHaveValue('Keep this draft');
+    await expect(
+      window.getByRole('button', { name: 'Unmute microphone', exact: true }),
+    ).toBeVisible();
+    await expect(window.getByTestId('smith-bubble-new-chat')).toBeDisabled();
     expect(await tracks(window)).toEqual([{ enabled: false, state: 'live' }]);
-
-    // Escape closes fullscreen voice and returns focus to launcher
     await window.keyboard.press('Escape');
-    await expect(window.getByTestId('smith-voice-panel')).toHaveCount(0);
-    await expect(window.getByTestId('smith-voice-launcher')).toBeFocused();
-
-    // Reopen: session state survived closing (still muted and live)
-    await window.getByTestId('smith-voice-launcher').click();
-    await expect(window.getByTestId('smith-voice-fullscreen')).toBeVisible();
-    await expect(window.getByTestId('smith-voice-status')).toHaveText('Microphone muted');
-    expect(await tracks(window)).toEqual([{ enabled: false, state: 'live' }]);
-    await window.getByTestId('smith-voice-mute').click();
-    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
-    expect(await tracks(window)).toEqual([{ enabled: true, state: 'live' }]);
-
-    // 4. Navigate to Runs while open: flips from fullscreen to popover, session intact
-    await window.keyboard.press('Meta+1');
-    await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'runs');
-    await expect(window.getByTestId('smith-voice-fullscreen')).toHaveCount(0);
-    await expect(window.getByTestId('smith-voice-panel')).toBeVisible();
-    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
-    expect(await tracks(window)).toEqual([{ enabled: true, state: 'live' }]);
-
-    // Navigate back to Smith: flips back to fullscreen, session intact
+    await expect(window.getByTestId('smith-popover')).toHaveCount(0);
+    await expect(window.getByTestId('smith-bubble')).toBeFocused();
+    await expect(window.getByTestId('smith-bubble')).toHaveAttribute(
+      'aria-label',
+      /microphone muted/,
+    );
     await window.keyboard.press('Meta+5');
     await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'smith');
-    await expect(window.getByTestId('smith-voice-fullscreen')).toBeVisible();
-    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
-
-    // End session
-    await window.getByTestId('smith-voice-stop').click();
+    await expect(window.getByTestId('smith-input')).toHaveValue('Keep this draft');
+    await window.getByTestId('smith-mode-voice').click();
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('Microphone muted');
+    await expect(window.getByTestId('smith-new-chat')).toBeDisabled();
+    await expect(window.getByTestId('smith-voice-panel')).not.toHaveAttribute('role', 'dialog');
+    await window.getByTestId('smith-voice-mute').click();
+    expect(await tracks(window)).toEqual([{ enabled: true, state: 'live' }]);
+    await window.keyboard.press('Meta+1');
+    await window.getByTestId('smith-bubble').click();
+    await expect(popover.getByTestId('smith-voice-status')).toHaveText('I’m listening');
+    expect(await tracks(window)).toEqual([{ enabled: true, state: 'live' }]);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(700, 600));
+    await expect(
+      window.getByRole('button', { name: 'End voice session', exact: true }),
+    ).toBeInViewport();
+    await window.getByTestId('smith-mode-text').click();
+    await window.getByRole('button', { name: 'End voice session', exact: true }).click();
+    expect((await tracks(window)).every((track) => track.state === 'ended')).toBe(true);
+    await window.getByTestId('smith-mode-voice').click();
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
-
-    // 5. Short viewport: resize and verify panel and controls remain visible
-    await window.setViewportSize({ width: 1280, height: 600 });
-    await expect(window.getByTestId('smith-voice-fullscreen')).toBeVisible();
-    await expect(window.getByTestId('smith-voice-panel')).toBeVisible();
-    await expect(window.getByTestId('smith-voice-start')).toBeVisible();
-    await window.getByTestId('smith-voice-close').click();
-    await expect(window.getByTestId('smith-voice-panel')).toHaveCount(0);
-    await expect(window.getByTestId('smith-voice-launcher')).toBeFocused();
+    await window.getByTestId('smith-voice-start').click();
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
+    await window.getByTestId('smith-bubble-close').click();
+    await window.getByTestId('nav-settings').click();
+    await window.getByTestId('settings-tab-system').click();
+    await window.getByTestId('settings-replay-intro').click();
+    await expect(window.getByTestId('smith-bubble')).toBeHidden();
+    await expect
+      .poll(async () => (await tracks(window)).every((track) => track.state === 'ended'))
+      .toBe(true);
   } finally {
     await app.close();
   }

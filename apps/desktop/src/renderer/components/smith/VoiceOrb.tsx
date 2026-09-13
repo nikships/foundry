@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import styles from './SmithVoiceOverlay.module.css';
+import styles from './SmithVoicePanel.module.css';
 
 /** A sampled speaker signal deforms a field of latitude filaments; no React updates per frame. */
 export function VoiceOrb({
