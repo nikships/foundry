@@ -10,7 +10,9 @@ import { launchFoundry } from './harness.js';
 
 test.describe('smith / chat', () => {
   test('confirms YOLO mode, keeps it scoped, and resets it on New chat', async () => {
-    const fixture = seedOnboardedFixture();
+    // No pending proposal: one would disable the scope picker, and this test
+    // is about YOLO scoping, not proposals.
+    const fixture = seedOnboardedFixture(undefined, 'none');
     let app: ElectronApplication | undefined;
     try {
       const launched = await launchFoundry(fixture.userDataDir);
