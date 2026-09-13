@@ -52,7 +52,7 @@ test.describe('smith / chat', () => {
       await expect(activity).toHaveAttribute('open', '');
       await expect(activity.locator('pre')).toBeHidden();
       await expect(window.getByTestId('smith-bubble-new-chat')).toBeEnabled();
-      await expect(window.getByRole('status')).toContainText('Smith is working');
+      await expect(window.getByTestId('smith-working')).toContainText('Smith is working');
       await window.getByTestId('smith-transcript').evaluate((element) => {
         element.scrollTop = 0;
         element.dispatchEvent(new Event('scroll'));

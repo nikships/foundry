@@ -260,7 +260,7 @@ test('voice: stays inside Smith chat across modes and navigation', async () => {
     await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
     await window.getByTestId('smith-bubble-close').click();
     await window.getByTestId('nav-settings').click();
-    await window.getByTestId('settings-tab-app').click();
+    await window.getByTestId('settings-tab-system').click();
     await window.getByTestId('settings-replay-intro').click();
     await expect(window.getByTestId('smith-bubble')).toBeHidden();
     await expect

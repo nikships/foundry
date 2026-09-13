@@ -348,8 +348,11 @@ test.describe('Runs / Orchestrator', () => {
 
       // Replace the planner and its follow-up boundary; renderer, preload,
       // IPC push channel, plan card, chat, and full-screen shell stay real.
+      // Mirror `orchestrator:list` so the post-submit refresh cannot wipe the
+      // progress-patched card (the composer re-reads the durable list).
       await app.evaluate(({ BrowserWindow, ipcMain }) => {
         const planId = 'plan-e2e-chat';
+        const mirror = new Map<string, Record<string, unknown>>();
         const basePipeline = {
           id: `generated-${planId}`,
           name: 'Chat proposal',
@@ -390,7 +393,26 @@ test.describe('Runs / Orchestrator', () => {
           messages: [] as unknown[],
           revision: 1,
         };
+        const snapshot = (): Record<string, unknown> => ({
+          planId,
+          projectId: state.projectId,
+          prompt: state.prompt,
+          model: state.model,
+          reasoningEffort: state.reasoningEffort,
+          status: state.status === 'running' ? 'generating' : 'ready',
+          detail: state.detail,
+          entries: state.entries,
+          plan: state.plan,
+          rawReply: state.rawReply,
+          messages: [...state.messages],
+          revision: state.revision,
+          acceptedRunId: null,
+          acceptedPlan: null,
+          createdAt: state.startedAt,
+          updatedAt: Date.now(),
+        });
         const push = (): void => {
+          mirror.set(planId, snapshot());
           BrowserWindow.getAllWindows()[0]?.webContents.send('event:orchestrator-progress', {
             ...state,
             messages: [...state.messages],
@@ -414,9 +436,14 @@ test.describe('Runs / Orchestrator', () => {
             model,
             reasoningEffort,
           };
+          mirror.set(planId, snapshot());
           setTimeout(push, 20);
           return { planId };
         });
+        ipcMain.removeHandler('orchestrator:list');
+        ipcMain.handle('orchestrator:list', (_event, projectId: string) =>
+          [...mirror.values()].filter((row) => row.projectId === projectId),
+        );
         ipcMain.removeHandler('orchestrator:message');
         ipcMain.handle('orchestrator:message', (_event, id, text) => {
           if (id !== planId) return 'session not found';

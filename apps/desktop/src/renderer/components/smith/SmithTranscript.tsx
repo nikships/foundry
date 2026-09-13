@@ -193,7 +193,7 @@ export default function SmithTranscript({
             />
           ))}
           {running && (
-            <div className={styles.working} role="status">
+            <div className={styles.working} role="status" data-testid="smith-working">
               <LoaderCircle size={14} className={styles.spinner} />
               <span>
                 Smith is working
