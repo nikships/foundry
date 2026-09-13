@@ -99,7 +99,7 @@ describe('project command provisioning', () => {
 
   it('wires the shared editor at both ownership points without navigating away from a plan', () => {
     const wizard = readRenderer('components/project/NewProjectWizard.tsx');
-    const planCard = readRenderer('components/run/PlanCard.tsx');
+    const planCard = readRenderer('components/smith/SmithRunPlanDesign.tsx');
     const editor = readRenderer('components/project/ProjectCommands.tsx');
 
     expect(wizard).toContain('<ProjectCommandsModal');

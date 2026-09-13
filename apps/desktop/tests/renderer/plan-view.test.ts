@@ -272,7 +272,7 @@ describe('plan-view', () => {
 
   it('exposes each synthesized agent row and write boundary for operators and evals', () => {
     const src = readFileSync(
-      join(import.meta.dirname, '../../src/renderer/components/run/PlanCard.tsx'),
+      join(import.meta.dirname, '../../src/renderer/components/smith/SmithRunPlanDesign.tsx'),
       'utf8',
     );
     const mapStart = src.indexOf('{view.agents.map((agent) => (');

@@ -1247,6 +1247,18 @@ describe('smith_present', () => {
     ]);
   });
 
+  it('refuses model-presented run plans, including the tool enum', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    expect(await answerOf(tool, { kind: 'run_plan', spec: { planId: 'invented' } })).toEqual({
+      ok: false,
+      error: 'run_plan is not presentable; only main can mint it',
+    });
+    expect(emitted).toHaveLength(0);
+    const params = tool.parameters as { properties: { kind: { enum: string[] } } };
+    expect(params.properties.kind.enum).not.toContain('run_plan');
+  });
+
   it('refuses to present an action receipt — receipts are main-minted evidence', async () => {
     const { deps, emitted } = makeDeps();
     const tool = smithPresentTool(deps);

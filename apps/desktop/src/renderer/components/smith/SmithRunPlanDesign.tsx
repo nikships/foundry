@@ -10,10 +10,10 @@ import {
 import ProjectCommandsModal from '../project/ProjectCommandsModal.js';
 import { Button } from '../ui/Button.js';
 import { ModalShell } from '../ui/ModalShell.js';
-import PlanCanvas from './PlanCanvas.js';
-import PlanChat from './PlanChat.js';
-import PlanPhaseSheet from './PlanPhaseSheet.js';
-import styles from './PlanCard.module.css';
+import PlanCanvas from '../run/PlanCanvas.js';
+import PlanChat from '../run/PlanChat.js';
+import PlanPhaseSheet from '../run/PlanPhaseSheet.js';
+import styles from './SmithRunPlanDesign.module.css';
 
 /**
  * Smith's proposal, laid out for confirmation: the refined brief,
@@ -22,7 +22,7 @@ import styles from './PlanCard.module.css';
  * starts anything — the operator disposes, and may re-cast any agent phase,
  * or talk the proposal over with Smith, before doing so.
  */
-export default function PlanCard({
+export default function SmithRunPlanDesign({
   planId,
   plan,
   original,
@@ -172,7 +172,7 @@ export default function PlanCard({
       </div>
 
       <div className={styles.section}>
-        <p className={styles.label}>Discuss in Smith →</p>
+        <p className={styles.label}>Discuss this plan</p>
         <PlanChat
           messages={messages}
           replying={replying}

@@ -17,6 +17,7 @@ Smith is the native operator agent. It exposes typed app capabilities. Normal mo
 - `compose/proposals.ts` owns durable run proposals through `Tracer`, distinct from Smith's action `ProposalQueue`. Accept remains exactly-once through `accepted_run_id` and re-validates with `startRun(plan)`.
 - `compose/replan.ts` proposes pipeline repairs; the engine alone validates and applies them in the run's existing worktree.
 - IPC names, progress channels, and historical `OrchestratorState` remain unchanged until the atomic contract migration. Composition does not open a persistent chat.
+- `run_plan` is main-minted from proposal transitions, never model-presentable. Only already-open project chats (and the issuing global chat) receive bounded, secret-checked snapshots. Renderer actions resolve the durable row; missing rows remain inert snapshots.
 
 ## Capabilities
 

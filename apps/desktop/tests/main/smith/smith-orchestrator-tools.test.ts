@@ -51,6 +51,25 @@ async function approve(h: ReturnType<typeof setup>, params: Record<string, unkno
 }
 
 describe('Smith orchestrator operations', () => {
+  it('records the issuing global scope only after an approved compose returns a real plan id', async () => {
+    const h = setup(null);
+    const onComposed = vi.fn();
+    const invoke: MainInvoker = async <T>(channel: string): Promise<T> =>
+      (channel === IPC.settingsGet ? defaultSettings() : { planId: 'composed-plan' }) as T;
+    const tool = smithRunsTool({ invoke, queue: h.queue, projectId: () => undefined, onComposed });
+    const execute = tool.execute as unknown as (id: string, params: unknown) => Promise<unknown>;
+    const pending = execute('compose', {
+      operation: 'orchestrator_plan',
+      projectId: 'target',
+      prompt: 'Improve help',
+    });
+    await vi.waitFor(() => expect(h.queue.list()).toHaveLength(1));
+    expect(onComposed).not.toHaveBeenCalled();
+    await h.queue.answer(h.queue.list()[0]!.id, { approved: true });
+    await pending;
+    expect(onComposed).toHaveBeenCalledExactlyOnceWith('composed-plan', undefined);
+  });
+
   it('declares all seven orchestrator operations on the tool schema', () => {
     const h = setup();
     const schema = h.tool.parameters as { properties: { operation: { enum: string[] } } };

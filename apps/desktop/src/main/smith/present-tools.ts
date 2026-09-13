@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import type { RunDetail } from '@shared/ipc-contract.js';
 import {
   SMITH_ARTIFACT_VERSION,
@@ -93,6 +94,64 @@ const ENTITY_COMPARISON_KINDS = ['agent', 'pipeline', 'envelope'] as const;
 export const MAX_ARTIFACT_JSON = 32_000;
 const MAX_RATIONALE = 2_000;
 const MAX_WARNINGS = 20;
+
+const runPlanSchema = z
+  .object({
+    id: z.string().max(500),
+    version: z.literal(SMITH_ARTIFACT_VERSION),
+    createdAt: z.number(),
+    kind: z.literal('run_plan'),
+    planId: z.string().min(1).max(200),
+    projectId: z.string().min(1).max(200),
+    status: z.enum(['generating', 'ready', 'failed', 'cancelled', 'discarded', 'accepted']),
+    revision: z.number().int().nonnegative(),
+    title: z.string().max(120),
+    refinedRequest: z.string().max(2000),
+    rationale: z.string().max(1000),
+    phases: z
+      .array(
+        z
+          .object({
+            index: z.number().int().nonnegative(),
+            name: z.string().max(200),
+            kind: z.enum(['agent', 'code']),
+            agent: z.string().max(200).optional(),
+            model: z.string().max(200).optional(),
+            reasoningEffort: z
+              .enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+              .optional(),
+            command: z.string().max(1000).optional(),
+            synthesized: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .max(50),
+    warnings: z
+      .array(
+        z
+          .object({
+            level: z.literal('warning'),
+            where: z.string().max(200),
+            message: z.string().max(1000),
+          })
+          .strict(),
+      )
+      .max(20),
+    acceptedRunId: z.string().max(200).optional(),
+  })
+  .strict();
+
+/** Main-only artifact validation, including credential-shaped strings, before persistence. */
+export function validateRunPlanArtifact(spec: unknown): boolean {
+  if (!runPlanSchema.safeParse(spec).success || findSecretKey(spec)) return false;
+  const serialized = JSON.stringify(spec);
+  return (
+    serialized.length <= MAX_ARTIFACT_JSON &&
+    !/(?:sk-[a-zA-Z0-9_-]{12,}|AIza[a-zA-Z0-9_-]{20,}|gh[pousr]_[a-zA-Z0-9]{20,}|Bearer\s+[a-zA-Z0-9_.-]{12,}|-----BEGIN .*PRIVATE KEY-----)/i.test(
+      serialized,
+    )
+  );
+}
 
 const VALID_CHECKLIST_STATUSES = new Set(['pass', 'warn', 'fail', 'info']);
 const VALID_RECEIPT_TARGETS = new Set(['direct_checkout', 'isolated_worktree']);
@@ -2066,6 +2125,9 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       additionalProperties: false,
     },
     execute: async (_id, params) => {
+      if (field(params, 'kind') === 'run_plan') {
+        return json({ ok: false, error: 'run_plan is not presentable; only main can mint it' });
+      }
       const kind = parseArtifactKind(field(params, 'kind'));
       if (!kind) return json({ ok: false, error: 'unknown artifact kind' });
 

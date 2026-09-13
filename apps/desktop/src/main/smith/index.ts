@@ -7,9 +7,12 @@
  * holds every write behind a human's Approve.
  */
 
-import type { SmithActionProposal, SmithEntityProposal } from '@shared/types.js';
+import type { ProposalSnapshot, SmithActionProposal, SmithEntityProposal } from '@shared/types.js';
+import { smithRunPlanArtifact } from '@shared/smith-run-plan.js';
 import type { MainInvoker } from '../ipc/shared.js';
 import type { SmithChatSession } from './chat-session.js';
+import type { ProposalStore } from './compose/proposals.js';
+import { validateRunPlanArtifact } from './present-tools.js';
 import { ProposalQueue, type ProposalInput } from './proposals.js';
 import { buildActionReceipt, type ActionExecutionRecord } from './receipts.js';
 
@@ -76,6 +79,7 @@ function actionSeed(parsed: Partial<ProposalInput>): ProposalInput | null {
 
 /** Everything the Smith service needs from the wider app, kept to a narrow seam. */
 export interface SmithServiceDeps {
+  composeProposals?: ProposalStore;
   /** Broadcasts a channel + payload to every window. */
   broadcast: (channel: string, payload?: unknown) => void;
   /** Channel name, passed in so this module does not import the contract twice. */
@@ -95,9 +99,12 @@ const GLOBAL_SCOPE_KEY = 'global';
 export class SmithService {
   readonly proposals: ProposalQueue;
   private readonly chats = new Map<string, SmithChatSession>();
+  private readonly deliveredPlans = new Map<string, Set<string>>();
+  private readonly unsubscribeCompose?: () => void;
   private invoker: MainInvoker | null = null;
 
   constructor(private readonly deps: SmithServiceDeps) {
+    this.unsubscribeCompose = deps.composeProposals?.onTransition((row) => this.recordPlan(row));
     this.proposals = new ProposalQueue(
       () => deps.broadcast(deps.channels.proposalsChanged),
       // The queue awaits the save so an approve that fails the store keeps the
@@ -144,6 +151,23 @@ export class SmithService {
     chat.absorbArtifact(buildActionReceipt(proposal, execution));
   }
 
+  private recordPlan(row: ProposalSnapshot): void {
+    if (!['ready', 'failed', 'accepted'].includes(row.status)) return;
+    const artifact = smithRunPlanArtifact(row);
+    if (!validateRunPlanArtifact(artifact)) return;
+    const scopes = [row.projectId];
+    if (this.deps.composeProposals?.issuedGlobally(row.planId)) scopes.push(GLOBAL_SCOPE_KEY);
+    for (const scope of scopes) {
+      const chat = this.chats.get(scope);
+      if (!chat) continue;
+      const delivered = this.deliveredPlans.get(scope) ?? new Set<string>();
+      if (delivered.has(artifact.id)) continue;
+      delivered.add(artifact.id);
+      this.deliveredPlans.set(scope, delivered);
+      chat.absorbArtifact(artifact);
+    }
+  }
+
   /** One persistent native conversation per project/global scope, opened lazily. */
   chat(projectId?: string): SmithChatSession | null {
     const key = projectId ?? GLOBAL_SCOPE_KEY;
@@ -155,6 +179,8 @@ export class SmithService {
   }
 
   dispose(): void {
+    this.unsubscribeCompose?.();
+    this.deliveredPlans.clear();
     for (const chat of this.chats.values()) void chat.dispose();
     this.chats.clear();
     this.proposals.cancelAll();

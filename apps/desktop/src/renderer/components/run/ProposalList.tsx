@@ -16,7 +16,7 @@ import { useApp } from '../../stores/app.js';
 import { withPhaseModel, withPhaseReasoningEffort } from '../../view-models/plan-view.js';
 import PanelTranscript from '../readiness/PanelTranscript.js';
 import { Button } from '../ui/Button.js';
-import PlanCard from './PlanCard.js';
+import SmithRunPlanDesign from '../smith/SmithRunPlanDesign.js';
 import styles from './ProposalList.module.css';
 
 function effectivePlanOf(
@@ -35,7 +35,7 @@ function effectivePlanOf(
   );
 }
 
-function ProposalRow({
+export function ProposalRow({
   proposal,
   baseSyncing,
   focusRequested,
@@ -77,10 +77,22 @@ function ProposalRow({
   const generating = proposal.status === 'generating' && !proposal.plan;
   const replying = proposal.status === 'generating' && proposal.plan !== null;
 
+  const readCurrent = async (): Promise<ProposalSnapshot> => {
+    const row = await api.orchestrator.get?.(proposal.planId);
+    if (!row) throw new Error('This proposal is unavailable. This card is a snapshot.');
+    return row;
+  };
+
+  const act = (action: (row: ProposalSnapshot) => Promise<unknown> | void): void => {
+    void readCurrent()
+      .then(action)
+      .catch((error: Error) => {
+        setIssues([{ level: 'error', where: 'proposal', message: error.message }]);
+      });
+  };
+
   const discard = (): void => {
-    const discardCall = api.orchestrator.discard;
-    if (discardCall) void discardCall(proposal.planId);
-    else void api.orchestrator.cancel(proposal.planId);
+    act((row) => api.orchestrator.discard?.(row.planId));
   };
 
   const accept = async (): Promise<void> => {
@@ -88,15 +100,13 @@ function ProposalRow({
     setStarting(true);
     setIssues([]);
     try {
-      const acceptCall = api.orchestrator.accept;
-      const result = acceptCall
-        ? await acceptCall(proposal.planId, effective)
-        : await api.runs.start({
-            projectId: proposal.projectId,
-            pipelineId: effective.pipeline.id,
-            request: effective.refinedRequest,
-            plan: effective,
-          });
+      const row = await readCurrent();
+      if (row.status !== 'ready' || row.revision !== proposal.revision) {
+        throw new Error('The proposal changed. Review the current card before starting.');
+      }
+      const currentPlan = effectivePlanOf(row, modelOverrides, reasoningOverrides);
+      if (!currentPlan || !api.orchestrator.accept) throw new Error('Proposal cannot be started.');
+      const result = await api.orchestrator.accept(row.planId, currentPlan);
       if (!result.ok) {
         setIssues(result.issues);
         await refreshAll();
@@ -114,8 +124,8 @@ function ProposalRow({
   const sendMessage = (text: string): void => {
     if (!text.trim()) return;
     setChatError('');
-    void api.orchestrator
-      .message(proposal.planId, text)
+    void readCurrent()
+      .then((row) => api.orchestrator.message(row.planId, text))
       .then((refused) => {
         if (refused) setChatError(refused);
       })
@@ -149,7 +159,11 @@ function ProposalRow({
         <div className={styles.failedHead}>
           <span className={styles.failedTitle}>Planning failed</span>
           <span className={styles.failedDetail}>{proposal.detail || 'The planner gave up.'}</span>
-          <Button size="sm" onClick={() => onRetry(proposal.prompt)} data-testid="proposal-retry">
+          <Button
+            size="sm"
+            onClick={() => act((row) => onRetry(row.prompt))}
+            data-testid="proposal-retry"
+          >
             Try again
           </Button>
           <Button size="sm" variant="ghost" onClick={discard} data-testid="proposal-discard">
@@ -178,7 +192,7 @@ function ProposalRow({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => void api.orchestrator.cancel(proposal.planId)}
+            onClick={() => act((row) => api.orchestrator.cancel(row.planId))}
             data-testid="proposal-cancel"
           >
             Cancel
@@ -210,29 +224,41 @@ function ProposalRow({
       ref={rowRef as React.RefObject<HTMLDivElement>}
       data-testid={`proposal-${proposal.planId}`}
     >
-      <PlanCard
+      <SmithRunPlanDesign
         planId={proposal.planId}
         plan={effective}
         original={proposal.plan}
         starting={starting}
-        startBlocked={baseSyncing ? `Updating ${project?.baseRef ?? 'base branch'} first` : null}
+        startBlocked={
+          proposal.status !== 'ready'
+            ? proposal.status
+            : baseSyncing
+              ? `Updating ${project?.baseRef ?? 'base branch'} first`
+              : null
+        }
         issues={issues}
         messages={proposal.messages}
         replying={replying}
         chatError={chatError}
         onSendMessage={sendMessage}
         onPhaseModelChange={(phaseName, model) =>
-          setModelOverrides((current) => ({ ...current, [phaseName]: model }))
+          act((row) => {
+            if (row.status === 'ready' && row.revision === proposal.revision)
+              setModelOverrides((current) => ({ ...current, [phaseName]: model }));
+          })
         }
         onPhaseReasoningEffortChange={(phaseName, effort) =>
-          setReasoningOverrides((current) => ({ ...current, [phaseName]: effort }))
+          act((row) => {
+            if (row.status === 'ready' && row.revision === proposal.revision)
+              setReasoningOverrides((current) => ({ ...current, [phaseName]: effort }));
+          })
         }
         onResetPhaseOverrides={() => {
           setModelOverrides({});
           setReasoningOverrides({});
         }}
         onStart={() => void accept()}
-        onRegenerate={() => onRetry(proposal.prompt)}
+        onRegenerate={() => act((row) => onRetry(row.prompt))}
         onDiscard={discard}
       />
     </div>

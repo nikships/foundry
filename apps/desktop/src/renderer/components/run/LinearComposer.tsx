@@ -33,7 +33,7 @@ import LinearIssueResults from './LinearIssueResults.js';
 import LinearSelectedIssue from './LinearSelectedIssue.js';
 import LinearStatusMappingPanel from './LinearStatusMapping.js';
 import { OrchestratorControls, type OrchestratorChoice } from './OrchestratorPicker.js';
-import PlanCard from './PlanCard.js';
+import PlanCard from '../smith/SmithRunPlanDesign.js';
 import styles from './LinearComposer.module.css';
 
 const EMPTY_MAPPING: LinearStatusMapping = { started: null, completed: null, failed: null };

@@ -297,6 +297,7 @@ export class AppContext {
     // Native chats open lazily per project and share one proposal queue, so
     // every path preserves the one-card-at-a-time approval invariant.
     this.smith = new SmithService({
+      composeProposals: this.proposals,
       broadcast: (channel, payload) => this.broadcast(channel, payload),
       channels: { proposalsChanged: IPC.eventSmithProposalsChanged },
       // The queue awaits a save; store access lives in the IPC layer, so the
@@ -347,7 +348,10 @@ export class AppContext {
               smithEntitiesTool(deps),
               smithSettingsTool(deps),
               smithProjectsTool(deps),
-              smithRunsTool(deps),
+              smithRunsTool({
+                ...deps,
+                onComposed: (planId, scope) => this.proposals.recordIssuingScope(planId, scope),
+              }),
               smithPrsTool(deps),
               smithProvidersTool(deps),
               smithCompanionTool(deps),

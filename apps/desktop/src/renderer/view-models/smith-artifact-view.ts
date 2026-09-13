@@ -68,6 +68,7 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'evidence_disclosure',
   'readiness_journey',
   'provider_status',
+  'run_plan',
   'action_receipt',
 ];
 
@@ -97,11 +98,13 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   evidence_disclosure: 'context & evidence',
   readiness_journey: 'readiness journey',
   provider_status: 'provider status',
+  run_plan: 'run plan',
   action_receipt: 'action receipt',
 };
 
 /** The identifying name the card's title shows. */
 export function artifactName(artifact: SmithArtifact): string {
+  if (artifact.kind === 'run_plan') return artifact.title;
   if (artifact.kind === 'pipeline_design') return artifact.pipeline.id;
   if (artifact.kind === 'agent_design') return artifact.agent.name;
   if (artifact.kind === 'envelope_design') return artifact.envelope.name;

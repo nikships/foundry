@@ -97,8 +97,30 @@ function acceptIssue(where: string, message: string): OrchestratorAcceptResult {
 
 export class ProposalStore {
   private readonly acceptInFlight = new Map<string, Promise<OrchestratorAcceptResult>>();
+  private readonly listeners = new Set<(row: ProposalSnapshot) => void>();
+  private readonly transitions = new Map<string, string>();
+  private readonly issuingScopes = new Map<string, string | undefined>();
 
   constructor(private readonly deps: ProposalStoreDeps) {}
+
+  onTransition(listener: (row: ProposalSnapshot) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  recordIssuingScope(planId: string, projectId: string | undefined): void {
+    this.issuingScopes.set(planId, projectId);
+    const row = this.get(planId);
+    if (row) this.emitTransition(row);
+  }
+
+  issuedGlobally(planId: string): boolean {
+    return this.issuingScopes.has(planId) && this.issuingScopes.get(planId) === undefined;
+  }
+
+  private emitTransition(row: ProposalSnapshot): void {
+    for (const listener of this.listeners) listener(row);
+  }
 
   private clock(): number {
     return this.deps.now?.() ?? Date.now();
@@ -106,6 +128,13 @@ export class ProposalStore {
 
   private broadcastProposals(projectId: string, planId?: string): void {
     this.deps.broadcast(IPC.eventProposalsChanged, { projectId, ...(planId ? { planId } : {}) });
+    if (!planId) return;
+    const row = this.get(planId);
+    if (!row) return;
+    const transition = `${row.status}:${row.revision}`;
+    if (this.transitions.get(planId) === transition) return;
+    this.transitions.set(planId, transition);
+    this.emitTransition(row);
   }
 
   private broadcastProgress(state: OrchestratorState): void {

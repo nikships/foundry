@@ -132,7 +132,11 @@ const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
   orchestrator_discard: 'destructive',
 };
 
-export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
+type RunToolDeps = SmithActionToolDeps & {
+  onComposed?: (planId: string, projectId: string | undefined) => void;
+};
+
+export function smithRunsTool(deps: RunToolDeps): ToolDefinition {
   return defineTool({
     name: 'smith_runs',
     label: 'Smith runs',
@@ -471,7 +475,7 @@ function orchestratorPlanIdAction(
 }
 
 function orchestratorPlanAction(
-  deps: SmithActionToolDeps,
+  deps: RunToolDeps,
   params: unknown,
   projectId: string,
 ): ReturnType<typeof immediate> {
@@ -503,13 +507,15 @@ function orchestratorPlanAction(
         model: model ?? undefined,
         reasoningEffort: (reasoningEffort as ReasoningEffort | null) ?? undefined,
       });
-      return deps.invoke(
+      const result = await deps.invoke<{ planId?: string }>(
         IPC.orchestratorPlan,
         projectId,
         prompt,
         resolved.model,
         resolved.reasoningEffort,
       );
+      if (result?.planId) deps.onComposed?.(result.planId, deps.projectId());
+      return result;
     },
   });
 }

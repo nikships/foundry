@@ -1486,14 +1486,17 @@ export type SmithArtifactKind =
   | 'evidence_disclosure'
   | 'readiness_journey'
   | 'provider_status'
+  | 'run_plan'
   | 'action_receipt';
 
 /**
- * The kinds `smith_present` may emit. `action_receipt` is deliberately absent:
- * a receipt is evidence an action ran, so it is minted by main from the real
- * executor result and never by the model.
+ * The kinds `smith_present` may emit. Receipts and run plans are deliberately
+ * absent: main mints them from real action results and durable proposal rows.
  */
-export type SmithPresentableArtifactKind = Exclude<SmithArtifactKind, 'action_receipt'>;
+export type SmithPresentableArtifactKind = Exclude<
+  SmithArtifactKind,
+  'action_receipt' | 'run_plan'
+>;
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -1509,6 +1512,29 @@ interface SmithArtifactBase {
   rationale?: string;
   /** Store-validation warnings that rode along; errors never become artifacts. */
   warnings: ValidationIssue[];
+}
+
+/** Main-minted bounded proposal snapshot. Actions must resolve the durable row. */
+export interface SmithRunPlanArtifact extends SmithArtifactBase {
+  kind: 'run_plan';
+  planId: string;
+  projectId: string;
+  status: ProposalStatus;
+  revision: number;
+  title: string;
+  refinedRequest: string;
+  rationale: string;
+  phases: Array<{
+    index: number;
+    name: string;
+    kind: 'agent' | 'code';
+    agent?: string;
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    command?: string;
+    synthesized?: boolean;
+  }>;
+  acceptedRunId?: string;
 }
 
 /** A read-only pipeline design, rendered as ordered phase cards — never JSON. */
@@ -2088,6 +2114,7 @@ export interface SmithActionReceiptArtifact extends SmithArtifactBase {
  * the main boundary before they reach the renderer or persisted chat state.
  */
 export type SmithArtifact =
+  | SmithRunPlanArtifact
   | SmithPipelineDesignArtifact
   | SmithAgentDesignArtifact
   | SmithEnvelopeDesignArtifact
