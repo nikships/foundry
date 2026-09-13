@@ -100,12 +100,12 @@ export function describeScreen(view: View, position: ScreenPosition): SmithScree
 // ── Full user-level access: quick prompts, confirmations, receipts ─────────
 //
 // The model-facing tools for these capabilities live in main
-// (`smith_runs` orchestrator_*/linear_*/start, `smith_projects`
+// (`smith_compose`, `smith_runs` linear_*/start, `smith_projects`
 // refresh_context, `smith_providers` gemini_live_*). This file is the
 // renderer half: the exact operator phrasing that triggers each tool, the
 // confirmation note shown before a privileged step runs, and the plan-id
-// plumbing for the async orchestrator round-trip. Voice reuses the same
-// prompts through `smith_work`, so text and voice stay one conversation.
+// plumbing for the async composition round-trip. Voice reuses the same
+// prompts through `smith_work`, so text and voice inherit `smith_compose`.
 
 /** Stable ids for the user-level capabilities Smith now offers. */
 export type SmithCapabilityId =
@@ -221,10 +221,9 @@ export function smithOrchestratorFollowUpPrompt(planId: string, text: string): s
 const PLAN_ID_PATTERN = /plan-[0-9a-f]{6,}/i;
 
 /**
- * Pulls the orchestrator plan id out of Smith's reply text, if it names one.
+ * Pulls the run-plan id out of Smith's reply text, if it names one.
  * Plan ids read `plan-<hex>`; the match is the handle for every follow-up
- * (`orchestrator_get` polls, `orchestrator_message` revises,
- * `orchestrator_accept` creates the run exactly once).
+ * (`smith_compose` get, revise, and accept).
  */
 export function extractOrchestratorPlanId(text: string): string | null {
   return PLAN_ID_PATTERN.exec(text)?.[0] ?? null;
@@ -243,15 +242,15 @@ export function hasOrchestratorPlanId(text: string): boolean {
  * masked approval card.
  */
 export function smithConfirmationHint(operation: string): string {
-  if (operation === 'orchestrator_plan')
-    return 'Planning spends an agent turn. Confirm the prompt text before Smith proposes.';
-  if (operation === 'orchestrator_message')
+  if (operation === 'compose' || operation === 'orchestrator_plan')
+    return 'Planning spends an agent turn. The card arrives in this chat when ready.';
+  if (operation === 'revise' || operation === 'orchestrator_message')
     return 'Read-only revisions run immediately. The revised plan arrives in Smith.';
-  if (operation === 'orchestrator_accept')
+  if (operation === 'compose_accept' || operation === 'orchestrator_accept')
     return 'Accept creates the run exactly once — a repeat accept returns the same run.';
-  if (operation === 'orchestrator_discard')
+  if (operation === 'compose_discard' || operation === 'orchestrator_discard')
     return 'Discarding is destructive. Discarding an accepted plan refuses — that is final.';
-  if (operation === 'orchestrator_cancel')
+  if (operation === 'compose_cancel' || operation === 'orchestrator_cancel')
     return 'Cancel stops generation. The proposal row remains for review or discard.';
   if (operation === 'refresh_context')
     return 'Refresh rebuilds the repository fact card run agents receive as context.';

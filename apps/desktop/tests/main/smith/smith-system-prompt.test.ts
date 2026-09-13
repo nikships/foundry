@@ -39,7 +39,8 @@ describe('SMITH_CHAT_HARNESS', () => {
     );
     expect(SMITH_CHAT_HARNESS).not.toContain('picks a pipeline');
     expect(SMITH_CHAT_HARNESS).toContain('smith_present');
-    expect(SMITH_CHAT_HARNESS).toContain('orchestrator_accept');
+    expect(SMITH_CHAT_HARNESS).toContain('`smith_compose` accept (approval)');
+    expect(SMITH_CHAT_HARNESS).not.toContain('orchestrator_');
     const what = SMITH_CHAT_HARNESS.split('## How you work')[0]!;
     expect(what.toLowerCase()).not.toContain('orchestrator');
     expect(what.toLowerCase().indexOf('compose')).toBeLessThan(
@@ -189,13 +190,13 @@ describe('scopeContextBlock', () => {
 });
 
 describe('screenContextBlock', () => {
-  it('resolves unnamed revisions to the pinned plan and names only the interim tool', () => {
+  it('resolves unnamed revisions to the pinned plan and names the in-process tool', () => {
     const block = screenContextBlock({ route: 'runs', plan: { planId: 'plan-72', revision: 4 } });
     expect(block).toContain('A plan is pinned: "plan-72" (revision 4)');
     expect(block).toContain("'This plan', 'the proposal', or an unnamed revision request");
-    expect(block).toContain('smith_runs orchestrator_message for changes (immediate)');
-    expect(block).toContain('orchestrator_get for the current state');
-    expect(block).not.toContain('smith_compose');
+    expect(block).toContain('smith_compose revise for changes (immediate)');
+    expect(block).toContain('smith_compose get for the current state');
+    expect(block).not.toContain('orchestrator_');
     expect(screenContextBlock({ route: 'runs' })).not.toContain('A plan is pinned');
   });
   it('names the route and the entity the operator is looking at', () => {

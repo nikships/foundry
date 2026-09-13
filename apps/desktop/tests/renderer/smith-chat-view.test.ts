@@ -224,6 +224,9 @@ describe('smith user-level quick prompts', () => {
       expect(item.prompt.trim().length).toBeGreaterThan(0);
       expect(item.hint.trim().length).toBeGreaterThan(0);
     }
+    expect(SMITH_QUICK_PROMPTS.find((item) => item.id === 'orchestrator-plan')?.label).toBe(
+      'Plan a run for…',
+    );
   });
 
   it('phrases assigned work so the tool routes to the viewer filter', () => {
@@ -255,11 +258,12 @@ describe('orchestrator plan id plumbing', () => {
 
 describe('smith confirmations and receipts', () => {
   it('explains the cost and exactly-once rule before a plan runs', () => {
-    expect(smithConfirmationHint('orchestrator_plan')).toMatch(/agent turn/i);
-    expect(smithConfirmationHint('orchestrator_message')).toMatch(/immediately/i);
+    expect(smithConfirmationHint('compose')).toMatch(/agent turn/i);
+    expect(smithConfirmationHint('revise')).toMatch(/immediately/i);
+    expect(smithConfirmationHint('compose_accept')).toMatch(/exactly once/i);
+    expect(smithConfirmationHint('compose_discard')).toMatch(/destructive/i);
+    expect(smithConfirmationHint('compose_cancel')).toMatch(/remains/i);
     expect(smithConfirmationHint('orchestrator_accept')).toMatch(/exactly once/i);
-    expect(smithConfirmationHint('orchestrator_discard')).toMatch(/destructive/i);
-    expect(smithConfirmationHint('orchestrator_cancel')).toMatch(/remains/i);
     expect(smithConfirmationHint('start')).toMatch(/approval/i);
   });
 
@@ -267,7 +271,7 @@ describe('smith confirmations and receipts', () => {
     expect(needsMaskedSecret('gemini_live_set_api_key')).toBe(true);
     expect(needsMaskedSecret('linear_set_api_key')).toBe(true);
     expect(needsMaskedSecret('set_api_key')).toBe(true);
-    expect(needsMaskedSecret('orchestrator_plan')).toBe(false);
+    expect(needsMaskedSecret('compose')).toBe(false);
     expect(smithConfirmationHint('gemini_live_set_api_key')).toMatch(/masked/i);
   });
 });

@@ -103,10 +103,10 @@ export const SMITH_CHAT_HARNESS = [
   '- Run status: use `smith_runs` detail first. Use events, conversation,',
   '  prompt, artifacts, or context only for the evidence still needed. Read',
   '  one bounded page at a time; stop when you can answer the question.',
-  '- New run: `smith_runs` orchestrator_plan → orchestrator_get → discuss',
-  '  the ready plan → orchestrator_accept. Compose the plan before accepting it.',
-  '  Planning and acceptance each require',
-  '  approval. Inspect the returned plan; never invent one or pass it to',
+  '- New run: `smith_compose` compose → the card arrives in this chat when ready',
+  '  → discuss → `smith_compose` accept (approval). Compose and revise are immediate;',
+  '  accept, discard, and cancel require approval. Inspect the ready plan;',
+  '  never invent one or pass it to',
   '  smith_propose to start a run. Do not save generated agents just to show a card.',
   '  Return a planId or sessionId promptly. Do not poll in a tight loop or',
   '  start the same work again while it is in progress.',
@@ -263,7 +263,7 @@ export function screenContextBlock(ctx: SmithScreenContext): string {
       ? [
           `A plan is pinned: ${JSON.stringify(ctx.plan.planId)} (revision ${ctx.plan.revision}).`,
           "'This plan', 'the proposal', or an unnamed revision request refers to it.",
-          'Use smith_runs orchestrator_message for changes (immediate) and orchestrator_get for the current state. If the planning session expired, explain the refusal; do not claim a revision succeeded.',
+          'Use smith_compose revise for changes (immediate) and smith_compose get for the current state. If the planning session expired, explain the refusal; do not claim a revision succeeded.',
         ]
       : []),
   ].join('\n');

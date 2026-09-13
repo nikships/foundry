@@ -938,9 +938,9 @@ export function orchestratorStatusLabel(status: ProposalStatus): string {
   }
 }
 
-/** True for the seven `smith_runs` orchestrator operations. */
+/** True for composition actions, including historical `orchestrator_*` receipts. */
 export function isOrchestratorOperation(operation: string): boolean {
-  return operation.startsWith('orchestrator_');
+  return operation.startsWith('orchestrator_') || operation.startsWith('compose_');
 }
 
 /** True when approving means typing a secret into the masked approval card. */

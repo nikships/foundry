@@ -154,16 +154,14 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   // A restore resets the run branch and overwrites its worktree, so it is an
   // approval like every other git action, never an immediate read.
   [IPC.runsRestoreCheckpoint]: approve('smith_runs', 'restore_checkpoint'),
-  // Planning spends an agent turn on the operator's model; that is a
-  // privileged action even though the plan itself writes nothing.
-  [IPC.orchestratorPlan]: approve('smith_runs', 'orchestrator_plan'),
-  // A requested revision is read-only; accept/cancel/discard keep approvals.
-  [IPC.orchestratorMessage]: read('smith_runs', 'orchestrator_message'),
-  [IPC.orchestratorCancel]: approve('smith_runs', 'orchestrator_cancel'),
-  [IPC.orchestratorList]: read('smith_runs', 'orchestrator_list'),
-  [IPC.orchestratorGet]: read('smith_runs', 'orchestrator_get'),
-  [IPC.orchestratorAccept]: approve('smith_runs', 'orchestrator_accept'),
-  [IPC.orchestratorDiscard]: approve('smith_runs', 'orchestrator_discard'),
+  // Composition is read-only. Compatibility channel names migrate in M-06.
+  [IPC.orchestratorPlan]: read('smith_compose', 'compose'),
+  [IPC.orchestratorMessage]: read('smith_compose', 'revise'),
+  [IPC.orchestratorCancel]: approve('smith_compose', 'cancel'),
+  [IPC.orchestratorList]: read('smith_compose', 'list'),
+  [IPC.orchestratorGet]: read('smith_compose', 'get'),
+  [IPC.orchestratorAccept]: approve('smith_compose', 'accept'),
+  [IPC.orchestratorDiscard]: approve('smith_compose', 'discard'),
   [IPC.prsStatus]: read('smith_prs', 'status'),
   [IPC.prsList]: read('smith_prs', 'list'),
   [IPC.prsCreate]: approve('smith_prs', 'create'),

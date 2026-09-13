@@ -844,6 +844,7 @@ describe('user-level access receipts', () => {
   });
 
   it('detects orchestrator and credential operations for confirmation styling', () => {
+    expect(isOrchestratorOperation('compose_accept')).toBe(true);
     expect(isOrchestratorOperation('orchestrator_accept')).toBe(true);
     expect(isOrchestratorOperation('orchestrator_get')).toBe(true);
     expect(isOrchestratorOperation('linear_issues')).toBe(false);

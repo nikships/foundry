@@ -6,10 +6,19 @@ import {
 import { IPC } from '../../../src/shared/ipc-contract.js';
 
 describe('Smith capability coverage', () => {
-  it('makes only plan revisions immediate in M-04', () => {
-    expect(SMITH_CAPABILITY_COVERAGE[IPC.orchestratorMessage]?.mode).toBe('immediate');
+  it('makes composition and revision immediate while retaining privileged approvals', () => {
     for (const channel of [
       IPC.orchestratorPlan,
+      IPC.orchestratorMessage,
+      IPC.orchestratorGet,
+      IPC.orchestratorList,
+    ]) {
+      expect(SMITH_CAPABILITY_COVERAGE[channel]).toMatchObject({
+        tool: 'smith_compose',
+        mode: 'immediate',
+      });
+    }
+    for (const channel of [
       IPC.orchestratorAccept,
       IPC.orchestratorCancel,
       IPC.orchestratorDiscard,

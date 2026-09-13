@@ -53,6 +53,7 @@ import { smithEntitiesTool } from './smith/entity-action-tools.js';
 import { smithSettingsTool } from './smith/settings-tools.js';
 import { smithProjectsTool } from './smith/project-tools.js';
 import { smithRunsTool } from './smith/run-tools.js';
+import { smithComposeTool } from './smith/compose-tools.js';
 import { smithPrsTool } from './smith/pr-tools.js';
 import { smithProvidersTool } from './smith/provider-tools.js';
 import { smithCompanionTool } from './smith/companion-tools.js';
@@ -348,10 +349,8 @@ export class AppContext {
               smithEntitiesTool(deps),
               smithSettingsTool(deps),
               smithProjectsTool(deps),
-              smithRunsTool({
-                ...deps,
-                onComposed: (planId, scope) => this.proposals.recordIssuingScope(planId, scope),
-              }),
+              smithRunsTool(deps),
+              smithComposeTool({ ctx: this, queue: proposals, projectId: deps.projectId }),
               smithPrsTool(deps),
               smithProvidersTool(deps),
               smithCompanionTool(deps),

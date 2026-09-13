@@ -118,6 +118,14 @@ export class ProposalStore {
     return this.issuingScopes.has(planId) && this.issuingScopes.get(planId) === undefined;
   }
 
+  generatingForScope(projectId: string | undefined): number {
+    let count = 0;
+    for (const [planId, scope] of this.issuingScopes) {
+      if (scope === projectId && this.get(planId)?.status === 'generating') count++;
+    }
+    return count;
+  }
+
   private emitTransition(row: ProposalSnapshot): void {
     for (const listener of this.listeners) listener(row);
   }
