@@ -34,7 +34,6 @@ type CommandResolution =
 
 function healingPromptContext(ctx: RunContext): HealingPromptContext {
   return {
-    repositoryContext: ctx.project.contextSummary,
     envelopeSummaries: [...ctx.envelopes].map(([name, envelope]) => ({
       phase: name,
       summary: typeof envelope.summary === 'string' ? envelope.summary : '',

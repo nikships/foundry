@@ -1,81 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { agentSystemRole } from '../../../src/main/engine/agent-context.js';
+import {
+  envelopeSummaryBlock,
+  projectCommandBlock,
+} from '../../../src/main/engine/agent-context.js';
 
-const LEGACY_CLAIM =
-  "You inherit the operator's PATH and credentials. Project dependencies are available only when the worktree setup installed them.";
-
-describe('run-agent system context', () => {
-  it('adds the repository card and worktree-accurate setup evidence for writable agents', () => {
-    const role = agentSystemRole({
-      rosterRole: `# Builder\n\n${LEGACY_CLAIM}`,
-      repositoryContext: '## Stack\nTypeScript',
-      writes: null,
-      cwd: '/repo/.foundry-worktrees/run_1',
-      projectPath: '/repo',
-      setup: { command: 'npm ci', exitCode: 0 },
-    });
-
-    expect(role).toContain('# Builder');
-    expect(role).toContain('# Repository context');
-    expect(role).toContain('## Stack\nTypeScript');
-    expect(role).toContain("this pipeline's worktree at /repo/.foundry-worktrees/run_1");
-    expect(role).toContain('Every phase of the run shares it');
-    expect(role).toContain('Setup ran npm ci — exit 0.');
-    expect(role).not.toContain(LEGACY_CLAIM);
+describe('healer context blocks', () => {
+  it('formats prior envelopes and skips empty summaries', () => {
+    expect(
+      envelopeSummaryBlock([
+        { phase: 'build', summary: 'added the widget' },
+        { phase: 'plan', summary: '   ' },
+      ]),
+    ).toBe(['## Prior envelopes', '', '- build: added the widget'].join('\n'));
+    expect(envelopeSummaryBlock([])).toBe('');
   });
 
-  it('omits all shell and setup guidance for read-only agents', () => {
-    const role = agentSystemRole({
-      rosterRole: `# Scout\n\n${LEGACY_CLAIM}`,
-      repositoryContext: '## Layout\nsrc/',
-      writes: [],
-      cwd: '/repo/.foundry-worktrees/run_1',
-      projectPath: '/repo',
-      setup: { command: 'npm ci', exitCode: 0 },
-    });
-
-    expect(role).toContain('## Layout\nsrc/');
-    expect(role).not.toContain('# Worktree and shell');
-    expect(role).not.toContain('Setup ran');
-    expect(role).not.toContain(LEGACY_CLAIM);
-  });
-
-  it('omits shell guidance for a read-only profile even when the boundary allows writes', () => {
-    // The profile decides what tools exist; a boundary that would permit a
-    // write is irrelevant when no write tool was registered.
-    const role = agentSystemRole({
-      rosterRole: '# PR writer',
-      writes: ['docs/'],
-      toolProfile: 'read-only',
-      cwd: '/repo/.foundry-worktrees/run_1',
-      projectPath: '/repo',
-      setup: { command: 'npm ci', exitCode: 0 },
-    });
-
-    expect(role).not.toContain('# Worktree and shell');
-    expect(role).not.toContain('Setup ran');
-  });
-
-  it('omits the repository context block when the card is empty', () => {
-    const role = agentSystemRole({
-      rosterRole: '# Builder',
-      writes: ['src/'],
-      cwd: '/repo/.foundry-worktrees/run_1',
-      projectPath: '/repo',
-    });
-
-    expect(role).not.toContain('# Repository context');
-  });
-
-  it('states when a writable run is operating directly in the project checkout', () => {
-    const role = agentSystemRole({
-      rosterRole: '# Builder',
-      writes: ['src/'],
-      cwd: '/repo',
-      projectPath: '/repo',
-    });
-
-    expect(role).toContain('project checkout at /repo; this run is not isolated');
-    expect(role).toContain('Do not assume dependencies, toolchains, or credentials');
+  it('formats project commands and skips nameless or empty argv', () => {
+    expect(
+      projectCommandBlock([
+        { name: 'test', argv: ['npm', 'test'] },
+        { name: '  ', argv: ['true'] },
+        { name: 'lint', argv: [] },
+      ]),
+    ).toBe(['## Project commands', '', '- test: npm test'].join('\n'));
+    expect(projectCommandBlock([])).toBe('');
   });
 });

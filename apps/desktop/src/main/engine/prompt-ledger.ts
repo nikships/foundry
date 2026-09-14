@@ -14,9 +14,8 @@
  *   - rewind and a closed/replaced session still `forget`, because the same
  *     object is there with a shorter history that no longer holds the prompt;
  *   - compaction is different: Foundry pins the current phase prompt (minus
- *     Report) and the project card, so a compact that actually dropped messages
- *     only `retainPinned`s that constitution. A failed compact leaves the
- *     ledger untouched.
+ *     Report), so a compact that actually dropped messages only `retainPinned`s
+ *     that constitution. A failed compact leaves the ledger untouched.
  *
  * A miss only costs tokens, so every uncertainty resolves to a full prompt.
  */
@@ -36,7 +35,6 @@ export function promptFingerprint(input: { system: string; user: string }): stri
 export interface ConstitutionPin {
   phase: string;
   userPrompt: string;
-  projectCard: string;
 }
 
 export class PromptLedger {

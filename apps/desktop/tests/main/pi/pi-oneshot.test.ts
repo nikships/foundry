@@ -452,17 +452,18 @@ describe('where a one-shot session lives', () => {
     expect(spy.sessionManagers.map((s) => s.kind)).toEqual(['inMemory']);
   });
 
-  it('turns off every form of resource discovery', async () => {
+  it('turns off tool discovery and loads repository context files', async () => {
     const h = harness();
     await h.open().send('go');
     const loader = spy.loaders[0]!;
     // Same rule as a run: whatever the operator installed for their own pi
-    // must not change what this app does on their behalf.
+    // must not change what this app does on their behalf. AGENTS.md in cwd
+    // is loaded.
     expect(loader.noExtensions).toBe(true);
     expect(loader.noSkills).toBe(true);
     expect(loader.noPromptTemplates).toBe(true);
     expect(loader.noThemes).toBe(true);
-    expect(loader.noContextFiles).toBe(true);
+    expect(loader.noContextFiles).toBe(false);
     expect(loader.appendSystemPromptOverride?.([])).toEqual([]);
     const helperHarness = loader.systemPromptOverride?.(undefined) ?? '';
     expect(helperHarness).toMatch(/Foundry helper/i);

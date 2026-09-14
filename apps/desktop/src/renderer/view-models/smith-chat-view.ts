@@ -100,8 +100,8 @@ export function describeScreen(view: View, position: ScreenPosition): SmithScree
 // ── Full user-level access: quick prompts, confirmations, receipts ─────────
 //
 // The model-facing tools for these capabilities live in main
-// (`smith_compose`, `smith_runs` linear_*/start, `smith_projects`
-// refresh_context, `smith_providers` gemini_live_*). This file is the
+// (`smith_compose`, `smith_runs` linear_*/start, `smith_projects`,
+// `smith_providers` gemini_live_*). This file is the
 // renderer half: the exact operator phrasing that triggers each tool, the
 // confirmation note shown before a privileged step runs, and the plan-id
 // plumbing for the async composition round-trip. Voice reuses the same
@@ -252,8 +252,6 @@ export function smithConfirmationHint(operation: string): string {
     return 'Discarding is destructive. Discarding an accepted plan refuses — that is final.';
   if (operation === 'compose_cancel')
     return 'Cancel stops generation. The proposal row remains for review or discard.';
-  if (operation === 'refresh_context')
-    return 'Refresh rebuilds the repository fact card run agents receive as context.';
   if (needsMaskedSecret(operation))
     return 'The key value is entered only in the masked approval card — never typed in chat.';
   if (operation === 'start' || operation === 'linear_start')

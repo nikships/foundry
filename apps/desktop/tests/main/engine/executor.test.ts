@@ -276,13 +276,12 @@ describe('code phases', () => {
 });
 
 describe('agent phases', () => {
-  it('injects cached repository facts and the exact successful setup result into the system role', async () => {
+  it('does not inject worktree, setup, or a repository card into the system role', async () => {
     const scripted = scriptedAgent([buildEnvelope()]);
     const outcome = await run({
       scripted,
       project: {
         setupScript: 'printf setup-complete',
-        contextSummary: '## Stack\nTypeScript',
       },
       pipeline: pipe([agentPhase('build')], {
         acceptance: { kind: 'envelope_status', phase: 'build' },
@@ -292,12 +291,9 @@ describe('agent phases', () => {
     expect(outcome.status).toBe('accepted');
     const system = turnRequests(scripted)[0]!.systemPrompt;
     expect(system).toContain('You build.');
-    expect(system).toContain('# Repository context');
-    expect(system).toContain('## Stack\nTypeScript');
-    expect(system).toContain(
-      `this pipeline's worktree at ${h.tracer.run(outcome.runId)!.worktreePath}`,
-    );
-    expect(system).toContain('Setup ran printf setup-complete — exit 0.');
+    expect(system).not.toContain('# Repository context');
+    expect(system).not.toContain('# Worktree and shell');
+    expect(system).not.toContain('Setup ran');
   });
 
   it('parses an envelope, runs gates, and records both', async () => {

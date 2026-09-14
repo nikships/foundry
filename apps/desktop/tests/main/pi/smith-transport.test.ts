@@ -267,7 +267,7 @@ describe('opening the chat session', () => {
     expect(spy.creates[0]!.cwd).toBe(h.cwd);
   });
 
-  it('keeps discovery off and installs the Smith harness as the system prompt', async () => {
+  it('keeps tool discovery off, loads context files, and installs the Smith harness', async () => {
     const h = harness();
     await h.transport.start();
     const loader = spy.loaders[0]!;
@@ -275,7 +275,7 @@ describe('opening the chat session', () => {
     expect(loader.noSkills).toBe(true);
     expect(loader.noPromptTemplates).toBe(true);
     expect(loader.noThemes).toBe(true);
-    expect(loader.noContextFiles).toBe(true);
+    expect(loader.noContextFiles).toBe(false);
     expect(loader.systemPromptOverride?.(undefined)).toContain(
       "You are Smith, Foundry's native operator agent",
     );

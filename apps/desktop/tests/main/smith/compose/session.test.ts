@@ -163,7 +163,6 @@ async function run(opts: {
     model: opts.composeModel ?? 'inherit',
     defaultModel: opts.defaultModel ?? 'inherit',
     reasoningEffort: 'high',
-    contextSummary: 'A small demo repository.',
     commands,
     roster: opts.roster ?? [builder()],
     envelopeDefs: [],
@@ -245,7 +244,6 @@ describe('ComposeSession', () => {
       model: 'inherit',
       defaultModel: 'inherit',
       reasoningEffort: 'medium',
-      contextSummary: 'A small demo repository.',
       commands,
       roster: [builder()],
       envelopeDefs: [{ name: 'audit', description: 'audit findings', fields: [] }],
@@ -257,7 +255,6 @@ describe('ComposeSession', () => {
 
     const ask = prompts[0]!;
     expect(ask).toContain('add a changes file');
-    expect(ask).toContain('A small demo repository.');
     expect(ask).toContain('- test: npm test');
     expect(ask).toContain('- builder: build things');
     expect(ask).toContain('- audit: audit findings');
@@ -400,7 +397,6 @@ describe('ComposeSession', () => {
       model: 'inherit',
       defaultModel: 'inherit',
       reasoningEffort: 'medium',
-      contextSummary: '',
       commands,
       roster: [builder()],
       envelopeDefs: [],
@@ -1075,7 +1071,6 @@ describe('ComposeSession', () => {
       model: 'inherit',
       defaultModel: 'inherit',
       reasoningEffort: 'medium',
-      contextSummary: '',
       commands,
       roster: [builder()],
       envelopeDefs: [],
@@ -1232,7 +1227,6 @@ describe('ComposeSession', () => {
       model: 'inherit',
       defaultModel: 'inherit',
       reasoningEffort: 'medium',
-      contextSummary: '',
       commands,
       roster: [builder()],
       envelopeDefs: [],
@@ -1256,7 +1250,6 @@ describe('ComposeSession', () => {
       model: 'inherit',
       defaultModel: 'inherit',
       reasoningEffort: 'medium',
-      contextSummary: '',
       commands,
       roster: [builder()],
       envelopeDefs: [],

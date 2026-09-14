@@ -26,7 +26,6 @@ import {
   type RenderContext,
   type RenderedPrompt,
 } from '../prompts.js';
-import { agentSystemRole, type SetupExecution } from '../agent-context.js';
 import { stripReportBlock } from '../compaction.js';
 import { promptFingerprint, type PromptLedger } from '../prompt-ledger.js';
 import { diffStat } from '../git.js';
@@ -85,7 +84,6 @@ export interface AgentRunnerDeps {
     modelOverride?: string,
     reasoningEffortOverride?: AgentDef['reasoningEffort'],
   ) => Promise<AgentSession>;
-  setupExecution: () => SetupExecution | null;
   /**
    * Which phase prompts each live session still holds. Owned by the executor
    * because only it sees session replacement and compaction.
@@ -551,18 +549,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     // roster *system* prompt names it must still receive the real evidence —
     // including on the delta path, where the user message no longer carries it.
     const rendered = feedback === undefined ? baseline : renderPrompt(agent, phase, context);
-    // One role for both paths below: the delta trims the user message, never
-    // the standing rules, so a read-only agent is told it has no shell on a
-    // feedback re-entry exactly as it was on first entry.
-    const systemPrompt = agentSystemRole({
-      rosterRole: rendered.system,
-      repositoryContext: ctx.project.contextSummary,
-      writes: agent.writes,
-      ...(agent.toolProfile ? { toolProfile: agent.toolProfile } : {}),
-      cwd: ctx.cwd,
-      projectPath: ctx.project.path,
-      setup: this.deps.setupExecution(),
-    });
+    const systemPrompt = rendered.system;
 
     if (feedback !== undefined && this.deps.prompts.matches(session, phase.name, fingerprint)) {
       return {
@@ -574,7 +561,6 @@ export class AgentPhaseRunner implements PhaseRunner {
 
     this.deps.prompts.note(session, phase.name, fingerprint, {
       userPrompt: stripReportBlock(baseline.user),
-      projectCard: ctx.project.contextSummary?.trim() ?? '',
     });
     return { rendered, systemPrompt, delta: false };
   }

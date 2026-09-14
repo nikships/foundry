@@ -11,7 +11,6 @@ const PNG_1X1 =
 const project = {
   id: 'p1',
   path: '/tmp/repo',
-  contextSummary: '',
   commands: [],
 };
 

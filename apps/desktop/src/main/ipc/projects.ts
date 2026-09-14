@@ -20,7 +20,6 @@ import { currentBranch, isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
 import { createRepo, githubAccount } from '../system/gh.js';
 import type { AppContext } from '../context.js';
-import { ensureProjectContext } from '../project-context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
 
@@ -35,7 +34,6 @@ type Ctx = Pick<
   | 'setups'
   | 'roster'
   | 'pipelines'
-  | 'oneShot'
 >;
 
 /**
@@ -58,25 +56,6 @@ async function resolveTurnModel(supportDir: string, stored: string): Promise<str
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
-
-  // Fills a missing context summary in the background and re-broadcasts once
-  // it lands; the add/create call has long since returned by then.
-  const fillContextSummary = (project: ProjectDef): void => {
-    void ensureProjectContext({
-      project,
-      settings: ctx.settings.get(),
-      oneShot: ctx.oneShot,
-      persist: (next) => {
-        const current = ctx.projects.get(next.id);
-        if (!current) return;
-        ctx.projects.save({
-          ...current,
-          contextSummary: next.contextSummary,
-          contextSummarySha: next.contextSummarySha,
-        });
-      },
-    }).then(() => notifySettings(ctx));
-  };
 
   handle(IPC.projectsList, () => ctx.projects.list());
 
@@ -112,7 +91,6 @@ export function register(ctx: Ctx, handle: Handle): void {
         });
       }
     }
-    fillContextSummary(ctx.projects.get(project.id) ?? project);
     notifySettings(ctx);
     return ctx.projects.get(project.id) ?? project;
   });
@@ -150,7 +128,6 @@ export function register(ctx: Ctx, handle: Handle): void {
     }
     const curBranch = await currentBranch(path);
     const project = ctx.projects.add(path, curBranch || undefined, { scaffold: true });
-    fillContextSummary(project);
     notifySettings(ctx);
     return { ...created, project: ctx.projects.get(project.id) ?? project };
   });
@@ -356,50 +333,5 @@ export function register(ctx: Ctx, handle: Handle): void {
     if (!project) return null;
     const result = await syncBase(project.path, project.baseRef);
     return { ok: result.ok, status: { ...result.status, projectId: project.id } };
-  });
-
-  /**
-   * Rebuild the repository fact card from a read-only one-shot. Explicit: a
-   * run never mutates the card mid-phase, and this is the Settings affordance.
-   */
-  handle(IPC.projectsRefreshContext, async (id: string): Promise<SaveResult<ProjectDef>> => {
-    const project = projectOf(id);
-    if (!project) {
-      return {
-        ok: false,
-        issues: [{ level: 'error', where: 'project', message: 'project not found' }],
-      };
-    }
-    const next = await ensureProjectContext({
-      project,
-      settings: ctx.settings.get(),
-      oneShot: ctx.oneShot,
-      persist: (updated) => {
-        const current = ctx.projects.get(updated.id);
-        if (!current) return;
-        ctx.projects.save({
-          ...current,
-          contextSummary: updated.contextSummary,
-          contextSummarySha: updated.contextSummarySha,
-        });
-      },
-      force: true,
-    });
-    notifySettings(ctx);
-    const latest = ctx.projects.get(next.id) ?? next;
-    if (!latest.contextSummary?.trim()) {
-      return {
-        ok: false,
-        issues: [
-          {
-            level: 'error',
-            where: 'contextSummary',
-            message: 'could not generate a repository card',
-          },
-        ],
-        value: latest,
-      };
-    }
-    return { ok: true, issues: noIssues, value: latest };
   });
 }

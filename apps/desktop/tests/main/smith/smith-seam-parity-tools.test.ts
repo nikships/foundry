@@ -1,16 +1,11 @@
 /**
- * Project/provider seam parity for full user-level access: `refresh_context`
- * on `smith_projects` and the Live Voice credential seam on
- * `smith_providers`, plus the shared Linear helpers the assigned-work read
- * builds on. Token minting stays renderer-only by assertion.
+ * Project/provider seam parity for full user-level access: the Live Voice
+ * credential seam on `smith_providers`, plus the shared Linear helpers the
+ * assigned-work read builds on. Token minting stays renderer-only by assertion.
  */
 
 import { describe, expect, it, vi } from 'vitest';
 import { IPC } from '../../../src/shared/ipc-contract.js';
-import {
-  SMITH_PROJECT_OPERATIONS,
-  smithProjectsTool,
-} from '../../../src/main/smith/project-tools.js';
 import {
   SMITH_PROVIDER_OPERATIONS,
   smithProvidersTool,
@@ -21,26 +16,6 @@ import { linearIssueStatusLine, splitLinearAssignedIntent } from '../../../src/s
 
 const json = (r: unknown) =>
   JSON.parse((r as { content: Array<{ text: string }> }).content[0]!.text);
-
-function projectHarness() {
-  const invoke = vi.fn().mockResolvedValue('normalized');
-  const queue = new ProposalQueue(
-    () => {},
-    async () => ({ ok: true, entity: {} }),
-  );
-  const tool = smithProjectsTool({
-    invoke: invoke as MainInvoker,
-    queue,
-    projectId: () => 'session-project',
-  });
-  return {
-    invoke,
-    queue,
-    tool,
-    execute: (p: unknown) =>
-      (tool.execute as unknown as (id: string, p: unknown) => Promise<unknown>)('call', p),
-  };
-}
 
 function providerHarness() {
   const invoke = vi.fn().mockResolvedValue('normalized');
@@ -61,39 +36,6 @@ function providerHarness() {
       (tool.execute as unknown as (id: string, p: unknown) => Promise<unknown>)('id', p),
   };
 }
-
-describe('smith_projects refresh_context', () => {
-  it('declares the operation on the tool schema', () => {
-    expect(SMITH_PROJECT_OPERATIONS).toContain('refresh_context');
-    const h = projectHarness();
-    expect(
-      (h.tool.parameters as { properties: { operation: { enum: string[] } } }).properties.operation
-        .enum,
-    ).toContain('refresh_context');
-  });
-
-  it('gates a context refresh as a write on the exact channel', async () => {
-    const h = projectHarness();
-    const pending = h.execute({ operation: 'refresh_context', projectId: 'p1' });
-    await vi.waitFor(() => expect(h.queue.list()).toHaveLength(1));
-    expect(h.queue.list()[0]).toMatchObject({
-      operation: 'refresh_context',
-      risk: 'write',
-      args: { projectId: 'p1' },
-    });
-    expect(h.invoke).not.toHaveBeenCalled();
-    await h.queue.answer(h.queue.list()[0]!.id, { approved: true });
-    expect(json(await pending)).toEqual({ ok: true, result: 'normalized' });
-    expect(h.invoke).toHaveBeenCalledWith(IPC.projectsRefreshContext, 'p1');
-  });
-
-  it('requires a project id', async () => {
-    expect(json(await projectHarness().execute({ operation: 'refresh_context' }))).toMatchObject({
-      ok: false,
-      error: expect.stringContaining('projectId'),
-    });
-  });
-});
 
 describe('smith_providers Live Voice seam', () => {
   it('declares the voice credential operations but never token minting', () => {

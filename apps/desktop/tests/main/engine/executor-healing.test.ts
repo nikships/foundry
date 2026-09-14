@@ -184,23 +184,14 @@ describe('healing a failed programmatic phase', () => {
     expect(spy.prompts[0]).toContain('vendor/');
   });
 
-  it('writes a healing prompt record with the repository card and prior envelope', async () => {
+  it('writes a healing prompt record with the prior envelope and project commands', async () => {
     installCheck(fixableCheck);
     const scripted = scriptedAgent([buildEnvelope({ summary: 'added the widget' })]);
     const spy = healingSpy([(cwd) => writeFileSync(join(cwd, 'fix.txt'), 'healed\n')]);
 
     const outcome = await run({
       scripted,
-      project: {
-        ...project,
-        contextSummary: [
-          '## Stack\nTypeScript',
-          '## Repository layout\n`apps/`',
-          '## Conventions\nstrict',
-          '## Verification\n`npm test`',
-          '## Setup\n`npm ci`',
-        ].join('\n\n'),
-      },
+      project,
       healing: spy.support,
       pipeline: pipe(
         [
@@ -219,10 +210,9 @@ describe('healing a failed programmatic phase', () => {
       join(h.tracer.runDir(outcome.runId), 'healer', 'prompts', 'test-1.md'),
       'utf8',
     );
-    expect(record).toContain('## Stack');
-    expect(record).toContain('## Verification');
+    expect(record).not.toContain('# Repository context');
     expect(record).toContain('added the widget');
-    expect(record).toContain('npm test');
+    expect(record).toContain('./check.sh');
   });
 
   it('escalates through feedbackTo once its attempts are spent', async () => {

@@ -29,7 +29,6 @@ export interface ComposeStartInput {
 export interface ComposeStartProject {
   id: string;
   path: string;
-  contextSummary?: string | null;
   commands: ProjectCommand[];
   scaffold?: boolean;
 }
@@ -66,7 +65,6 @@ export function startCompose(
     model: input.model,
     defaultModel: services.defaultModel || 'inherit',
     reasoningEffort: input.reasoningEffort,
-    contextSummary: project.contextSummary ?? '',
     commands: project.commands,
     roster: services.rosterFor(project.id),
     envelopeDefs: services.envelopeDefs,

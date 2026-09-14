@@ -2,7 +2,6 @@ import type { DetectionState, DetectionProposal } from '@shared/ipc-contract.js'
 import { modelLabel } from '@shared/model-label.js';
 import { duration } from '../../utils/format.js';
 import { Button } from '../ui/Button.js';
-import { CodeBlock } from '../ui/CodeBlock.js';
 import { cx } from '../ui/cx.js';
 import PanelTranscript from './PanelTranscript.js';
 import styles from './DetectionPanel.module.css';
@@ -40,15 +39,11 @@ export default function DetectionPanel({
   onCancel,
   onAccept,
   onAcceptAll,
-  showRaw,
-  onToggleRaw,
 }: {
   state: DetectionState;
   onCancel: () => void;
   onAccept: (proposal: DetectionProposal) => void;
   onAcceptAll: () => void;
-  showRaw: boolean;
-  onToggleRaw: () => void;
 }): React.JSX.Element {
   const live = state.status === 'running' || state.status === 'verifying';
   const usable = state.proposals.filter((p) => p.verify !== 'running');
@@ -112,19 +107,6 @@ export default function DetectionPanel({
             </div>
           ))}
         </div>
-      )}
-
-      {state.rawReply && (
-        <>
-          <button className={`linkish ${styles.rawToggle}`} onClick={onToggleRaw}>
-            {showRaw ? 'Hide raw reply' : 'Show raw reply'}
-          </button>
-          {showRaw && (
-            <CodeBlock maxHeight={220} className={styles.output}>
-              {state.rawReply}
-            </CodeBlock>
-          )}
-        </>
       )}
     </div>
   );

@@ -364,7 +364,7 @@ describe('compaction between phases', () => {
     const outcome = await run({
       scripted,
       request: 'ship the widget',
-      project: { contextSummary: '## Stack\nTypeScript' },
+      project: {},
       pipeline: twoPhases(),
     });
     expect(outcome.status).toBe('accepted');
@@ -375,12 +375,11 @@ describe('compaction between phases', () => {
     expect(facts.artifactPaths).toContain('.foundry-handoff/build.json');
     expect(facts.phaseUserPrompt).toContain('ship the widget');
     expect(facts.phaseUserPrompt).not.toContain('## Report');
-    expect(facts.projectCard).toContain('## Stack\nTypeScript');
     expect(facts.envelopeKind).toBe('build');
     expect(facts.requiredFields).toContain('status');
     expect(facts.requiredFields).toContain('commit_message');
-    // Standing role is re-injected, so the next turn still sees the project card.
-    expect(turnRequests(scripted)[1]!.systemPrompt).toContain('## Stack\nTypeScript');
+    // Standing role is re-injected every turn.
+    expect(turnRequests(scripted)[1]!.systemPrompt).toContain('You build.');
   });
 
   it('forgets the ledger only after a compact that actually dropped messages', async () => {

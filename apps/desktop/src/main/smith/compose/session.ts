@@ -58,7 +58,6 @@ export interface ComposeSessionDeps {
   /** Settings → Agent Defaults model, snapshotted when planning starts. */
   defaultModel: string;
   reasoningEffort: ReasoningEffort;
-  contextSummary: string;
   commands: ProjectCommand[];
   roster: AgentDef[];
   envelopeDefs: EnvelopeDef[];
@@ -177,7 +176,6 @@ export class ComposeSession {
     const allowedModelIds = castPool.models.map((candidate) => candidate.id);
     const promptInputs: PlanPromptInputs = {
       request: this.deps.prompt,
-      contextSummary: this.deps.contextSummary,
       commands: this.deps.commands,
       roster: this.deps.roster,
       envelopeDefs: this.deps.envelopeDefs,

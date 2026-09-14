@@ -307,15 +307,12 @@ describe('the Spark payload hook', () => {
 });
 
 describe('the system-prompt hook', () => {
-  it('appends the roster role and repository context to Pi’s built prompt', () => {
+  it('appends the roster role to Pi’s built prompt', () => {
     const { handle, state } = bind(allow);
-    handle.useSystemPrompt(
-      '# Builder\n\nYou write the code.\n\n# Repository context\n\nTypeScript.',
-    );
+    handle.useSystemPrompt('# Builder\n\nYou write the code.');
     const next = state.beforeAgentStart?.({ systemPrompt: 'You are a Foundry pipeline agent.' });
     expect(next?.systemPrompt).toContain('You are a Foundry pipeline agent.');
     expect(next?.systemPrompt).toContain('# Builder');
-    expect(next?.systemPrompt).toContain('# Repository context');
   });
 
   it('leaves the harness alone when no role is pending', () => {
@@ -336,7 +333,6 @@ describe('the compaction hook', () => {
       envelopeKind: 'build',
       requiredFields: ['status', 'commit_message'],
       phaseUserPrompt: 'Build: ship the widget.',
-      projectCard: '## Stack\nTypeScript',
     });
     const result = state.sessionBeforeCompact?.({
       preparation: {
@@ -348,7 +344,7 @@ describe('the compaction hook', () => {
     expect(result?.compaction?.firstKeptEntryId).toBe('keep-1');
     const summary = result?.compaction?.summary ?? '';
     expect(summary).toContain('Build: ship the widget.');
-    expect(summary).toContain('## Stack\nTypeScript');
+    expect(summary).not.toContain('## Project card');
     expect(summary).toContain('ship the widget');
     expect(summary).toContain('.foundry-handoff/build.json');
     expect(summary).toContain('test: ./check.sh exited 1');

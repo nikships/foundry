@@ -149,13 +149,6 @@ export function ProjectCardDesign({
           </div>
         )}
       </div>
-
-      {project.contextSummary && !compact && (
-        <details className={styles.disclosure} data-testid="project-card-context">
-          <summary className={styles.disclosureSummary}>Project context</summary>
-          <pre className={cx(styles.disclosurePre, 'selectable')}>{project.contextSummary}</pre>
-        </details>
-      )}
     </div>
   );
 }

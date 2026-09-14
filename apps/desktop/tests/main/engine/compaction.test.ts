@@ -32,7 +32,6 @@ function facts(over: Partial<CompactionFacts> = {}): CompactionFacts {
     envelopeKind: 'build',
     requiredFields: requiredFieldsFor('build'),
     phaseUserPrompt: PHASE_PROMPT,
-    projectCard: '## Stack\nTypeScript\n\n## Layout\nsrc/',
     ...over,
   };
 }
@@ -46,10 +45,10 @@ describe('stripReportBlock', () => {
 });
 
 describe('foundryCompactionSummary', () => {
-  it('keeps the phase prompt and project card verbatim', () => {
+  it('keeps the phase prompt verbatim', () => {
     const summary = foundryCompactionSummary(facts());
     expect(summary).toContain(PHASE_PROMPT);
-    expect(summary).toContain('## Stack\nTypeScript\n\n## Layout\nsrc/');
+    expect(summary).not.toContain('## Project card');
   });
 
   it('records request, artifacts, open failures, files, and envelope fields', () => {
@@ -77,7 +76,7 @@ describe('foundryCompactionSummary', () => {
 
   it('omits empty constitution sections rather than inventing them', () => {
     const summary = foundryCompactionSummary(
-      facts({ phaseUserPrompt: '', projectCard: '', artifactPaths: [], unresolvedFailures: [] }),
+      facts({ phaseUserPrompt: '', artifactPaths: [], unresolvedFailures: [] }),
     );
     expect(summary).not.toContain('## Phase prompt');
     expect(summary).not.toContain('## Project card');

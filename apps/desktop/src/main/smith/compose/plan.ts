@@ -75,7 +75,6 @@ Do not print the plan as prose or JSON. After submit_result succeeds, stop.`;
 
 export interface PlanPromptInputs {
   request: string;
-  contextSummary: string;
   commands: ProjectCommand[];
   roster: AgentDef[];
   envelopeDefs: EnvelopeDef[];
@@ -182,9 +181,6 @@ export function buildPlanPrompt(inputs: PlanPromptInputs): string {
       '## Attached images',
       `${attachedImageCount} image(s) are attached to this turn. Treat them as the visual specification.`,
     );
-  }
-  if (inputs.contextSummary) {
-    parts.push('', '## Repository', inputs.contextSummary);
   }
   const preferred = (inputs.preferredModelIds ?? []).filter(Boolean);
   parts.push(

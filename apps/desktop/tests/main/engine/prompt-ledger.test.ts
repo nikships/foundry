@@ -13,13 +13,12 @@ describe('PromptLedger', () => {
     const ledger = new PromptLedger();
     const session = {};
     const first = fp('build it');
-    ledger.note(session, 'build', first, { userPrompt: 'build it', projectCard: '## Stack' });
+    ledger.note(session, 'build', first, { userPrompt: 'build it' });
     expect(ledger.matches(session, 'build', first)).toBe(true);
     expect(ledger.matches(session, 'build', fp('build it differently'))).toBe(false);
     expect(ledger.constitution(session)).toEqual({
       phase: 'build',
       userPrompt: 'build it',
-      projectCard: '## Stack',
     });
   });
 
@@ -29,7 +28,6 @@ describe('PromptLedger', () => {
     ledger.note(session, 'plan', fp('plan it'));
     ledger.note(session, 'build', fp('build it'), {
       userPrompt: 'build it',
-      projectCard: 'card',
     });
     ledger.retainPinned(session);
     expect(ledger.matches(session, 'build', fp('build it'))).toBe(true);
@@ -40,7 +38,7 @@ describe('PromptLedger', () => {
   it('forget drops every phase, including the pin', () => {
     const ledger = new PromptLedger();
     const session = {};
-    ledger.note(session, 'build', fp('build it'), { userPrompt: 'build it', projectCard: '' });
+    ledger.note(session, 'build', fp('build it'), { userPrompt: 'build it' });
     ledger.forget(session);
     expect(ledger.matches(session, 'build', fp('build it'))).toBe(false);
     expect(ledger.constitution(session)).toBeUndefined();

@@ -104,7 +104,7 @@ function setup(
         return { ok: true, runId };
       }),
   });
-  const project = { id: 'proj_a', path: '/tmp/repo', contextSummary: '', commands: [] };
+  const project = { id: 'proj_a', path: '/tmp/repo', commands: [] };
   const services = {
     rosterFor: () => [],
     envelopeDefs: [],

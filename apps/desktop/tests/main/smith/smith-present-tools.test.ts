@@ -1564,7 +1564,6 @@ describe('validateProjectCard', () => {
       title: 'T'.repeat(250),
       summary: 'S'.repeat(600),
       setupScript: 'X'.repeat(8500),
-      contextSummary: 'C'.repeat(4500),
     };
     const issues = validateProjectCard(oversized);
     expect(issues.filter((i) => i.level === 'error')).toEqual([]);
@@ -1572,9 +1571,6 @@ describe('validateProjectCard', () => {
     expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'summary' }));
     expect(issues).toContainEqual(
       expect.objectContaining({ level: 'warning', where: 'setupScript' }),
-    );
-    expect(issues).toContainEqual(
-      expect.objectContaining({ level: 'warning', where: 'contextSummary' }),
     );
   });
 });

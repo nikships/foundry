@@ -70,7 +70,7 @@ describe('concurrent proposal generation', () => {
     const broadcasts: Array<{ channel: string; payload?: unknown }> = [];
     const oneShots = scriptedOneShots([{ hangUntilAbort: true }, { hangUntilAbort: true }]);
 
-    const project = { id: 'proj_a', path: '/tmp/repo', contextSummary: '', commands: [] };
+    const project = { id: 'proj_a', path: '/tmp/repo', commands: [] };
     const services = {
       rosterFor: () => [],
       envelopeDefs: [],

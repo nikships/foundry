@@ -27,8 +27,6 @@ export const projectSchema = z.object({
   readinessValidated: z.boolean().optional(),
   readinessSkipped: z.boolean().optional(),
   setupScript: z.string().optional(),
-  contextSummary: z.string().optional(),
-  contextSummarySha: z.string().optional(),
   addedAt: z.string(),
 });
 

@@ -59,7 +59,6 @@ import {
   effectivePhaseEnvelope,
   resolveAgentExecution,
 } from '@shared/types.js';
-import type { SetupExecution } from './agent-context.js';
 import type { AllowedModelAppointment, Replanner } from '../smith/compose/replan.js';
 import { generatedCompositionIssues, phaseModelIssues } from '../smith/compose/plan.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
@@ -217,7 +216,6 @@ export class Executor {
   private pipeline: PipelineDef;
   private plan: GeneratedRunPlan | null;
   private replanAttempts = 0;
-  private setupExecution: SetupExecution | null = null;
   private cancelled = false;
   private handle: worktreeLib.WorktreeHandle | null = null;
   private cwd: string;
@@ -237,7 +235,6 @@ export class Executor {
         rewindAfterCorrections: deps.rewindAfterCorrections,
         sessionFor: (agent, modelOverride, reasoningEffortOverride) =>
           this.sessionFor(agent, modelOverride, reasoningEffortOverride),
-        setupExecution: () => this.currentSetupExecution(),
         prompts: this.prompts,
         onLiveText: deps.onLiveText,
       }),
@@ -1298,12 +1295,6 @@ export class Executor {
       argv,
       result: result.outputTail.slice(-2000),
     });
-    this.setupExecution = {
-      command: script,
-      exitCode: result.exitCode,
-      argv,
-      durationMs: result.durationMs,
-    };
     if (result.passed) return null;
     if (project.scaffold) {
       tracer.event({
@@ -1329,29 +1320,6 @@ export class Executor {
       'failed',
       `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-800).trim() || 'see setup.log'}`,
     );
-  }
-
-  private currentSetupExecution(): SetupExecution | null {
-    if (this.setupExecution) return this.setupExecution;
-    const setup = this.deps.tracer
-      .eventsAfter(this.deps.runId, 0, 1000)
-      .find((event) => event.type === 'tool_call' && event.name === 'setup');
-    const command = setup?.payload.script;
-    const exitCode = setup?.payload.exitCode;
-    if (typeof command !== 'string' || (typeof exitCode !== 'number' && exitCode !== null)) {
-      return null;
-    }
-    const argv = setup?.payload.argv;
-    const durationMs = setup?.payload.durationMs;
-    this.setupExecution = {
-      command,
-      exitCode,
-      ...(Array.isArray(argv) && argv.every((item) => typeof item === 'string')
-        ? { argv: argv as string[] }
-        : {}),
-      ...(typeof durationMs === 'number' ? { durationMs } : {}),
-    };
-    return this.setupExecution;
   }
 
   private async sessionFor(
@@ -1519,7 +1487,6 @@ export class Executor {
       envelopeKind,
       requiredFields: requiredFieldsFor(envelopeKind, agent?.customFields, this.deps.envelopeDefs),
       phaseUserPrompt: pin?.userPrompt ?? '',
-      projectCard: pin?.projectCard || this.deps.project.contextSummary?.trim() || '',
     };
   }
 
