@@ -10,6 +10,7 @@ export default function AgentAvatar({
   size = 28,
   emblem,
   color: colorOverride,
+  ring,
 }: {
   name: string | null;
   size?: number;
@@ -17,6 +18,8 @@ export default function AgentAvatar({
   emblem?: string;
   /** Draft override; absent reads the saved agent hue. */
   color?: string;
+  /** Ring thickness in px; absent keeps the default hairline. */
+  ring?: number;
 }): React.JSX.Element {
   const { agentByName, agentColor } = useApp();
   const saved = name ? agentByName(name) : null;
@@ -36,6 +39,7 @@ export default function AgentAvatar({
       style={{
         width: `${size}px`,
         height: `${size}px`,
+        borderWidth: ring,
         borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
         background: `color-mix(in srgb, ${color} 14%, var(--bg-raised))`,
         color,

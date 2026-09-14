@@ -74,8 +74,10 @@ describe('execution inheritance copy', () => {
   });
 
   it('shows the resolved model in roster badges instead of the inherit sentinel', () => {
-    expect(rosterSrc).toContain('<ModelBadge model={displayedModel(agent)}');
-    expect(rosterSrc).toContain('<ModelBadge model={displayedModel(draft)}');
-    expect(rosterSrc).toContain("? 'default model'");
+    // The dock's model bubble and the hero's meta line both resolve the
+    // displayed model before looking up its provider or label.
+    expect(rosterSrc).toContain('providerForModel(displayedModel(agent), models)');
+    expect(rosterSrc).toContain('providerForModel(displayedModel(draft), models)');
+    expect(rosterSrc).toContain('rosterModelLabel(displayedModel(draft), models)');
   });
 });

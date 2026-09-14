@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import {
   BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
   resolveAgentExecution,
   type AgentDef,
-  type ModelInfo,
   type ValidationIssue,
 } from '@shared/types.js';
-import { modelLabel } from '@shared/model-label.js';
 import { modelForEffortPicker } from '@shared/reasoning-effort.js';
 import { api, plain } from '../api.js';
 import type { DesignTab } from '../utils/navigation.js';
@@ -18,9 +16,10 @@ import {
   validateCustomFields,
   shadowedLibraryFields,
 } from '../view-models/custom-fields.js';
-import AgentAvatar from '../components/media/AgentAvatar.js';
 import AgentIconPicker from '../components/media/AgentIconPicker.js';
-import { ProviderIcon } from '../components/media/BrandIcon.js';
+import AgentMarkTrigger from '../components/media/AgentMarkTrigger.js';
+import AgentHero from '../components/roster/AgentHero.js';
+import MedallionDock from '../components/roster/MedallionDock.js';
 import ModelPicker from '../components/common/ModelPicker.js';
 import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js';
 import BoundaryEditor from '../components/pipeline/BoundaryEditor.js';
@@ -34,10 +33,9 @@ import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { defaultEmblemFor, isDefaultMark, markLabel } from '../data/emblems.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
-import { useTablistNav } from '../hooks/useTablistNav.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import { draftSyncAction } from '../view-models/roster-draft.js';
-import { rosterScrollEdges } from '../view-models/roster-scroll.js';
+import { providerForModel, rosterModelLabel } from '../view-models/roster-model.js';
 import styles from './RosterScreen.module.css';
 
 const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
@@ -62,63 +60,6 @@ const CREW = [
   ['PR writer', 'drafts the pull request'],
   ['Issue writer', 'turns follow-up work into an issue'],
 ] as const;
-
-/**
- * The brand behind a stored model id, for the roster's badge.
- *
- * Read off the catalog rather than parsed out of the id: `bridge-claude/…` and
- * `anthropic/…` are the same brand, and only the catalog knows that. An id no
- * connected provider offers has no mark, which is the same honest gap a missing
- * logo leaves everywhere else.
- */
-function providerFor(model: string, models: ModelInfo[]): string {
-  return models.find((m) => m.id === model)?.provider ?? '';
-}
-
-/** Provider mark plus the model's label, with the inheritance sentinel named as a model default. */
-function ModelBadge({
-  model,
-  models,
-  size,
-}: {
-  model: string;
-  models: ModelInfo[];
-  size: number;
-}): React.JSX.Element {
-  return (
-    <>
-      <ProviderIcon provider={providerFor(model, models)} size={size} />
-      {model === 'inherit'
-        ? 'default model'
-        : !models.some((m) => m.id === model)
-          ? 'inherit'
-          : modelLabel(model)}
-    </>
-  );
-}
-
-function MarkTrigger({
-  draft,
-  size,
-  onClick,
-}: {
-  draft: AgentDef;
-  size: number;
-  onClick: () => void;
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      data-mark-trigger
-      aria-label={`Change mark for ${draft.name}`}
-      onClick={onClick}
-      className={styles.avatarTrigger}
-    >
-      <AgentAvatar name={draft.name} emblem={draft.emblem} color={draft.color} size={size} />
-      <span className={styles.avatarTriggerOverlay} aria-hidden />
-    </button>
-  );
-}
 
 function CustomAccentSwatch({
   color,
@@ -177,8 +118,6 @@ export default function RosterScreen({
   const { models, refresh: refreshModels } = useAgentModels();
   const [showPreview, setShowPreview] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
-  const rosterTabsRef = useRef<HTMLDivElement>(null);
-  const [scrollEdges, setScrollEdges] = useState({ before: false, after: false });
   const agentsRef = useRef<AgentDef[]>(agents);
   agentsRef.current = agents;
   const projectIdRef = useRef(projectId);
@@ -256,17 +195,6 @@ export default function RosterScreen({
   }, [agents, selectedName]);
 
   useEffect(() => {
-    const tabs = rosterTabsRef.current;
-    if (!tabs) return;
-    const updateEdges = (): void => setScrollEdges(rosterScrollEdges(tabs));
-    updateEdges();
-    const observer = new ResizeObserver(updateEdges);
-    observer.observe(tabs);
-    if (tabs.firstElementChild) observer.observe(tabs.firstElementChild);
-    return () => observer.disconnect();
-  }, [agents.length]);
-
-  useEffect(() => {
     let cancelled = false;
     void api.roster.staleBuiltins(projectId || undefined).then((names) => {
       if (!cancelled) setStaleBuiltins(new Set(names));
@@ -339,12 +267,6 @@ export default function RosterScreen({
     if (name === selectedName) return;
     void flush();
     setSelectedName(name);
-  };
-  const onTablistKey = useTablistNav();
-  const scrollRoster = (direction: -1 | 1): void => {
-    const tabs = rosterTabsRef.current;
-    if (!tabs) return;
-    tabs.scrollBy({ left: direction * Math.max(340, tabs.clientWidth * 0.75), behavior: 'smooth' });
   };
 
   /**
@@ -472,147 +394,21 @@ export default function RosterScreen({
 
   return (
     <div className={styles.rosterScreen}>
-      {/* ── agent strip: every agent, one horizontal band ── */}
-      <div className={styles.rosterTabs}>
-        <div
-          ref={rosterTabsRef}
-          className={styles.rosterTabsInner}
-          role="tablist"
-          aria-label="Agents"
-          onKeyDown={onTablistKey}
-          onScroll={(event) => setScrollEdges(rosterScrollEdges(event.currentTarget))}
-        >
-          {agents.map((agent) => {
-            const isActive = agent.name === selectedName;
-            return (
-              <button
-                key={agent.name}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                tabIndex={isActive ? 0 : -1}
-                className={`${styles.rosterCell} ${isActive ? styles.on : ''}`}
-                style={{ ['--hue' as string]: agent.color ?? 'var(--accent)' }}
-                onClick={() => selectAgent(agent.name)}
-                data-testid={`agent-tab-${agent.name}`}
-              >
-                <AgentAvatar name={agent.name} size={30} />
-                <span className={styles.rosterCellWho}>
-                  <span className={styles.rosterCellName}>{agent.name}</span>
-                  {staleBuiltins.has(agent.name) && (
-                    <span className={styles.staleBadge}>Shipped update</span>
-                  )}
-                  <span className={styles.rosterCellRole}>{agent.purpose}</span>
-                  <span className={styles.rosterCellModel}>
-                    {isActive && <span className={styles.rosterCellDot} aria-hidden />}
-                    <ModelBadge model={displayedModel(agent)} models={models} size={11} />
-                  </span>
-                </span>
-                {isActive && <span className={styles.rosterCellUnderline} aria-hidden />}
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            className={styles.rosterNew}
-            onClick={() => void createAgent()}
-            data-testid="agent-new"
-          >
-            + New agent
-          </button>
-        </div>
-        {scrollEdges.before && (
-          <button
-            type="button"
-            className={`${styles.rosterScrollControl} ${styles.before}`}
-            aria-label="Scroll to earlier agents"
-            onClick={() => scrollRoster(-1)}
-          >
-            <ChevronLeft size={18} aria-hidden />
-          </button>
-        )}
-        {scrollEdges.after && (
-          <button
-            type="button"
-            className={`${styles.rosterScrollControl} ${styles.after}`}
-            aria-label="Scroll to later agents"
-            onClick={() => scrollRoster(1)}
-          >
-            <ChevronRight size={18} aria-hidden />
-          </button>
-        )}
-      </div>
-
       {draft && (
         <div className={styles.rosterScroll}>
           <div className={`${styles.rosterPage} ${gutterPageClass}`}>
-            {/* ── title row ── */}
-            <div className={styles.rosterHead}>
-              <div className={styles.rosterHeadLead}>
-                <MarkTrigger draft={draft} size={52} onClick={() => setShowIconPicker(true)} />
-                <div className={styles.rosterHeadMain}>
-                  <div className={styles.rosterHeadTitlerow}>
-                    <h1
-                      className={styles.rosterTitle}
-                      style={{ color: draft.color ?? 'var(--accent)' }}
-                    >
-                      {draft.name}
-                    </h1>
-                    <span className={styles.rosterHeadMeta}>
-                      <ModelBadge model={displayedModel(draft)} models={models} size={13} /> ·{' '}
-                      {draft.envelope}
-                    </span>
-                  </div>
-                  <p className={styles.rosterHeadSub}>
-                    {draft.purpose || 'No purpose yet.'}{' '}
-                    <span className={styles.rosterHeadTag}>
-                      {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
-                    </span>
-                    {staleBuiltins.has(draft.name) && (
-                      <span className={styles.staleBadge}>Shipped version differs</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-              <div className={styles.rosterHeadActions}>
-                <button
-                  type="button"
-                  className={styles.rosterAction}
-                  onClick={() => setShowPreview(true)}
-                  data-testid="agent-preview"
-                >
-                  Preview prompt
-                </button>
-                <button
-                  type="button"
-                  className={styles.rosterAction}
-                  onClick={() => void duplicate()}
-                  data-testid="agent-duplicate"
-                >
-                  Duplicate
-                </button>
-                {draft.builtin && staleBuiltins.has(draft.name) && (
-                  <button
-                    type="button"
-                    className={styles.rosterAction}
-                    onClick={() => void resetToShipped()}
-                    data-testid="agent-reset"
-                  >
-                    Reset to shipped version
-                  </button>
-                )}
-                {!draft.builtin && (
-                  <button
-                    type="button"
-                    className={`${styles.rosterAction} ${styles.danger}`}
-                    onClick={() => void remove()}
-                    data-testid="agent-delete"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
+            {/* ── hero: the selected agent, life-size ── */}
+            <AgentHero
+              agent={draft}
+              provider={providerForModel(displayedModel(draft), models)}
+              modelText={rosterModelLabel(displayedModel(draft), models)}
+              stale={staleBuiltins.has(draft.name)}
+              onEditMark={() => setShowIconPicker(true)}
+              onPreview={() => setShowPreview(true)}
+              onDuplicate={() => void duplicate()}
+              onReset={() => void resetToShipped()}
+              onDelete={() => void remove()}
+            />
 
             {/* ── identity ── */}
             <GutterSection
@@ -622,7 +418,13 @@ export default function RosterScreen({
               <div className={styles.rosterFields}>
                 <Field label="Mark" className={styles.span2}>
                   <div className={styles.identityMarkRow}>
-                    <MarkTrigger draft={draft} size={44} onClick={() => setShowIconPicker(true)} />
+                    <AgentMarkTrigger
+                      name={draft.name}
+                      emblem={draft.emblem}
+                      color={draft.color}
+                      size={44}
+                      onClick={() => setShowIconPicker(true)}
+                    />
                     <div className={styles.identityMarkInfo}>
                       <div className={styles.identityMarkMeta}>
                         <span className={styles.identityMarkLabel}>{markLabel(draft.emblem)}</span>
@@ -930,7 +732,16 @@ export default function RosterScreen({
           </div>
         </div>
       )}
-      {!draft && (
+      {agents.length > 0 && (
+        <MedallionDock
+          agents={agents}
+          selectedName={selectedName}
+          onSelect={selectAgent}
+          onCreate={() => void createAgent()}
+          providerForAgent={(agent) => providerForModel(displayedModel(agent), models)}
+        />
+      )}
+      {!draft && agents.length === 0 && (
         <div className={styles.rosterEmpty}>
           <p className="eyebrow">Agents</p>
           <h1>Meet the crew</h1>

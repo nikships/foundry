@@ -1,0 +1,163 @@
+/* The medallion dock: a centered rail of identical portraits pinned to the
+   bottom of the roster screen. Selection is transform/opacity only — glow,
+   lift, and a gliding hue bar — so the rail itself never reflows. */
+
+.dock {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: var(--s3) 0 var(--s4);
+  border-top: 1px solid var(--line-faint);
+  background: var(--bg-base);
+}
+
+.countDot {
+  color: var(--text-ghost);
+}
+
+.railWrap {
+  position: relative;
+  width: 100%;
+}
+
+.rail {
+  display: flex;
+  align-items: center;
+  /* Centered while every medallion fits; falls back to start when the rail
+     overflows so the first agents stay reachable. */
+  justify-content: safe center;
+  gap: 22px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Room below for the selection bar, above for the hover/selection lift. */
+  padding: var(--s2) var(--s8) var(--s3);
+  scrollbar-width: none;
+}
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+.item {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--r-full);
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.62;
+  transition:
+    opacity var(--normal) var(--ease),
+    transform var(--normal) var(--ease);
+}
+.item:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+}
+.item.on {
+  opacity: 1;
+  transform: translateY(-2px) scale(1.06);
+}
+
+/* Hue halo behind the selected portrait. */
+.glow {
+  position: absolute;
+  inset: -9px;
+  border-radius: var(--r-full);
+  background: radial-gradient(circle, var(--hue) 0%, transparent 68%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--slow) var(--ease);
+}
+.item.on .glow {
+  opacity: 0.4;
+}
+
+.mark {
+  position: relative;
+  display: inline-flex;
+}
+
+.bubble {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+}
+
+/* The one moving part: a short bar in the agent's hue, gliding between
+   medallions via framer's shared layoutId. Absolute, so it never reflows
+   the rail. Centered with margin, not transform — framer owns transform. */
+.selectionBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -9px;
+  width: 20px;
+  height: 3px;
+  margin: 0 auto;
+  border-radius: var(--r-full);
+  background: var(--hue);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--hue) 55%, transparent);
+}
+
+.newAgent {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
+}
+.newAgent:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+.newAgent:active {
+  transform: translateY(1px);
+}
+
+.edge {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 52px;
+  display: flex;
+  align-items: center;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.edge.before {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: var(--s2);
+  background: linear-gradient(to right, var(--bg-base) 58%, transparent);
+}
+.edge.after {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: var(--s2);
+  background: linear-gradient(to left, var(--bg-base) 58%, transparent);
+}
+.edge:hover {
+  color: var(--text);
+}
+.edge:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -3px;
+}
