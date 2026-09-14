@@ -10,7 +10,8 @@
  * the renderer or a paired phone.
  *
  * GPT-Live has no Gemini-style ephemeral token. Desktop WebRTC posts the
- * browser SDP offer here (`POST /v1/realtime/calls`); the companion host
+ * browser SDP offer here (`POST /v1/live/sessions` with JSON
+ * `{ session, transport: { type: "webrtc", sdp } }`); the companion host
  * relays a WebSocket so Android never sees the key either.
  */
 
@@ -27,7 +28,7 @@ import type {
 } from '@shared/ipc-contract.js';
 import type { SecretStore } from '../system/secret-file.js';
 
-const REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
+const LIVE_SESSIONS_URL = 'https://api.openai.com/v1/live/sessions';
 
 /**
  * Maps a session-create failure to the one line the voice overlay shows.
@@ -94,6 +95,12 @@ export function liveSessionConfig(voice: GptLiveVoiceId): {
   };
 }
 
+/** Shape of the `POST /v1/live/sessions` JSON response we rely on. */
+interface LiveSessionResponse {
+  session?: { id?: unknown };
+  transport?: { sdp?: unknown };
+}
+
 export class GptLiveService {
   constructor(private readonly deps: GptLiveServiceDeps) {}
 
@@ -134,7 +141,10 @@ export class GptLiveService {
   /**
    * Creates one GPT-Live WebRTC session from the renderer's SDP offer. The
    * stored key stays in main; the renderer only receives the session id and
-   * SDP answer. Voice is read from Settings at create time.
+   * SDP answer. Voice is read from Settings at create time. The offer is
+   * validated with `trim()` for emptiness but forwarded byte-exact: the
+   * terminal CRLF is required SDP framing (`invalid_offer: unexpected EOF`
+   * otherwise).
    */
   async createSession(sdp: string): Promise<GptLiveSession | { error: string }> {
     if (!sdp.trim()) return { error: 'A WebRTC offer is required to start voice.' };
@@ -159,41 +169,32 @@ async function defaultCreateWebRtcSession(
   sdp: string,
   voice: GptLiveVoiceId,
 ): Promise<GptLiveSession> {
-  const form = new FormData();
-  form.append('sdp', new Blob([sdp], { type: 'application/sdp' }));
-  form.append(
-    'session',
-    new Blob([JSON.stringify(liveSessionConfig(voice))], { type: 'application/json' }),
-  );
-  const response = await fetch(REALTIME_CALLS_URL, {
+  const response = await fetch(LIVE_SESSIONS_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
     },
-    body: form,
+    body: JSON.stringify({
+      session: liveSessionConfig(voice),
+      transport: { type: 'webrtc', sdp },
+    }),
   });
   const raw = await response.text();
   if (!response.ok) {
     throw new Error(raw || `GPT-Live returned ${response.status}`);
   }
-  if (!raw.trim()) throw new Error('the session response carried no SDP answer');
-  const sessionId = extractCallId(response.headers.get('location'));
-  if (!sessionId) throw new Error('the session response carried no call id');
-  return { sessionId, sdp: raw };
+  let parsed: LiveSessionResponse;
+  try {
+    parsed = JSON.parse(raw) as LiveSessionResponse;
+  } catch {
+    throw new Error('the session response was not JSON');
+  }
+  const sessionIdRaw = typeof parsed.session?.id === 'string' ? parsed.session.id : '';
+  const answerRaw = typeof parsed.transport?.sdp === 'string' ? parsed.transport.sdp : '';
+  if (!sessionIdRaw.trim() || !answerRaw.trim())
+    throw new Error('the session response carried no SDP answer');
+  return { sessionId: sessionIdRaw.trim(), sdp: answerRaw };
 }
 
-/**
- * Reads the call id from the create-call `Location` response header, which
- * points at the new call resource (for example `/v1/realtime/calls/rtc_...`).
- */
-function extractCallId(location: string | null): string | null {
-  if (!location) return null;
-  const trimmed = location.trim();
-  if (!trimmed) return null;
-  const withoutSuffix = trimmed.split('?')[0]?.split('#')[0] ?? '';
-  const segments = withoutSuffix.split('/').filter((segment) => segment.length > 0);
-  const last = segments[segments.length - 1]?.trim() ?? '';
-  return last || null;
-}
-
-export { REALTIME_CALLS_URL };
+export { LIVE_SESSIONS_URL };

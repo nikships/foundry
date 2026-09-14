@@ -19,7 +19,7 @@ vi.mock('electron', () => ({
 }));
 
 const { GptLiveCredentialStore } = await import('../../../src/main/gpt-live/credentials.js');
-const { GptLiveService, voiceSystemInstruction, liveSessionConfig } =
+const { GptLiveService, voiceSystemInstruction, liveSessionConfig, LIVE_SESSIONS_URL } =
   await import('../../../src/main/gpt-live/service.js');
 type GptLiveServiceInstance = InstanceType<typeof GptLiveService>;
 
@@ -180,79 +180,89 @@ describe('GptLiveService', () => {
   });
 });
 
-describe('defaultCreateWebRtcSession (POST /v1/realtime/calls)', () => {
+describe('defaultCreateWebRtcSession (POST /v1/live/sessions)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   function stubFetch(
     body: string,
-    init: { status?: number; location?: string } = {},
+    init: { status?: number } = {},
   ): { url: unknown; init: RequestInit }[] {
     const seen: { url: unknown; init: RequestInit }[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: unknown, request?: RequestInit) => {
         seen.push({ url, init: request ?? {} });
-        const headers: Record<string, string> = {};
-        if (init.location !== undefined) headers.location = init.location;
-        return new Response(body, { status: init.status ?? 200, headers });
+        return new Response(body, { status: init.status ?? 200 });
       }),
     );
     return seen;
   }
 
-  it('posts multipart SDP + session to the realtime calls endpoint and keeps SDP bytes intact', async () => {
+  it('posts the exact SDP offer as JSON to the live sessions endpoint', async () => {
     const offer = 'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n';
     expect(offer.trim()).not.toBe(offer);
     const answer = 'v=0\r\no=- 2 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n';
-    const seen = stubFetch(answer, { location: '/v1/realtime/calls/rtc_abc123' });
+    const seen = stubFetch(
+      JSON.stringify({ session: { id: 'live_abc123' }, transport: { sdp: answer } }),
+    );
     const { service } = store();
     await service.setApiKey('sk-test-key');
     const created = await service.createSession(offer);
 
     expect(seen).toHaveLength(1);
-    expect(seen[0]!.url).toBe('https://api.openai.com/v1/realtime/calls');
+    expect(seen[0]!.url).toBe('https://api.openai.com/v1/live/sessions');
+    expect(seen[0]!.url).toBe(LIVE_SESSIONS_URL);
     const request = seen[0]!.init;
     expect(request.method).toBe('POST');
-    expect((request.headers as Record<string, string>).Authorization).toBe('Bearer sk-test-key');
-    expect(JSON.stringify(request.headers)).not.toContain('application/json');
-    expect(request.body).toBeInstanceOf(FormData);
-    const form = request.body as FormData;
-    expect([...form.keys()].sort()).toEqual(['sdp', 'session']);
+    const headers = request.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer sk-test-key');
+    expect(headers['Content-Type']).toBe('application/json');
 
-    const sdpPart = form.get('sdp');
-    expect(sdpPart).toBeInstanceOf(Blob);
-    expect((sdpPart as Blob).type).toBe('application/sdp');
-    expect(await (sdpPart as Blob).text()).toBe(offer);
-
-    const sessionPart = form.get('session');
-    expect(sessionPart).toBeInstanceOf(Blob);
-    expect((sessionPart as Blob).type).toBe('application/json');
-    expect(JSON.parse(await (sessionPart as Blob).text())).toEqual(liveSessionConfig('marin'));
+    expect(typeof request.body).toBe('string');
+    const payload = JSON.parse(request.body as string) as {
+      session: unknown;
+      transport: { type: string; sdp: string };
+    };
+    expect(payload.session).toEqual(liveSessionConfig('marin'));
+    expect(payload.transport.type).toBe('webrtc');
+    // The offer goes in byte-exact, including its terminal CRLF.
+    expect(payload.transport.sdp).toBe(offer);
+    expect(payload.transport.sdp.endsWith('\r\n')).toBe(true);
 
     expect('error' in created).toBe(false);
     if ('error' in created) return;
-    expect(created.sessionId).toBe('rtc_abc123');
+    expect(created.sessionId).toBe('live_abc123');
+    // The answer returns byte-exact so setRemoteDescription keeps terminal CRLF framing.
     expect(created.sdp).toBe(answer);
+    expect(created.sdp.endsWith('\r\n')).toBe(true);
     expect(JSON.stringify(created)).not.toContain('sk-test-key');
   });
 
-  it('extracts the call id from an absolute Location URL', async () => {
-    const seen = stubFetch('v=0\r\n', {
-      location: 'https://api.openai.com/v1/realtime/calls/rtc_xyz789',
-    });
+  it('rejects a blank offer without hitting the network', async () => {
+    const seen = stubFetch(JSON.stringify({ session: { id: 'live_1' }, transport: {} }));
     const { service } = store();
     await service.setApiKey('sk-test-key');
-    const created = await service.createSession('v=0\r\n');
-    expect(seen).toHaveLength(1);
-    expect('error' in created).toBe(false);
-    if ('error' in created) return;
-    expect(created.sessionId).toBe('rtc_xyz789');
+    const failed = await service.createSession('  \r\n ');
+    expect('error' in failed).toBe(true);
+    if (!('error' in failed)) return;
+    expect(failed.error).toContain('WebRTC offer is required');
+    expect(seen).toHaveLength(0);
   });
 
-  it('fails when the answer body is empty', async () => {
-    stubFetch('   \n', { location: '/v1/realtime/calls/rtc_abc123' });
+  it('fails when the response is not JSON', async () => {
+    stubFetch('v=0\r\n');
+    const { service } = store();
+    await service.setApiKey('sk-test-key');
+    const failed = await service.createSession('v=0\r\n');
+    expect('error' in failed).toBe(true);
+    if (!('error' in failed)) return;
+    expect(failed.error).toContain('was not JSON');
+  });
+
+  it('fails when the session id is missing', async () => {
+    stubFetch(JSON.stringify({ session: {}, transport: { sdp: 'v=0\r\n' } }));
     const { service } = store();
     await service.setApiKey('sk-test-key');
     const failed = await service.createSession('v=0\r\n');
@@ -261,14 +271,18 @@ describe('defaultCreateWebRtcSession (POST /v1/realtime/calls)', () => {
     expect(failed.error).toContain('no SDP answer');
   });
 
-  it('fails when the Location header is missing', async () => {
-    stubFetch('v=0\r\n');
+  it('fails when the SDP answer is missing or blank', async () => {
+    stubFetch(JSON.stringify({ session: { id: 'live_abc123' }, transport: {} }));
     const { service } = store();
     await service.setApiKey('sk-test-key');
-    const failed = await service.createSession('v=0\r\n');
-    expect('error' in failed).toBe(true);
-    if (!('error' in failed)) return;
-    expect(failed.error).toContain('no call id');
+    const missing = await service.createSession('v=0\r\n');
+    expect('error' in missing).toBe(true);
+    if ('error' in missing) expect(missing.error).toContain('no SDP answer');
+
+    stubFetch(JSON.stringify({ session: { id: 'live_abc123' }, transport: { sdp: '  \r\n' } }));
+    const blank = await service.createSession('v=0\r\n');
+    expect('error' in blank).toBe(true);
+    if ('error' in blank) expect(blank.error).toContain('no SDP answer');
   });
 
   it('surfaces server failures without leaking the key', async () => {
