@@ -1,0 +1,17 @@
+.wrap {
+  margin: 4px 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--bg-input);
+  min-width: 0;
+}
+
+.empty {
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}

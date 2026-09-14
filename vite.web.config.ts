@@ -56,6 +56,8 @@ export default defineConfig({
     port: 5174,
     host: 'localhost',
     open: true,
+    // Orb portals hit Vite with generated and custom hostnames.
+    allowedHosts: process.env.AMP_ORB ? true : undefined,
   },
   preview: {
     port: 4174,

@@ -142,6 +142,19 @@ describe('a pi tool call in the timeline', () => {
     }
   });
 
+  it('renders an edit call through the Pierre diff host rather than a homemade line list', () => {
+    const html = toolCall('edit', {
+      kind: 'edit',
+      args: {
+        path: 'src/retry.ts',
+        edits: [{ oldText: 'const a = 1', newText: 'const a = 2' }],
+      },
+    });
+    expect(html).toContain('te edit');
+    expect(html).toContain('edit-diff');
+    expect(html).not.toContain('te-diff-line');
+  });
+
   it('renders a tool nobody classified rather than dropping the row', () => {
     // A tool added to pi, or one an MCP server contributes, reaches the timeline
     // before this file learns its name. The fallback is what keeps it visible.

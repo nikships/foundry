@@ -1,7 +1,7 @@
 /**
  * One renderer per transcript entry. The Inspector shows what an agent's own
  * CLI shows, formatted in the style of Claude Code: clear tool call headers,
- * explicit line-by-line diffs for edits, collapsible command outputs, and zero
+ * Pierre GitHub-style diffs for edits, collapsible command outputs, and zero
  * raw JSON blocks or unformatted turn dumps.
  *
  * An entry with no endedAt is still open: the agent is mid-thought or a tool
@@ -14,6 +14,7 @@ import { clockTime, tokens } from '../../utils/format.js';
 import { isAutoAllowPolicy } from '../../utils/derive.js';
 import { EventIcon } from '../common/EventIcon.js';
 import { useCollapseSignal } from './collapse.js';
+import EditDiffView from './EditDiffView.js';
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -116,154 +117,6 @@ function TruncatedOutput({
   return (
     <div className="te-output-wrapper">
       <pre className={`te-output ${mono ? 'mono' : ''}`}>{visibleLines.join('\n')}</pre>
-      {hasMore && (
-        <ExpandToggle
-          expanded={expanded}
-          hiddenCount={lines.length - maxLines}
-          onToggle={() => setExpanded((v) => !v)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Diff View Component ──────────────────────────────────────────────────────
-
-interface DiffLine {
-  type: 'add' | 'del' | 'ctx' | 'hunk';
-  text: string;
-}
-
-const DIFF_PREFIX: Record<DiffLine['type'], string> = {
-  add: '+',
-  del: '-',
-  hunk: '@',
-  ctx: ' ',
-};
-
-/** Line-level diff of old vs new text, with up to 2 lines of shared context. */
-function diffStrings(oldStr: string, newStr: string): DiffLine[] {
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
-
-  if (!oldStr && newStr) return newLines.map((l) => ({ type: 'add', text: l }));
-  if (!newStr && oldStr) return oldLines.map((l) => ({ type: 'del', text: l }));
-
-  let prefixLen = 0;
-  while (
-    prefixLen < oldLines.length &&
-    prefixLen < newLines.length &&
-    oldLines[prefixLen] === newLines[prefixLen]
-  ) {
-    prefixLen++;
-  }
-
-  let suffixLen = 0;
-  while (
-    suffixLen < oldLines.length - prefixLen &&
-    suffixLen < newLines.length - prefixLen &&
-    oldLines[oldLines.length - 1 - suffixLen] === newLines[newLines.length - 1 - suffixLen]
-  ) {
-    suffixLen++;
-  }
-
-  const lines: DiffLine[] = [];
-  for (let i = Math.max(0, prefixLen - 2); i < prefixLen; i++) {
-    lines.push({ type: 'ctx', text: oldLines[i]! });
-  }
-  for (const l of oldLines.slice(prefixLen, oldLines.length - suffixLen)) {
-    lines.push({ type: 'del', text: l });
-  }
-  for (const l of newLines.slice(prefixLen, newLines.length - suffixLen)) {
-    lines.push({ type: 'add', text: l });
-  }
-  const ctxSuffixEnd = Math.min(oldLines.length, oldLines.length - suffixLen + 2);
-  for (let i = oldLines.length - suffixLen; i < ctxSuffixEnd; i++) {
-    lines.push({ type: 'ctx', text: oldLines[i]! });
-  }
-  return lines;
-}
-
-/** Unified-diff text as classified lines, or all-context when it is not a diff. */
-function parseUnifiedDiff(rawResult: string): DiffLine[] {
-  const rLines = rawResult.split('\n');
-  if (!rLines.some((l) => l.startsWith('@@') || l.startsWith('+') || l.startsWith('-'))) {
-    return rLines.map((l) => ({ type: 'ctx', text: l }));
-  }
-  const lines: DiffLine[] = [];
-  for (const l of rLines) {
-    if (l.startsWith('+++') || l.startsWith('---')) continue;
-    if (l.startsWith('@@')) lines.push({ type: 'hunk', text: l });
-    else if (l.startsWith('+')) lines.push({ type: 'add', text: l.slice(1) });
-    else if (l.startsWith('-')) lines.push({ type: 'del', text: l.slice(1) });
-    else lines.push({ type: 'ctx', text: l.startsWith(' ') ? l.slice(1) : l });
-  }
-  return lines;
-}
-
-function computeDiff(
-  oldStr?: string,
-  newStr?: string,
-  content?: string,
-  rawResult?: string,
-): { lines: DiffLine[]; addCount: number; delCount: number } {
-  let lines: DiffLine[] = [];
-  if (oldStr !== undefined || newStr !== undefined) {
-    lines = diffStrings(oldStr ?? '', newStr ?? '');
-  } else if (content !== undefined) {
-    lines = content.split('\n').map((l) => ({ type: 'add', text: l }));
-  } else if (rawResult) {
-    lines = parseUnifiedDiff(rawResult);
-  }
-
-  return {
-    lines,
-    addCount: lines.filter((l) => l.type === 'add').length,
-    delCount: lines.filter((l) => l.type === 'del').length,
-  };
-}
-
-function DiffView({
-  oldStr,
-  newStr,
-  content,
-  result,
-  maxLines = 15,
-}: {
-  oldStr?: string;
-  newStr?: string;
-  content?: string;
-  result?: string;
-  maxLines?: number;
-}): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false);
-  const { lines, addCount, delCount } = useMemo(
-    () => computeDiff(oldStr, newStr, content, result),
-    [oldStr, newStr, content, result],
-  );
-
-  if (lines.length === 0) return <div className="te-empty-diff">No changes</div>;
-
-  const hasMore = lines.length > maxLines;
-  const visibleLines = expanded || !hasMore ? lines : lines.slice(0, maxLines);
-
-  return (
-    <div className="te-diff-container">
-      {(addCount > 0 || delCount > 0) && (
-        <div className="te-diff-stat-bar">
-          {addCount > 0 && <span className="te-diff-stat add">+{addCount}</span>}
-          {delCount > 0 && <span className="te-diff-stat del">-{delCount}</span>}
-          <span className="te-diff-line-count">{lines.length} lines changed</span>
-        </div>
-      )}
-      <div className="te-diff-body mono">
-        {visibleLines.map((line, idx) => (
-          <div key={idx} className={`te-diff-line ${line.type}`}>
-            <span className="te-diff-prefix">{DIFF_PREFIX[line.type]}</span>
-            <span className="te-diff-text">{line.text || ' '}</span>
-          </div>
-        ))}
-      </div>
       {hasMore && (
         <ExpandToggle
           expanded={expanded}
@@ -462,11 +315,7 @@ function EditBlock({ event }: { event: EventRow }): React.JSX.Element {
   const open = event.endedAt == null;
   const a = args(event);
   const path = str(a.file_path) || str(a.path) || nameSummary(event);
-  const isCreate = /^create:/i.test(event.name) || Boolean(a.content && !a.old_str);
-  const oldStr = typeof a.old_str === 'string' ? a.old_str : undefined;
-  const newStr = typeof a.new_string === 'string' ? a.new_string : undefined;
-  const content = typeof a.content === 'string' ? a.content : undefined;
-  const rawResult = str(event.payload.result);
+  const isCreate = /^create:/i.test(event.name) || Boolean(a.content && !a.old_str && !a.oldText);
 
   return (
     <div className={`te edit ${open ? 'open' : ''}`}>
@@ -479,15 +328,7 @@ function EditBlock({ event }: { event: EventRow }): React.JSX.Element {
         {open && <span className="te-exec running">writing</span>}
         <Time iso={event.startedAt} />
       </button>
-      {expanded && (
-        <DiffView
-          oldStr={oldStr}
-          newStr={newStr}
-          content={content}
-          result={rawResult}
-          maxLines={15}
-        />
-      )}
+      {expanded && <EditDiffView event={event} />}
       {expanded && event.payload.truncated === true && <TruncatedNote />}
     </div>
   );
@@ -907,7 +748,7 @@ export function transcriptStyles(): string {
   return `
     /* Agent output is for reading and copying. Keep its content explicitly
      * selectable even when embedded beside interactive transcript chrome. */
-    .te-text-body, .te-thinking-body, .te-output, .te-diff-body, .te-todo-list, .te-task-body, .te-ask-body, .te-envelope-summary, .te-envelope-notes, .te-envelope-files, .te-ask-q, .te-ask-a, .te-banner-detail, .te-log-detail { user-select: text; -webkit-user-select: text; cursor: text; }
+    .te-text-body, .te-thinking-body, .te-output, .te-todo-list, .te-task-body, .te-ask-body, .te-envelope-summary, .te-envelope-notes, .te-envelope-files, .te-ask-q, .te-ask-a, .te-banner-detail, .te-log-detail { user-select: text; -webkit-user-select: text; cursor: text; }
     .te { margin: 4px 0; }
     .te-head, .te-row-head, .te-cmd-head { display: flex; align-items: center; gap: var(--s2); width: 100%; border: none; background: none; padding: 4px 6px; font: inherit; color: inherit; text-align: left; cursor: default; border-radius: var(--r-sm); transition: background var(--fast) var(--ease); }
     button.te-row-head:hover, button.te-cmd-head:hover { background: var(--bg-hover); }
@@ -953,25 +794,6 @@ export function transcriptStyles(): string {
 
     .te-path { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .te-truncated { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--amber); margin: 2px 0 6px; }
-
-    /* ── Diff styling ── */
-    .te-diff-container { margin: 4px 0 6px; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--bg-input); }
-    .te-diff-stat-bar { display: flex; align-items: center; gap: var(--s2); padding: 4px 10px; background: var(--bg-raised); border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
-    .te-diff-stat { font-weight: 600; font-family: var(--font-mono); padding: 0 4px; border-radius: var(--r-sm); font-size: 10px; letter-spacing: 0.04em; }
-    .te-diff-stat.add { color: var(--green); background: var(--green-dim); border: 1px solid color-mix(in srgb, var(--green) 14%, transparent); }
-    .te-diff-stat.del { color: var(--red); background: var(--red-dim); border: 1px solid color-mix(in srgb, var(--red) 14%, transparent); }
-    .te-diff-line-count { color: var(--text-faint); font-size: 10px; margin-left: auto; text-transform: none; letter-spacing: 0; }
-    .te-diff-body { padding: 4px 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; overflow-x: auto; }
-    .te-diff-line { display: flex; padding: 1px 8px; white-space: pre-wrap; word-break: break-word; }
-    .te-diff-prefix { width: 16px; flex: none; user-select: none; font-weight: bold; }
-    .te-diff-text { flex: 1; min-width: 0; }
-    .te-diff-line.add { background: color-mix(in srgb, var(--green) 10%, transparent); color: var(--green); }
-    .te-diff-line.add .te-diff-prefix { color: var(--green); }
-    .te-diff-line.del { background: color-mix(in srgb, var(--red) 10%, transparent); color: var(--red); }
-    .te-diff-line.del .te-diff-prefix { color: var(--red); }
-    .te-diff-line.ctx { color: var(--text-dim); }
-    .te-diff-line.hunk { color: var(--accent); background: var(--accent-dim); font-style: italic; }
-    .te-empty-diff { padding: 8px 10px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); }
 
     /* ── Todo list styling ── */
     .te-todo-list { margin: 4px 0 6px; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); display: flex; flex-direction: column; gap: 4px; }

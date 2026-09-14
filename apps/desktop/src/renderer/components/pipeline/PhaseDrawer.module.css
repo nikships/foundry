@@ -226,6 +226,11 @@
   color: var(--text-faint);
   flex: none;
 }
+.editDiff {
+  padding: 0 0 var(--s2);
+  margin: 0 0 var(--s2);
+  min-width: 0;
+}
 .prose {
   padding: var(--s2) var(--s3) var(--s3);
   border-left: 2px solid var(--line);
