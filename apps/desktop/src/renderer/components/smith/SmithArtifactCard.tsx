@@ -2,8 +2,9 @@
  * One rich artifact card in the Smith transcript: a design `smith_present`
  * emitted, or a receipt main recorded when an approved action settled.
  *
- * Read-only by contract: an artifact never blocks, never looks pending, and
- * carries no approval controls — the accent-bordered proposal card stays the
+ * Presentation artifacts never block or look pending. A run_plan resolves its
+ * durable row before offering the same explicit actions as Runs. Other kinds
+ * carry no approval controls — the accent-bordered proposal card stays the
  * only element in the conversation waiting on the human. A receipt's link is
  * navigation, not a retry: it opens what the action affected and re-runs
  * nothing. Unknown kinds and versions fail soft to a readable note so a
@@ -17,6 +18,7 @@ import {
   isRenderableArtifact,
 } from '../../view-models/smith-artifact-view.js';
 import SmithActionReceiptBody from './SmithActionReceipt.js';
+import SmithRunPlanCard from './SmithRunPlanCard.js';
 import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { DataTableDesign } from './SmithDataTableDesign.js';
@@ -49,6 +51,8 @@ function ArtifactBody({
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   switch (artifact.kind) {
+    case 'run_plan':
+      return <SmithRunPlanCard artifact={artifact} />;
     case 'pipeline_design':
       return <PipelineDesign pipeline={artifact.pipeline} compact={compact} />;
     case 'agent_design':
@@ -102,6 +106,8 @@ function ArtifactBody({
 /** The JSON an audit reader wants: the definition, or the record of what ran. */
 function auditValue(artifact: SmithArtifact): unknown {
   switch (artifact.kind) {
+    case 'run_plan':
+      return artifact;
     case 'pipeline_design':
       return artifact.pipeline;
     case 'agent_design':
@@ -181,7 +187,7 @@ export default function SmithArtifactCard({
         onOpenReceiptLink={onOpenReceiptLink}
         onOpenInspector={onOpenInspector}
       />
-      {artifact.warnings.length > 0 && (
+      {artifact.kind !== 'run_plan' && artifact.warnings.length > 0 && (
         <ul className={styles.warnings}>
           {artifact.warnings.map((issue, index) => (
             <li key={`${issue.where}-${index}`} className={styles.warning}>
@@ -191,7 +197,9 @@ export default function SmithArtifactCard({
           ))}
         </ul>
       )}
-      {artifact.rationale && <p className={styles.rationale}>{artifact.rationale}</p>}
+      {artifact.kind !== 'run_plan' && artifact.rationale && (
+        <p className={styles.rationale}>{artifact.rationale}</p>
+      )}
       <ViewJson value={auditValue(artifact)} />
     </section>
   );

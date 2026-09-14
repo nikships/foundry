@@ -10,7 +10,7 @@ import { ScriptedAgent } from '../../helpers/scripted-transport.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
 import { Tracer } from '../../../src/main/trace/tracer.js';
 import { Executor } from '../../../src/main/engine/executor.js';
-import { replanningSupport } from '../../../src/main/orchestrator/replan.js';
+import { replanningSupport } from '../../../src/main/smith/compose/replan.js';
 import { RunRegistry } from '../../../src/main/engine/registry.js';
 import { defaultProject } from '../../../src/main/store/projects.js';
 import { defaultSettings } from '../../../src/main/store/settings.js';
@@ -115,7 +115,7 @@ function plan(pipelineDef: PipelineDef): GeneratedRunPlan {
       },
     ],
     warnings: [],
-    model: 'orchestrator/test-model',
+    model: 'compose/test-model',
     reasoningEffort: 'high',
   };
 }

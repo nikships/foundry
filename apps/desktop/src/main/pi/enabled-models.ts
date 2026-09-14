@@ -2,7 +2,7 @@
  * What this install may actually appoint: the reachable catalog minus the
  * models the operator hid in Settings.
  *
- * One answer for every caller that asks — the model picker, the Orchestrator's
+ * One answer for every caller that asks — the model picker, Smith composition's
  * planning prompt, the start-time rail, the transports, and Smith — because a
  * picker offering a model the rail then refuses is the disagreement worth
  * spending a module to prevent. This module is the only reader of the hidden

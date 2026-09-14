@@ -39,7 +39,7 @@ export interface PlanPhaseView {
   decides: boolean;
   /**
    * Agent phases only: the model this phase is appointed to run on, as the
-   * operator may still override it. `inherit` means the Orchestrator declined
+   * operator may still override it. `inherit` means Smith declined
    * to appoint one, which its rails refuse — it can only appear on a plan
    * generated before that rule existed.
    */
@@ -93,7 +93,7 @@ export interface PlanCardView {
   acceptance: string;
   warnings: PlanWarningGroup[];
   /** The mind that composed it, as the card credits it (model · effort). */
-  orchestratorCredit: string;
+  composeCredit: string;
 }
 
 export type PlanExportItem = 'pipeline' | `agent:${string}`;
@@ -262,7 +262,7 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
     })),
     acceptance: acceptanceSummary(plan.pipeline.acceptance, plan.pipeline.phases),
     warnings: groupPlanWarnings(plan.warnings),
-    orchestratorCredit:
+    composeCredit:
       plan.model === 'inherit'
         ? `the default model · ${plan.reasoningEffort}`
         : `${modelLabel(plan.model)} · ${plan.reasoningEffort}`,

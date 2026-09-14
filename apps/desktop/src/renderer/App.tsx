@@ -10,7 +10,7 @@ import type { SmithNavTarget } from './components/smith/SmithProposalCard.js';
 import { cx } from './components/ui/cx.js';
 import { useAgentSounds } from './hooks/useAgentSounds.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
-import { useOrchestratorPlan } from './hooks/useOrchestratorPlan.js';
+import { useComposePlan } from './hooks/useComposePlan.js';
 import { AppProvider, useApp } from './stores/app.js';
 import { SmithChatUIProvider } from './stores/smith-chat-ui.js';
 import {
@@ -20,7 +20,7 @@ import {
   type DesignTab,
   type View,
 } from './utils/navigation.js';
-import { loadOrchestratorChoice } from './utils/orchestrator-choice.js';
+import { loadComposeChoice } from './utils/compose-choice.js';
 import { normalizeSettingsPane, type SettingsPaneId } from './view-models/settings-search.js';
 import { describeScreen } from './view-models/smith-chat-view.js';
 import styles from './App.module.css';
@@ -55,17 +55,18 @@ function ScreenFallback(): React.JSX.Element {
 }
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, refreshAll, selectProject, projects, projectId } = useApp();
+  const { ready, settings, refreshAll, selectProject, selectSmithProject, projects, projectId } =
+    useApp();
   useAgentSounds(Boolean(settings?.soundEffects), projects);
   const [view, setView] = useState<View>('runs');
   const [runRequest, setRunRequest] = useState('');
-  const [orchestratorChoice, setOrchestratorChoice] = useState(loadOrchestratorChoice);
+  const [composeChoice, setComposeChoice] = useState(loadComposeChoice);
   // Planning turns can take minutes and each proposal awaits an explicit
   // operator decision. The hook lives here — above any single view — so
   // navigating away from Runs (or unmounting it) never stops or loses
   // generation; durability itself lives in main. No navigation or project
   // switch cancels a proposal (FOU-349).
-  const orchestrator = useOrchestratorPlan(projectId, orchestratorChoice);
+  const compose = useComposePlan(projectId, composeChoice);
   /** Sidebar proposal deep-link: the Runs list scrolls to this card on arrival. */
   const [focusedProposalId, setFocusedProposalId] = useState<string | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
@@ -222,6 +223,17 @@ function AppInner(): React.JSX.Element {
     go('smith');
   }, [view, liveScreenContext, go]);
 
+  const onDiscussPlan = async (planId: string) => {
+    const row = await api.compose.get?.(planId);
+    if (!row || !projects.some((project) => project.id === row.projectId)) {
+      throw new Error('This proposal or its project is no longer available.');
+    }
+    selectSmithProject(row.projectId);
+    setSmithContext({ route: 'runs' });
+    go('smith');
+    return row;
+  };
+
   const navigateView = useCallback(
     (next: View): void => {
       if (next === 'smith') {
@@ -353,9 +365,9 @@ function AppInner(): React.JSX.Element {
           <RunsScreen
             request={runRequest}
             onRequestChange={setRunRequest}
-            orchestratorChoice={orchestratorChoice}
-            onOrchestratorChoiceChange={setOrchestratorChoice}
-            orchestrator={orchestrator}
+            composeChoice={composeChoice}
+            onComposeChoiceChange={setComposeChoice}
+            compose={compose}
             focusProposalId={focusedProposalId}
             onOpen={openRun}
             onAddProject={() => void addProject()}
@@ -401,8 +413,10 @@ function AppInner(): React.JSX.Element {
   return (
     <SmithChatUIProvider
       enabled={ready && !needsOnboarding}
-      screenContext={liveScreenContext}
+      screenContext={view === 'smith' ? smithContext : liveScreenContext}
       openSettings={() => openSettingsPane('integrations')}
+      openReceiptLink={openReceiptLink}
+      onDiscussPlan={onDiscussPlan}
     >
       <div className={styles.shell}>
         <div className={styles.titlebar}>

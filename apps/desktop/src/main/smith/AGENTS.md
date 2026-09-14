@@ -10,6 +10,17 @@ Smith is the native operator agent. It exposes typed app capabilities. Normal mo
 - State stays under `<supportDir>/pi/smith/<scope>/`, never `~/.pi`.
 - Unknown tools fail closed. Direct writes are limited to the current checkout or global workspace.
 
+## Composition turns
+
+- `compose/session.ts` owns `ComposeSession`: a bounded, read-only one-shot at the project checkout, with no worktree or write tools. Schema-bound `submit_result` output must pass composition rails within the envelope correction budget.
+- `compose/model.ts` resolves chat, compose, and repair choices: explicit override → Smith → Agent Defaults → `inherit`. Effort follows the selected settings tier unless overridden. Composition and repair permit `inherit`; chat retains the transport's `requireModel` guard.
+- `compose/proposals.ts` owns durable run proposals through `Tracer`, distinct from Smith's action `ProposalQueue`. Accept remains exactly-once through `accepted_run_id` and re-validates with `startRun(plan)`.
+- `compose-tools.ts` is the in-process `smith_compose` tool for project and global Smith chats only, never run sessions. `compose`/`revise`/`get`/`list` are immediate; `accept`/`discard`/`cancel` stay approval-gated. It calls `ProposalStore` directly, not the IPC invoker. Soft cap: 3 generating rows per chat. An expired composition session refuses revision rather than replacing the row.
+- `compose/after-start.ts` is the shared start path for the Runs composer IPC and `smith_compose` compose, including `warmStartPrep`.
+- `compose/replan.ts` proposes pipeline repairs; the engine alone validates and applies them in the run's existing worktree.
+- IPC names and progress channels use the `smith-compose:*` contract (migrated atomically); historical `ComposeState` rows map the retired `orchestrator` role to `smith` at the read boundary. Composition does not open a persistent chat.
+- `run_plan` is main-minted from proposal transitions, never model-presentable. Only already-open project chats (and the issuing global chat) receive bounded, secret-checked snapshots. Renderer actions resolve the durable row; missing rows remain inert snapshots.
+
 ## Capabilities
 
 - Entity reads execute immediately; validated entity create/edit operations use proposals.

@@ -65,7 +65,7 @@ describe('companion proposal list/accept', () => {
       appVersion: () => '0.0.0-test',
       notifyRuns: () => {},
       onStateChanged: () => {},
-      orchestrator: {
+      compose: {
         options: async () => ({ models: [], model: 'inherit', reasoningEffort: 'medium' }),
         start: () => ({ planId: 'plan_1' }),
         state: () => null,
@@ -112,7 +112,7 @@ describe('companion proposal list/accept', () => {
 
   it('lists durable proposals for a project', async () => {
     const token = await pair();
-    const res = await authed(token, '/v1/orchestrator/plans?projectId=proj_a');
+    const res = await authed(token, '/v1/smith/compose/plans?projectId=proj_a');
     expect(res.status).toBe(200);
     const rows = (await res.json()) as ProposalSnapshot[];
     expect(rows.map((r) => r.planId)).toEqual(['plan_1', 'plan_2']);
@@ -120,13 +120,24 @@ describe('companion proposal list/accept', () => {
 
   it('refuses list without projectId', async () => {
     const token = await pair();
-    const res = await authed(token, '/v1/orchestrator/plans');
+    const res = await authed(token, '/v1/smith/compose/plans');
     expect(res.status).toBe(400);
+  });
+
+  it('answers 404 on the retired orchestrator routes (no silent fallback)', async () => {
+    const token = await pair();
+    const list = await authed(token, '/v1/orchestrator/plans?projectId=proj_a');
+    expect(list.status).toBe(404);
+    const accept = await authed(token, '/v1/orchestrator/plans/plan_1/accept', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    expect(accept.status).toBe(404);
   });
 
   it('accepts a proposal exactly once via HTTP', async () => {
     const token = await pair();
-    const res = await authed(token, '/v1/orchestrator/plans/plan_1/accept', {
+    const res = await authed(token, '/v1/smith/compose/plans/plan_1/accept', {
       method: 'POST',
       body: JSON.stringify({}),
     });
@@ -135,7 +146,7 @@ describe('companion proposal list/accept', () => {
     expect(accepts).toEqual([{ planId: 'plan_1' }]);
   });
 
-  it('answers 404 when the orchestrator has no list/accept verbs', async () => {
+  it('answers 404 when the compose has no list/accept verbs', async () => {
     await host.stop();
     const support = tempDir('foundry-companion-proposals-legacy-');
     const project = { ...defaultProject('/tmp/repo'), id: 'proj_a', name: 'A' };
@@ -163,7 +174,7 @@ describe('companion proposal list/accept', () => {
       appVersion: () => '0.0.0-test',
       notifyRuns: () => {},
       onStateChanged: () => {},
-      orchestrator: {
+      compose: {
         options: async () => ({ models: [], model: 'inherit', reasoningEffort: 'medium' }),
         start: () => ({ planId: 'plan_1' }),
         state: () => null,
@@ -189,11 +200,11 @@ describe('companion proposal list/accept', () => {
         ...init,
         headers: { authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
       });
-    await expect(authedFetch('/v1/orchestrator/plans?projectId=proj_a')).resolves.toMatchObject({
+    await expect(authedFetch('/v1/smith/compose/plans?projectId=proj_a')).resolves.toMatchObject({
       status: 404,
     });
     await expect(
-      authedFetch('/v1/orchestrator/plans/plan_1/accept', { method: 'POST', body: '{}' }),
+      authedFetch('/v1/smith/compose/plans/plan_1/accept', { method: 'POST', body: '{}' }),
     ).resolves.toMatchObject({ status: 404 });
     await legacy.stop();
   });

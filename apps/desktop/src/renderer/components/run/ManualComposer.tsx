@@ -46,7 +46,7 @@ function startAvailability(input: {
 
 /**
  * The classic pipeline-picker composer: choose a stored pipeline, write the
- * brief, start. Extracted whole from the Runs screen when the Orchestrator
+ * brief, start. Extracted whole from the Runs screen when Smith composition
  * became the default path; behavior is unchanged.
  */
 export default function ManualComposer({

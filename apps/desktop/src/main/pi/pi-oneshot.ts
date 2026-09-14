@@ -103,9 +103,9 @@ class PiOneShot implements OneShotSession {
       if (hasImages && !session.model?.input.includes('image')) {
         const selected = session.model
           ? modelKey(session.model)
-          : 'The selected Orchestrator model';
+          : 'The selected Smith composition model';
         throw new Error(
-          `${selected} does not support image input. Choose an image-capable Orchestrator model.`,
+          `${selected} does not support image input. Choose an image-capable Smith composition model.`,
         );
       }
 

@@ -1,7 +1,6 @@
 import { IPC } from '@shared/ipc-contract.js';
 import { splitLinearAssignedIntent } from '@shared/linear.js';
-import { isReasoningEffort } from '@shared/reasoning-effort.js';
-import type { AppSettings, ReasoningEffort, SmithActionRisk } from '@shared/types.js';
+import type { SmithActionRisk } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
 import { compactSmithRunEvents } from './event-page.js';
 import {
@@ -50,34 +49,16 @@ export const SMITH_RUN_OPERATIONS = [
   'linear_issue',
   'linear_workflow_states',
   'linear_start',
-  'orchestrator_plan',
-  'orchestrator_message',
-  'orchestrator_cancel',
-  'orchestrator_list',
-  'orchestrator_get',
-  'orchestrator_accept',
-  'orchestrator_discard',
 ] as const;
 
 type RunOperation = (typeof SMITH_RUN_OPERATIONS)[number];
 type RunReadOperation =
   'detail' | 'events' | 'context' | 'prompt' | 'artifacts' | 'plan' | 'checkpoints';
 type LinearRunReadOperation = 'linear_issues' | 'linear_issue' | 'linear_workflow_states';
-type OrchestratorReadOperation = 'orchestrator_list' | 'orchestrator_get';
-type OrchestratorPlanIdAction =
-  'orchestrator_message' | 'orchestrator_cancel' | 'orchestrator_accept' | 'orchestrator_discard';
 type RunActionOperation = Exclude<
   RunOperation,
-  | 'list'
-  | 'live_tail'
-  | RunReadOperation
-  | LinearRunReadOperation
-  | OrchestratorReadOperation
-  | RunAgentOperation
+  'list' | 'live_tail' | RunReadOperation | LinearRunReadOperation | RunAgentOperation
 >;
-
-/** Reasoning efforts the Orchestrator offers for a planning turn. */
-const ORCHESTRATOR_EFFORTS: readonly ReasoningEffort[] = ['low', 'medium', 'high'];
 
 /** Project-scoped reads keyed by the id they take. */
 const READS: Record<RunReadOperation, { channel: string; idField: 'runId' | 'phaseId' }> = {
@@ -103,11 +84,6 @@ const ACTION_CHANNELS: Record<RunActionOperation, string> = {
   export_plan: IPC.runsExportPlan,
   restore_checkpoint: IPC.runsRestoreCheckpoint,
   linear_start: IPC.linearStartRun,
-  orchestrator_plan: IPC.orchestratorPlan,
-  orchestrator_message: IPC.orchestratorMessage,
-  orchestrator_cancel: IPC.orchestratorCancel,
-  orchestrator_accept: IPC.orchestratorAccept,
-  orchestrator_discard: IPC.orchestratorDiscard,
 };
 
 const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
@@ -120,15 +96,6 @@ const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
   // A restore resets the run branch and overwrites the worktree. The commits
   // stay in the reflog, but nothing about that is a plain write.
   restore_checkpoint: 'git',
-  // Planning and follow-ups spend an agent turn on the operator's model;
-  // that is a privileged action even though the plan itself writes nothing.
-  orchestrator_plan: 'write',
-  orchestrator_message: 'write',
-  orchestrator_cancel: 'write',
-  // Accept creates the run exactly once via proposals.accept, never via
-  // runs:start directly, so concurrent accepts share one run.
-  orchestrator_accept: 'write',
-  orchestrator_discard: 'destructive',
 };
 
 export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
@@ -137,7 +104,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     label: 'Smith runs',
     description: [
       'Inspect runs, direct phase agents, or propose run actions. Names in parentheses are arguments; ? means optional.',
-      'Scope: projectId defaults to the current project; supply it in All projects scope. Linear reads, live_tail, and planId operations need no projectId.',
+      'Scope: projectId defaults to the current project; supply it in All projects scope. Linear reads and live_tail need no projectId.',
       'Read now: list(includeArchived?), detail(runId), plan(runId), checkpoints(runId), agents(runId), messages(runId). Use detail first for failures.',
       'Read evidence: events(runId,afterChangeId) starts at 0; pass result.cursor as afterChangeId for the next page. conversation(runId,phaseId,cursor?) starts without cursor; pass result.nextCursor unchanged as cursor until null. Read only needed pages.',
       'Read phase data: prompt(phaseId), artifacts(phaseId), live_tail(phaseId). context(runId,agent) requires the agent name, not phaseId.',
@@ -145,8 +112,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
       'Approval: resume(runId) retries the first failed phase in its existing worktree/conversation, without re-running successful earlier phases; kill(runId), archive(runId,archived), discard(runId).',
       'Approval: merge(runId) merges the run worktree into the local base; fix_merge(runId) repairs that merge. For GitHub PRs use smith_prs. open_worktree(runId), reveal_files(runId).',
       'Approval: export_plan(runId,pipeline?,agents?) needs pipeline:true or at least one agent name. restore_checkpoint(runId,checkpointId,acceptPartial?) resets the run worktree; inspect checkpoints first and explain any partial restore.',
-      'New run (default): orchestrator_plan(prompt,model?,reasoningEffort?) requires approval and returns a planId while planning continues. Return that handle promptly; do not poll in a tight loop.',
-      'Read plans: orchestrator_list(), orchestrator_get(planId). Approval: orchestrator_message(planId,text), orchestrator_cancel(planId), orchestrator_discard(planId), orchestrator_accept(planId,plan?). Accept starts the run exactly once; plan is an optional full revised plan, not a patch.',
+      'New run (default): use smith_compose to compose, discuss, and accept a run plan.',
       'Manual pipelines only: start(pipelineId,request) or linear_start(pipelineId,issueId), both with approval.',
       'Read Linear: linear_issues(query?,assigned?), linear_issue(issueId), linear_workflow_states(teamId). For my tickets use assigned:true; query filters key/title. Use issue detail and workflow state.type to report status.',
     ].join('\n'),
@@ -195,15 +161,6 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
         assigned: { type: 'boolean' },
         teamId: { type: 'string' },
         issueId: { type: 'string' },
-        prompt: { type: 'string' },
-        model: { type: 'string' },
-        reasoningEffort: { type: 'string', enum: ['low', 'medium', 'high'] },
-        planId: { type: 'string' },
-        plan: {
-          type: 'object',
-          description:
-            'For orchestrator_accept only: full revised plan from orchestrator_get. Omit to accept the stored plan.',
-        },
       },
       required: ['operation'],
       additionalProperties: false,
@@ -222,11 +179,6 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
           : json({ ok: false, error: 'phaseId is required' });
       }
 
-      // Orchestrator proposal reads and plan-keyed actions are scoped by the
-      // plan itself; only plan and list take a project, resolved inside.
-      if (isOrchestratorReadOperation(op)) return orchestratorRead(deps, op, params);
-      if (isOrchestratorPlanIdAction(op)) return orchestratorPlanIdAction(deps, op, params);
-
       const scope = requireProjectId(field(params, 'projectId'), deps.projectId());
       if (!scope.ok) return json(scope);
       const projectId = scope.projectId;
@@ -242,10 +194,6 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
 
       const read = op in READS ? READS[op as RunReadOperation] : null;
       if (read) return runRead(deps, op, read, projectId, params);
-
-      // Planning spends an agent turn: approval-gated, with the model and
-      // effort defaulted from Settings when Smith leaves them unstated.
-      if (op === 'orchestrator_plan') return orchestratorPlanAction(deps, params, projectId);
 
       const gated = resolveGatedArgs(op as RunActionOperation, params, projectId);
       if (!gated.ok) return json({ ok: false, error: gated.error });
@@ -302,15 +250,12 @@ async function runEventsPage(
   }
 }
 
-/** `start` names a pipeline; plan-keyed orchestrator actions name a plan; the rest name a run. */
+/** `start` names a pipeline; the rest name a run. */
 function resolveGatedArgs(
   op: RunActionOperation,
   params: unknown,
   projectId: string | undefined,
 ): GatedArgs {
-  if (isOrchestratorPlanIdAction(op)) return resolveOrchestratorGatedArgs(op, params);
-  // `orchestrator_plan` resolves its model/effort at execute time and never
-  // reaches the generic tail; `start`/`linear_start` always carry a project.
   if (!projectId) return { ok: false, error: 'projectId is required in All projects scope' };
   if (op === 'linear_start') {
     const pipelineId = stringField(params, 'pipelineId');
@@ -370,169 +315,8 @@ function resolveExportPlanArgs(params: unknown, projectId: string, runId: string
   };
 }
 
-/** Plan-keyed orchestrator actions: no project scope, one fixed handler each. */
-function resolveOrchestratorGatedArgs(op: OrchestratorPlanIdAction, params: unknown): GatedArgs {
-  if (op === 'orchestrator_message') {
-    const planId = stringField(params, 'planId');
-    const text = stringField(params, 'text');
-    if (!planId || !text) {
-      return { ok: false, error: 'planId and text are required' };
-    }
-    return { ok: true, args: [planId, text], shownArgs: { planId, text } };
-  }
-  if (op === 'orchestrator_accept') {
-    const planId = stringField(params, 'planId');
-    if (!planId) return { ok: false, error: 'planId is required' };
-    const plan = field(params, 'plan');
-    if (plan !== undefined && (typeof plan !== 'object' || plan === null)) {
-      return { ok: false, error: 'plan must be an object' };
-    }
-    const input = plan === undefined ? { planId } : { planId, plan };
-    return {
-      ok: true,
-      args: plan === undefined ? [planId] : [planId, plan],
-      shownArgs: input as Record<string, unknown>,
-    };
-  }
-  const planId = stringField(params, 'planId');
-  if (!planId) return { ok: false, error: 'planId is required' };
-  return { ok: true, args: [planId], shownArgs: { planId } };
-}
-
 function isLinearRunReadOperation(op: RunOperation): op is LinearRunReadOperation {
   return op === 'linear_issues' || op === 'linear_issue' || op === 'linear_workflow_states';
-}
-
-function isOrchestratorReadOperation(op: RunOperation): op is OrchestratorReadOperation {
-  return op === 'orchestrator_list' || op === 'orchestrator_get';
-}
-
-function isOrchestratorPlanIdAction(op: RunOperation): op is OrchestratorPlanIdAction {
-  return (
-    op === 'orchestrator_message' ||
-    op === 'orchestrator_cancel' ||
-    op === 'orchestrator_accept' ||
-    op === 'orchestrator_discard'
-  );
-}
-
-/**
- * Project-scoped proposal browse vs. plan-keyed fetch. `get` needs no
- * project — polling a known plan from All-projects scope must just work.
- */
-function orchestratorRead(
-  deps: SmithActionToolDeps,
-  op: OrchestratorReadOperation,
-  params: unknown,
-): ReturnType<typeof immediate> {
-  if (op === 'orchestrator_get') {
-    const planId = stringField(params, 'planId');
-    return planId
-      ? immediate(deps, IPC.orchestratorGet, planId)
-      : Promise.resolve(json({ ok: false, error: 'planId is required' }));
-  }
-  const scope = requireProjectId(field(params, 'projectId'), deps.projectId());
-  if (!scope.ok) return Promise.resolve(json(scope));
-  return immediate(deps, IPC.orchestratorList, scope.projectId);
-}
-
-const ORCHESTRATOR_PLAN_ID_SUMMARIES: Record<OrchestratorPlanIdAction, (planId: string) => string> =
-  {
-    orchestrator_message: (planId) =>
-      `Send a follow-up message about plan ${planId}. The reply arrives as orchestrator progress and may carry a revised plan.`,
-    orchestrator_cancel: (planId) =>
-      `Stop generation for plan ${planId}. The row remains for review or discard.`,
-    // Accept must go through proposals.accept, never runs:start directly, so
-    // concurrent or repeated accepts of one planId share exactly one run.
-    orchestrator_accept: (planId) =>
-      `Create the run for plan ${planId} exactly once. A repeat accept returns the same run.`,
-    // Discarding an accepted row refuses with false; surface that, never retry.
-    orchestrator_discard: (planId) => `Tombstone plan ${planId}.`,
-  };
-
-function orchestratorPlanIdAction(
-  deps: SmithActionToolDeps,
-  op: OrchestratorPlanIdAction,
-  params: unknown,
-): ReturnType<typeof immediate> {
-  const gated = resolveGatedArgs(op, params, undefined);
-  if (!gated.ok) return Promise.resolve(json({ ok: false, error: gated.error }));
-  const label = op.replaceAll('_', ' ');
-  const planId = stringField(params, 'planId') ?? '';
-  return proposeAction(deps, {
-    operation: op,
-    title: `${label} proposal`,
-    summary: ORCHESTRATOR_PLAN_ID_SUMMARIES[op](planId),
-    args: gated.shownArgs,
-    risk: RISKS[op] ?? 'write',
-    execute: () => deps.invoke(ACTION_CHANNELS[op], ...gated.args),
-  });
-}
-
-function orchestratorPlanAction(
-  deps: SmithActionToolDeps,
-  params: unknown,
-  projectId: string,
-): ReturnType<typeof immediate> {
-  const prompt =
-    stringField(params, 'prompt') ?? stringField(params, 'request') ?? stringField(params, 'text');
-  if (!prompt) return Promise.resolve(json({ ok: false, error: 'prompt is required' }));
-  const model = stringField(params, 'model');
-  const reasoningEffort = stringField(params, 'reasoningEffort');
-  if (reasoningEffort && !ORCHESTRATOR_EFFORTS.includes(reasoningEffort as ReasoningEffort)) {
-    return Promise.resolve(
-      json({ ok: false, error: 'reasoningEffort must be low, medium, or high' }),
-    );
-  }
-  const shownArgs: Record<string, unknown> = { projectId, prompt };
-  if (model) shownArgs.model = model;
-  if (reasoningEffort) shownArgs.reasoningEffort = reasoningEffort;
-  return proposeAction(deps, {
-    operation: 'orchestrator_plan',
-    title: 'Start orchestrator plan',
-    summary:
-      'Ask the Orchestrator to draft a run plan for this prompt. Returns a planId immediately; the plan (or the failure) arrives as orchestrator progress. Confirm the prompt text before proposing.',
-    args: shownArgs,
-    risk: RISKS.orchestrator_plan ?? 'write',
-    execute: async () => {
-      const resolved = await resolveOrchestratorModel(deps, model, reasoningEffort);
-      return deps.invoke(
-        IPC.orchestratorPlan,
-        projectId,
-        prompt,
-        resolved.model,
-        resolved.reasoningEffort,
-      );
-    },
-  });
-}
-
-/**
- * What the planning turn runs on: Smith's explicit choice first, otherwise
- * the install's run defaults from Settings — the same choice the composer
- * itself defaults to. Never the chat's own model: Smith answers on
- * smithModel, but a plan must compose for the run catalog.
- */
-async function resolveOrchestratorModel(
-  deps: Pick<SmithActionToolDeps, 'invoke'>,
-  model: string | null,
-  reasoningEffort: string | null,
-): Promise<{ model: string; reasoningEffort: ReasoningEffort }> {
-  const effort = (reasoningEffort as ReasoningEffort | null) ?? null;
-  if (model && effort) return { model, reasoningEffort: effort };
-  try {
-    const settings = await deps.invoke<AppSettings>(IPC.settingsGet);
-    const fallbackModel =
-      typeof settings?.defaultModel === 'string' && settings.defaultModel.trim()
-        ? settings.defaultModel
-        : 'inherit';
-    const fallbackEffort = isReasoningEffort(settings?.defaultReasoningEffort)
-      ? settings.defaultReasoningEffort
-      : 'medium';
-    return { model: model ?? fallbackModel, reasoningEffort: effort ?? fallbackEffort };
-  } catch {
-    return { model: model ?? 'inherit', reasoningEffort: effort ?? 'medium' };
-  }
 }
 
 function linearRunRead(

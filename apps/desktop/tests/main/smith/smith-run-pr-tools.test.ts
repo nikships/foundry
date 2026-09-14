@@ -108,7 +108,6 @@ describe('Smith run and PR tools', () => {
         afterChangeId: { description: expect.stringContaining('then result.cursor') },
         cursor: { description: expect.stringContaining('result.nextCursor') },
         agent: { description: expect.stringContaining('agent name') },
-        plan: { description: expect.stringContaining('full revised plan') },
       },
     });
   });

@@ -1,31 +1,31 @@
 /**
- * Milestone sounds fire on orchestrator turns, proposed pipelines, finished
+ * Milestone sounds fire on compose turns, proposed pipelines, finished
  * phases, settled runs, and new Smith proposals — never on the first historical
  * snapshot, never on a settled run that later grows phase rows, and never on
  * tool chatter that never reaches this view-model.
  */
 
 import { describe, expect, it } from 'vitest';
-import type { OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeState } from '@shared/ipc-contract.js';
 import type { PhaseKind, PhaseStatus, RunRow, RunStatus } from '@shared/types.js';
 import {
   applyRunSnapshots,
-  isOrchestratorPingNote,
-  orchestratorCues,
+  isComposePingNote,
+  composeCues,
   rememberSmithProposals,
   runCues,
   smithCues,
-  snapshotOrchestrator,
+  snapshotCompose,
   snapshotRun,
   snapshotSmith,
   stabilizeRunSnapshot,
-  type OrchestratorCueSnapshot,
+  type ComposeCueSnapshot,
   type RunCueSnapshot,
 } from '@renderer/view-models/agent-sound-cues.js';
 
 function orch(
-  over: Partial<OrchestratorCueSnapshot> & Pick<OrchestratorCueSnapshot, 'planId'>,
-): OrchestratorCueSnapshot {
+  over: Partial<ComposeCueSnapshot> & Pick<ComposeCueSnapshot, 'planId'>,
+): ComposeCueSnapshot {
   return {
     status: 'running',
     hasPlan: false,
@@ -60,18 +60,16 @@ const success = (name: string): { name: string; status: PhaseStatus; kind: Phase
   kind: 'agent',
 });
 
-describe('isOrchestratorPingNote', () => {
+describe('isComposePingNote', () => {
   it('recognises the ask and the correction retry, not setup notes', () => {
-    expect(isOrchestratorPingNote('Asking the Orchestrator (anthropic/claude)…')).toBe(true);
-    expect(isOrchestratorPingNote('Sending the validation errors back (attempt 2 of 4)…')).toBe(
-      true,
-    );
-    expect(isOrchestratorPingNote('Reading the models this install can reach…')).toBe(false);
-    expect(isOrchestratorPingNote('Rejected: phases: missing')).toBe(false);
+    expect(isComposePingNote('Asking Smith to compose (anthropic/claude)…')).toBe(true);
+    expect(isComposePingNote('Sending the validation errors back (attempt 2 of 4)…')).toBe(true);
+    expect(isComposePingNote('Reading the models this install can reach…')).toBe(false);
+    expect(isComposePingNote('Rejected: phases: missing')).toBe(false);
   });
 });
 
-describe('snapshotOrchestrator', () => {
+describe('snapshotCompose', () => {
   it('keeps ping keys off tool and text entries', () => {
     const state = {
       planId: 'plan-1',
@@ -79,31 +77,31 @@ describe('snapshotOrchestrator', () => {
       revision: 0,
       plan: null,
       entries: [
-        { id: 'n1', kind: 'note', text: 'Asking the Orchestrator…', at: 1 },
+        { id: 'n1', kind: 'note', text: 'Asking Smith to compose…', at: 1 },
         { id: 't1', kind: 'tool', text: 'read README.md', at: 2, toolKind: 'read' },
         { id: 'x1', kind: 'text', text: 'thinking out loud', at: 3 },
       ],
-    } as OrchestratorState;
-    expect(snapshotOrchestrator(state).pingKeys).toEqual(['n1']);
+    } as ComposeState;
+    expect(snapshotCompose(state).pingKeys).toEqual(['n1']);
   });
 });
 
-describe('orchestratorCues', () => {
+describe('composeCues', () => {
   it('pings when a new ask note lands, including the first live snapshot', () => {
-    expect(orchestratorCues(undefined, orch({ planId: 'p', pingKeys: ['a'] }))).toEqual([
-      'orchestrator-ping',
+    expect(composeCues(undefined, orch({ planId: 'p', pingKeys: ['a'] }))).toEqual([
+      'compose-ping',
     ]);
     expect(
-      orchestratorCues(
+      composeCues(
         orch({ planId: 'p', pingKeys: ['a'] }),
         orch({ planId: 'p', pingKeys: ['a', 'b'] }),
       ),
-    ).toEqual(['orchestrator-ping']);
+    ).toEqual(['compose-ping']);
   });
 
   it('does not ping a finished transcript on first snapshot', () => {
     expect(
-      orchestratorCues(
+      composeCues(
         undefined,
         orch({ planId: 'p', status: 'done', hasPlan: true, revision: 1, pingKeys: ['a'] }),
       ),
@@ -112,21 +110,19 @@ describe('orchestratorCues', () => {
 
   it('does not ping when the same live ask notes are re-emitted', () => {
     const snap = orch({ planId: 'p', pingKeys: ['a'] });
-    expect(orchestratorCues(snap, snap)).toEqual([]);
+    expect(composeCues(snap, snap)).toEqual([]);
   });
 
   it('does not treat an already-present plan on first snapshot as a proposal', () => {
-    expect(orchestratorCues(undefined, orch({ planId: 'p', hasPlan: true, revision: 1 }))).toEqual(
-      [],
-    );
+    expect(composeCues(undefined, orch({ planId: 'p', hasPlan: true, revision: 1 }))).toEqual([]);
   });
 
   it('proposes when a plan first appears or is revised', () => {
     expect(
-      orchestratorCues(orch({ planId: 'p' }), orch({ planId: 'p', hasPlan: true, revision: 1 })),
+      composeCues(orch({ planId: 'p' }), orch({ planId: 'p', hasPlan: true, revision: 1 })),
     ).toEqual(['plan-proposed']);
     expect(
-      orchestratorCues(
+      composeCues(
         orch({ planId: 'p', hasPlan: true, revision: 1 }),
         orch({ planId: 'p', hasPlan: true, revision: 2 }),
       ),

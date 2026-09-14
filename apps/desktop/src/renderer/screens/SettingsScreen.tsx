@@ -1943,7 +1943,10 @@ export default function SettingsScreen({
                           </Field>
                         </div>
                       </Section>
-                      <Section label="Smith" note="The model the in-app chat runs on.">
+                      <Section
+                        label="Smith"
+                        note="The model Smith chats and composes run plans on. Smith's model on the Runs composer follows this; unset follows Agent Defaults."
+                      >
                         <div className={styles.settingsFields}>
                           <Field
                             label="Model"

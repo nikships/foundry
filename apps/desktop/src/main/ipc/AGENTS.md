@@ -16,7 +16,7 @@ When adding a capability, update the shared contract first, then the router, pre
 
 Main-to-renderer channels are:
 
-`runs-changed`, `settings-changed`, `updater-status`, `detection-progress`, `setup-progress`, `orchestrator-progress`, `smith-proposals-changed`, `smith-progress`, `bridge-changed`, and `companion-changed`.
+`runs-changed`, `settings-changed`, `updater-status`, `detection-progress`, `setup-progress`, `smith-compose-progress`, `smith-proposals-changed`, `smith-progress`, `bridge-changed`, and `companion-changed`.
 
 Run events are polled with the trace cursor, not pushed. Update this list, preload, renderer subscriptions, and `mockFoundry.ts` together when changing channels.
 

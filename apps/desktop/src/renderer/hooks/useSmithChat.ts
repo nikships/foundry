@@ -12,7 +12,7 @@ import { api } from '../api.js';
  * cloned states over `smith-progress`. Every action re-reads through its own
  * invoke result so the surface never waits on the next push to catch up.
  *
- * Full user-level access (orchestrator prompts, assigned Linear work +
+ * Full user-level access (compose prompts, assigned Linear work +
  * status, saved pipeline runs, context refresh, voice-key state) routes
  * through `send`: the composer prefills the capability phrasing
  * (`SMITH_QUICK_PROMPTS`), the operator confirms it, and the same session

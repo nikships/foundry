@@ -395,7 +395,7 @@ class NewRunScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        composeTestRule.onNodeWithText("SMITH").performClick()
 
         // Generate stays disabled without a request (the picking bar has no START RUN yet).
         composeTestRule.onNodeWithContentDescription("Generate plan").assertIsNotEnabled()
@@ -438,7 +438,7 @@ class NewRunScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        composeTestRule.onNodeWithText("SMITH").performClick()
         composeTestRule.onNodeWithText("What should the factory build? Be specific: the request is the whole brief.")
             .performScrollTo()
             .performTextInput("Use the fast model")
@@ -483,12 +483,12 @@ class NewRunScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        composeTestRule.onNodeWithText("SMITH").performClick()
 
         composeTestRule.onNodeWithContentDescription("Generated plan card")
             .performScrollTo()
             .assertIsDisplayed()
-        composeTestRule.onNodeWithText("ORCHESTRATOR PLAN").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("SMITH PLAN").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithText("2 phases · 0 synthesized agents").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithText("Investigate").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithText("WHY THIS SHAPE").performScrollTo().assertIsDisplayed()
@@ -509,7 +509,7 @@ class NewRunScreenTest {
         id = "linear-fou-204",
         identifier = "FOU-204",
         title = "Bring Android run creation and recovery to desktop parity",
-        description = "Add Orchestrator plans, Linear-backed starts, and checkpoint restore.",
+        description = "Add Smith-composed plans, Linear-backed starts, and checkpoint restore.",
         url = "https://linear.app/foundry-nik/issue/FOU-204",
         updatedAt = "2026-08-25T20:00:00Z",
         team = LinearTeam("team-foundry", "Foundry"),
@@ -583,7 +583,7 @@ class NewRunScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        composeTestRule.onNodeWithText("SMITH").performClick()
         composeTestRule.onNodeWithTag("orchestrator-proposals").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithText("SAVED PLANS").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithText("Saved durable proposal").performScrollTo().assertIsDisplayed()
@@ -624,7 +624,7 @@ class NewRunScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        composeTestRule.onNodeWithText("SMITH").performClick()
         // Double-tap guard: the in-flight accept cannot be re-sent.
         composeTestRule.onNodeWithTag("proposal-accept-plan_saved_1").performScrollTo().assertIsNotEnabled()
         assertEquals(0, accepted)
@@ -661,7 +661,7 @@ class NewRunScreenTest {
 
         // Offline locks the composer tabs; Orchestrator stays unreachable and no
         // accept can be sent — the phone never queues writes.
-        composeTestRule.onNodeWithText("ORCHESTRATOR").assertIsDisplayed()
+        composeTestRule.onNodeWithText("SMITH").assertIsDisplayed()
         composeTestRule.onNodeWithTag("proposal-plan_saved_1").assertDoesNotExist()
         composeTestRule.onNodeWithText("Reconnect to start a run").assertIsDisplayed()
     }
@@ -695,7 +695,7 @@ class NewRunScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithText("ORCHESTRATOR").performClick()
+        composeTestRule.onNodeWithText("SMITH").performClick()
         // The edited composer plan travels as the accept override; repeats
         // return the same run, so the button guards the flight.
         // FoundryPrimaryButton uppercases its label and now keeps it visible while loading.

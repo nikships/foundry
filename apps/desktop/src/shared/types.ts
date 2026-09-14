@@ -338,7 +338,7 @@ export interface AppSettings {
   notifications: { accepted: boolean; rejected: boolean; failed: boolean };
   dockBadge: boolean;
   /**
-   * Generated milestone tones for orchestrator pings, proposed pipelines,
+   * Generated milestone tones for composition pings, proposed pipelines,
    * finished phases, settled runs, and moments that wait on the operator.
    */
   soundEffects: boolean;
@@ -718,7 +718,7 @@ export interface RunRow {
   merged: boolean;
   archived: boolean;
   mode: RunMode;
-  /** True when the run started from an Orchestrator-generated plan. */
+  /** True when the run started from a Smith-composed plan. */
   orchestrated: boolean;
   /** How many mid-run amendments the pipeline received, for the list badge. */
   amendments: number;
@@ -1325,15 +1325,15 @@ export interface StartRunInput {
   plan?: GeneratedRunPlan;
 }
 
-// ── Orchestrator (generated run plans) ───────────────────────────────────────
+// ── Smith composition (generated run plans) ───────────────────────────────────────
 
-/** What the Orchestrator hands back for confirmation. */
+/** What Smith hands back for confirmation. */
 export interface GeneratedRunPlan {
   planId: string;
   projectId: string;
   /** The operator's raw prompt, kept verbatim for the trace. */
   prompt: string;
-  /** The Orchestrator's behavior-level brief; becomes the run `request`. */
+  /** Smith composition's behavior-level brief; becomes the run `request`. */
   refinedRequest: string;
   /** Why the pipeline has this shape, operator-facing. */
   rationale: string;
@@ -1348,7 +1348,7 @@ export interface GeneratedRunPlan {
 }
 
 /**
- * Durable orchestrator proposal status. `generating` covers a live planning
+ * Durable composition proposal status. `generating` covers a live planning
  * turn; `ready` means a validated plan is waiting; `failed`/`cancelled` are
  * terminal without a run; `accepted` has exactly one run; `discarded` is a
  * tombstone hidden from list/sidebar by default.
@@ -1357,7 +1357,7 @@ export type ProposalStatus =
   'generating' | 'ready' | 'failed' | 'cancelled' | 'accepted' | 'discarded';
 
 /**
- * One durable orchestrator proposal, persisted before any run exists. One row
+ * One durable composition proposal, persisted before any run exists. One row
  * per `startPlan` call; concurrent starts create distinct rows and never
  * cancel siblings. `images` are never persisted (in-memory on the live
  * `PlanSession` only). `entries` is the capped tail (same 300 as panels).
@@ -1379,7 +1379,7 @@ export interface ProposalSnapshot {
   rawReply: string;
   messages: Array<{
     id: string;
-    role: 'operator' | 'orchestrator';
+    role: 'operator' | 'smith';
     text: string;
     revisedPlan?: boolean;
     at: number;
@@ -1486,14 +1486,17 @@ export type SmithArtifactKind =
   | 'evidence_disclosure'
   | 'readiness_journey'
   | 'provider_status'
+  | 'run_plan'
   | 'action_receipt';
 
 /**
- * The kinds `smith_present` may emit. `action_receipt` is deliberately absent:
- * a receipt is evidence an action ran, so it is minted by main from the real
- * executor result and never by the model.
+ * The kinds `smith_present` may emit. Receipts and run plans are deliberately
+ * absent: main mints them from real action results and durable proposal rows.
  */
-export type SmithPresentableArtifactKind = Exclude<SmithArtifactKind, 'action_receipt'>;
+export type SmithPresentableArtifactKind = Exclude<
+  SmithArtifactKind,
+  'action_receipt' | 'run_plan'
+>;
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -1509,6 +1512,29 @@ interface SmithArtifactBase {
   rationale?: string;
   /** Store-validation warnings that rode along; errors never become artifacts. */
   warnings: ValidationIssue[];
+}
+
+/** Main-minted bounded proposal snapshot. Actions must resolve the durable row. */
+export interface SmithRunPlanArtifact extends SmithArtifactBase {
+  kind: 'run_plan';
+  planId: string;
+  projectId: string;
+  status: ProposalStatus;
+  revision: number;
+  title: string;
+  refinedRequest: string;
+  rationale: string;
+  phases: Array<{
+    index: number;
+    name: string;
+    kind: 'agent' | 'code';
+    agent?: string;
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    command?: string;
+    synthesized?: boolean;
+  }>;
+  acceptedRunId?: string;
 }
 
 /** A read-only pipeline design, rendered as ordered phase cards — never JSON. */
@@ -2088,6 +2114,7 @@ export interface SmithActionReceiptArtifact extends SmithArtifactBase {
  * the main boundary before they reach the renderer or persisted chat state.
  */
 export type SmithArtifact =
+  | SmithRunPlanArtifact
   | SmithPipelineDesignArtifact
   | SmithAgentDesignArtifact
   | SmithEnvelopeDesignArtifact

@@ -55,7 +55,7 @@ import {
   isCredentialOperation,
   isJourneyPhaseLive,
   isActionableLink,
-  isOrchestratorOperation,
+  isComposeOperation,
   isRenderableArtifact,
   isolationLabel,
   journeyActions,
@@ -64,7 +64,7 @@ import {
   journeySummary,
   linearAssigneeLabel,
   occupancyStatus,
-  orchestratorStatusLabel,
+  composeStatusLabel,
   phaseWorkLabel,
   prChecksGlyph,
   prChecksLabel,
@@ -834,19 +834,20 @@ describe('user-level access receipts', () => {
     );
   });
 
-  it('labels every orchestrator proposal status without jargon', () => {
-    expect(orchestratorStatusLabel('generating')).toBe('Generating plan');
-    expect(orchestratorStatusLabel('ready')).toBe('Ready for review');
-    expect(orchestratorStatusLabel('failed')).toBe('Planning failed');
-    expect(orchestratorStatusLabel('cancelled')).toBe('Cancelled');
-    expect(orchestratorStatusLabel('accepted')).toMatch(/run created/i);
-    expect(orchestratorStatusLabel('discarded')).toBe('Discarded');
+  it('labels every compose proposal status without jargon', () => {
+    expect(composeStatusLabel('generating')).toBe('Generating plan');
+    expect(composeStatusLabel('ready')).toBe('Ready for review');
+    expect(composeStatusLabel('failed')).toBe('Planning failed');
+    expect(composeStatusLabel('cancelled')).toBe('Cancelled');
+    expect(composeStatusLabel('accepted')).toMatch(/run created/i);
+    expect(composeStatusLabel('discarded')).toBe('Discarded');
   });
 
-  it('detects orchestrator and credential operations for confirmation styling', () => {
-    expect(isOrchestratorOperation('orchestrator_accept')).toBe(true);
-    expect(isOrchestratorOperation('orchestrator_get')).toBe(true);
-    expect(isOrchestratorOperation('linear_issues')).toBe(false);
+  it('detects compose and credential operations for confirmation styling', () => {
+    expect(isComposeOperation('compose_accept')).toBe(true);
+    expect(isComposeOperation('compose_accept')).toBe(true);
+    expect(isComposeOperation('compose_get')).toBe(true);
+    expect(isComposeOperation('linear_issues')).toBe(false);
     expect(isCredentialOperation('gemini_live_set_api_key')).toBe(true);
     expect(isCredentialOperation('linear_set_api_key')).toBe(true);
     expect(isCredentialOperation('set_api_key')).toBe(true);

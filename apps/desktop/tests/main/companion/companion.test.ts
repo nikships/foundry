@@ -36,7 +36,7 @@ import type {
 } from '../../../src/shared/companion.js';
 import type {
   EventPage,
-  OrchestratorState,
+  ComposeState,
   RunDetail,
   SmithChatState,
 } from '../../../src/shared/ipc-contract.js';
@@ -389,7 +389,7 @@ beforeEach(async () => {
   const changes: string[] = [];
   const smith = new TestSmith();
   let settings = defaultSettings();
-  const planStates = new Map<string, OrchestratorState>();
+  const planStates = new Map<string, ComposeState>();
   let planSequence = 0;
   const linearStates: LinearWorkflowState[] = [
     { id: 'started', name: 'In Progress', type: 'started' },
@@ -424,7 +424,7 @@ beforeEach(async () => {
       notifyRuns: () => undefined,
       enabledModelIds: async () => ['scripted/alpha'],
       onStateChanged: () => changes.push('changed'),
-      orchestrator: {
+      compose: {
         options: async () => ({
           models: smith.models,
           model: settings.defaultModel,
@@ -722,10 +722,10 @@ describe('token auth, fail closed', () => {
     ['POST', '/v1/projects/x/runs/y/restore'],
     ['POST', '/v1/projects/x/runs/y/kill'],
     ['POST', '/v1/projects/x/runs/y/continue'],
-    ['GET', '/v1/orchestrator/options'],
-    ['POST', '/v1/orchestrator/plans'],
-    ['GET', '/v1/orchestrator/plans/plan'],
-    ['POST', '/v1/orchestrator/plans/plan/cancel'],
+    ['GET', '/v1/smith/compose/options'],
+    ['POST', '/v1/smith/compose/plans'],
+    ['GET', '/v1/smith/compose/plans/plan'],
+    ['POST', '/v1/smith/compose/plans/plan/cancel'],
     ['GET', '/v1/linear'],
     ['GET', '/v1/linear/issues'],
     ['GET', '/v1/linear/issues/issue'],
@@ -1022,10 +1022,10 @@ describe('run routes', () => {
   });
 });
 
-describe('Orchestrator routes', () => {
+describe('Compose routes', () => {
   it('returns planning options and round-trips a confirmed generated plan into a run', async () => {
     const paired = await pairPhone();
-    const options = await authed(paired.token, '/v1/orchestrator/options');
+    const options = await authed(paired.token, '/v1/smith/compose/options');
     expect(options.status).toBe(200);
     expect(await options.json()).toMatchObject({
       model: 'inherit',
@@ -1033,7 +1033,7 @@ describe('Orchestrator routes', () => {
       models: [{ id: 'scripted/alpha' }],
     });
 
-    const startedPlan = await authed(paired.token, '/v1/orchestrator/plans', {
+    const startedPlan = await authed(paired.token, '/v1/smith/compose/plans', {
       method: 'POST',
       body: JSON.stringify({
         projectId: h.project.id,
@@ -1045,8 +1045,8 @@ describe('Orchestrator routes', () => {
     expect(startedPlan.status).toBe(200);
     const { planId } = (await startedPlan.json()) as { planId: string };
 
-    const polled = await authed(paired.token, `/v1/orchestrator/plans/${planId}`);
-    const state = (await polled.json()) as OrchestratorState;
+    const polled = await authed(paired.token, `/v1/smith/compose/plans/${planId}`);
+    const state = (await polled.json()) as ComposeState;
     expect(state.status).toBe('done');
     expect(state.plan?.pipeline.phases[0]?.model).toBe('scripted/alpha');
 
@@ -1070,13 +1070,13 @@ describe('Orchestrator routes', () => {
 
   it('cancels a known plan and rejects malformed plan requests', async () => {
     const paired = await pairPhone();
-    const malformed = await authed(paired.token, '/v1/orchestrator/plans', {
+    const malformed = await authed(paired.token, '/v1/smith/compose/plans', {
       method: 'POST',
       body: JSON.stringify({ projectId: h.project.id, prompt: 'x' }),
     });
     expect(malformed.status).toBe(400);
 
-    const started = await authed(paired.token, '/v1/orchestrator/plans', {
+    const started = await authed(paired.token, '/v1/smith/compose/plans', {
       method: 'POST',
       body: JSON.stringify({
         projectId: h.project.id,
@@ -1086,12 +1086,12 @@ describe('Orchestrator routes', () => {
       }),
     });
     const { planId } = (await started.json()) as { planId: string };
-    const cancelled = await authed(paired.token, `/v1/orchestrator/plans/${planId}/cancel`, {
+    const cancelled = await authed(paired.token, `/v1/smith/compose/plans/${planId}/cancel`, {
       method: 'POST',
     });
     expect(await cancelled.json()).toEqual({ ok: true });
-    const state = await authed(paired.token, `/v1/orchestrator/plans/${planId}`);
-    expect((await state.json()) as OrchestratorState).toMatchObject({ status: 'cancelled' });
+    const state = await authed(paired.token, `/v1/smith/compose/plans/${planId}`);
+    expect((await state.json()) as ComposeState).toMatchObject({ status: 'cancelled' });
   });
 });
 

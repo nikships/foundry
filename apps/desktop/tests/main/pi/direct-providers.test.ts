@@ -68,7 +68,7 @@ describe('the direct-provider table', () => {
     const standard = meta?.models.find((model) => model.id === 'muse-spark-1.3');
     const contributor = meta?.models.find((model) => model.id === 'muse-spark-1.3-contributor');
     // Same weights, lower price, in exchange for training rights. The
-    // Orchestrator casts on cost, so the two must not report the same rate.
+    // Compose casts on cost, so the two must not report the same rate.
     expect(contributor?.cost.input).toBeLessThan(standard?.cost.input ?? 0);
     expect(contributor?.cost.output).toBeLessThan(standard?.cost.output ?? 0);
     expect(contributor?.contextWindow).toBe(standard?.contextWindow);

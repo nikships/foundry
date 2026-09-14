@@ -1,5 +1,18 @@
-import type { ProjectDef } from '@shared/types.js';
+import type { SmithScreenContext } from '@shared/ipc-contract.js';
+import type { ProjectDef, ProposalSnapshot } from '@shared/types.js';
 import type { SmithCapabilityId } from './smith-chat-view.js';
+
+/** Pins are per scope and live-row backed; a removed row must not remain turn context. */
+export function pinnedSmithContext(
+  screen: SmithScreenContext,
+  row: ProposalSnapshot | null,
+  projectId: string | null,
+): SmithScreenContext {
+  const { plan: _plan, ...base } = screen;
+  return row && row.projectId === projectId
+    ? { ...base, plan: { planId: row.planId, revision: row.revision } }
+    : base;
+}
 
 /** Resolve Smith's persisted/global scope after the project registry changes. */
 export function resolveSmithProjectId(
@@ -25,7 +38,7 @@ const GLOBAL_SMITH_CAPABILITIES: ReadonlySet<SmithCapabilityId> = new Set([
 
 /**
  * Whether a capability works from the current scope. Assigned work, ticket
- * status, and the voice-key state are viewer-global; orchestrator plans and
+ * status, and the voice-key state are viewer-global; compose plans and
  * lists, pipeline runs, and context refreshes need an explicit project, so
  * in All-projects scope Smith must ask which project before proposing.
  */

@@ -25,7 +25,8 @@ import { appDbPath, appRunsDir, openDb, projectDbPath, projectRunsDir } from '..
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { healingSupport } from './healing.js';
-import { replanningSupport, resolvePipelineHealingModel } from '../orchestrator/replan.js';
+import { replanningSupport } from '../smith/compose/replan.js';
+import { resolveSmithModel } from '../smith/compose/model.js';
 import { continueDetail, continueEligibility } from './continue-run.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
@@ -66,7 +67,7 @@ interface ExecutorInput {
   agents: AgentDef[];
   envelopeDefs: EnvelopeDef[];
   request: string;
-  /** Present when the run starts from an Orchestrator-generated plan. */
+  /** Present when the run starts from a Smith-composed plan. */
   plan?: GeneratedRunPlan | null;
   /** Immutable external source captured before preflight. */
   source?: RunSource | null;
@@ -233,7 +234,7 @@ export class RunRegistry {
       replanner: this.deps.oneShot
         ? replanningSupport(
             this.deps.oneShot,
-            resolvePipelineHealingModel(settings),
+            resolveSmithModel(settings, 'repair'),
             () => tracer.run(runId)?.worktreePath ?? input.project.path,
           )
         : null,

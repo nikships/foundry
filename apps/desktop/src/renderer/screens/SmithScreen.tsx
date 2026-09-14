@@ -30,6 +30,7 @@ import SmithPermissionControl from '../components/smith/SmithPermissionControl.j
 import SmithTranscript from '../components/smith/SmithTranscript.js';
 import SmithModeBar from '../components/smith/SmithModeBar.js';
 import SmithVoicePanel from '../components/smith/SmithVoicePanel.js';
+import SmithPinnedPlan from '../components/smith/SmithPinnedPlan.js';
 import { Button } from '../components/ui/Button.js';
 import styles from './SmithScreen.module.css';
 
@@ -48,7 +49,7 @@ export default function SmithScreen({
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
-  const { mode, state: voiceState, draft, setDraft } = useSmithChatUI();
+  const { mode, state: voiceState, draft, setDraft, withPinnedPlan, unpinPlan } = useSmithChatUI();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
   const { state, send, cancel, newChat, setModel, setReasoningEffort, setPermissionMode } =
@@ -91,7 +92,7 @@ export default function SmithScreen({
     const text = draft.trim();
     if (!text || running || modelBlocked) return;
     setDraft('');
-    void send(text, screenContext);
+    void send(text, withPinnedPlan(screenContext));
     inputRef.current?.focus();
   };
 
@@ -142,7 +143,11 @@ export default function SmithScreen({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => void newChat()}
+            onClick={() => {
+              unpinPlan();
+              setDraft('');
+              void newChat();
+            }}
             title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
             aria-label="New chat"
             data-testid="smith-new-chat"
@@ -172,6 +177,7 @@ export default function SmithScreen({
           />
         }
       />
+      <SmithPinnedPlan key={scopeId ?? 'global'} />
       {mode === 'voice' ? (
         <SmithVoicePanel expanded />
       ) : (

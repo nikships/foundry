@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProposalSnapshot } from '@shared/types.js';
-import type { OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeState } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
 import { applyProposalProgress, sortProposals } from '../view-models/proposals-view.js';
 
@@ -20,7 +20,7 @@ export interface ProposalsController {
 
 async function readProposals(projectId: string): Promise<ProposalSnapshot[]> {
   if (!projectId) return [];
-  const list = (await api.orchestrator.list?.(projectId)) ?? [];
+  const list = (await api.compose.list?.(projectId)) ?? [];
   return sortProposals(list.filter((proposal) => proposal.projectId === projectId));
 }
 
@@ -62,8 +62,8 @@ export function useProposals(projectId: string): ProposalsController {
     const offProposals = api.on('proposals-changed', () => {
       void refresh();
     });
-    const offProgress = api.on('orchestrator-progress', (data) => {
-      const state = data as OrchestratorState | undefined;
+    const offProgress = api.on('smith-compose-progress', (data) => {
+      const state = data as ComposeState | undefined;
       if (!state) {
         void refresh();
         return;

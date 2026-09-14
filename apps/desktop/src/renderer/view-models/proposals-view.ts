@@ -1,10 +1,10 @@
 /**
- * Pure shaping for durable orchestrator proposals. The DB is the source of
+ * Pure shaping for durable composition proposals. The DB is the source of
  * truth; these helpers keep every renderer surface (proposal list, sidebar,
  * hooks) reading the same order and the same live-patch rule without a DOM.
  */
 import type { ProposalSnapshot } from '@shared/types.js';
-import type { OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeState } from '@shared/ipc-contract.js';
 
 /** Newest proposal first, so concurrent submissions never reorder siblings. */
 export function sortProposals(proposals: readonly ProposalSnapshot[]): ProposalSnapshot[] {
@@ -15,7 +15,7 @@ export function sortProposals(proposals: readonly ProposalSnapshot[]): ProposalS
 }
 
 /**
- * Patch one durable row from a live `orchestrator-progress` push without a
+ * Patch one durable row from a live `smith-compose-progress` push without a
  * list re-read. Frozen rows (cancelled/discarded/accepted) never flip back:
  * a late completion landing after a cancel or discard is dropped, and an
  * accept sticks. A push for an unknown planId inserts a generating row so a
@@ -24,7 +24,7 @@ export function sortProposals(proposals: readonly ProposalSnapshot[]): ProposalS
  */
 export function applyProposalProgress(
   proposals: readonly ProposalSnapshot[],
-  state: OrchestratorState,
+  state: ComposeState,
 ): ProposalSnapshot[] {
   const at = Date.now();
   const current = proposals.find((p) => p.planId === state.planId);
@@ -74,7 +74,7 @@ export function applyProposalProgress(
   ]);
 }
 
-function projectLiveStatus(state: OrchestratorState): {
+function projectLiveStatus(state: ComposeState): {
   status: ProposalSnapshot['status'];
   plan: ProposalSnapshot['plan'];
   endedAt: boolean;
@@ -92,6 +92,6 @@ function projectLiveStatus(state: OrchestratorState): {
 export function proposalTitle(proposal: ProposalSnapshot, maxLength = 80): string {
   const prompt = proposal.prompt.trim().split('\n')[0] ?? '';
   const fallback = proposal.detail.trim().split('\n')[0] ?? '';
-  const text = prompt || fallback || 'Orchestrator proposal';
+  const text = prompt || fallback || 'Smith run proposal';
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }

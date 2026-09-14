@@ -32,7 +32,7 @@ import {
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './preflight.js';
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
-import { checkPlanRails } from '../orchestrator/plan.js';
+import { checkPlanRails } from '../smith/compose/plan.js';
 import { ensureProjectContext } from '../project-context.js';
 
 export interface StartRunOutcome {

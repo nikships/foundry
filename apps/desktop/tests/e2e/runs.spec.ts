@@ -4,7 +4,7 @@ import { seedOnboardedFixture } from './seed.js';
 
 const REQUEST = 'Keep this proposal after a Settings detour.';
 
-test.describe('Runs / Orchestrator', () => {
+test.describe('Runs / Compose', () => {
   test('restores a finished plan after navigating away from Runs', async ({
     browserName: _browserName,
   }, testInfo) => {
@@ -17,84 +17,87 @@ test.describe('Runs / Orchestrator', () => {
 
       // Replace only the expensive planner boundary. The real renderer, preload,
       // IPC push channel, React lifecycle, navigation, and plan card stay under test.
-      // The stub also mirrors the durable `orchestrator:list` read so a
+      // The stub also mirrors the durable `compose:list` read so a
       // remount (Settings detour) restores the proposal like the real store.
       await app.evaluate(({ BrowserWindow, ipcMain }) => {
         const mirror = new Map<string, Record<string, unknown>>();
-        ipcMain.removeHandler('orchestrator:plan');
-        ipcMain.handle('orchestrator:plan', (_event, projectId, prompt, model, reasoningEffort) => {
-          const planId = 'plan-e2e-navigation-safe';
-          const startedAt = Date.now();
-          const plan = {
-            planId,
-            projectId,
-            prompt,
-            refinedRequest:
-              'Persist the live Runs proposal across a Settings detour without planning twice.',
-            rationale:
-              'The proposal remains pending until the operator starts, regenerates, or discards it.',
-            pipeline: {
-              id: 'generated-plan-e2e-navigation-safe',
-              name: 'Navigation-safe proposal',
-              description: 'Retain the reviewed proposal while the operator checks Settings.',
-              builtin: false,
-              acceptance: { kind: 'all_phases_pass' },
-              phases: [
-                {
-                  name: 'build',
-                  kind: 'agent',
-                  description: 'Implement and verify the scoped renderer lifetime change.',
-                  agent: 'builder',
-                  model: 'fixture/model',
-                },
-              ],
-            },
-            agents: [],
-            warnings: [],
-            model,
-            reasoningEffort,
-          };
-          setTimeout(() => {
-            const at = Date.now();
-            mirror.set(planId, {
+        ipcMain.removeHandler('smith-compose:start');
+        ipcMain.handle(
+          'smith-compose:start',
+          (_event, projectId, prompt, model, reasoningEffort) => {
+            const planId = 'plan-e2e-navigation-safe';
+            const startedAt = Date.now();
+            const plan = {
               planId,
               projectId,
               prompt,
+              refinedRequest:
+                'Persist the live Runs proposal across a Settings detour without planning twice.',
+              rationale:
+                'The proposal remains pending until the operator starts, regenerates, or discards it.',
+              pipeline: {
+                id: 'generated-plan-e2e-navigation-safe',
+                name: 'Navigation-safe proposal',
+                description: 'Retain the reviewed proposal while the operator checks Settings.',
+                builtin: false,
+                acceptance: { kind: 'all_phases_pass' },
+                phases: [
+                  {
+                    name: 'build',
+                    kind: 'agent',
+                    description: 'Implement and verify the scoped renderer lifetime change.',
+                    agent: 'builder',
+                    model: 'fixture/model',
+                  },
+                ],
+              },
+              agents: [],
+              warnings: [],
               model,
               reasoningEffort,
-              status: 'ready',
-              detail: 'Plan ready.',
-              entries: [],
-              plan,
-              rawReply: '',
-              messages: [],
-              revision: 1,
-              acceptedRunId: null,
-              acceptedPlan: null,
-              createdAt: startedAt,
-              updatedAt: at,
-            });
-            BrowserWindow.getAllWindows()[0]?.webContents.send('event:orchestrator-progress', {
-              planId,
-              projectId,
-              status: 'done',
-              model,
-              reasoningEffort,
-              prompt,
-              entries: [],
-              plan,
-              rawReply: '',
-              detail: 'Plan ready.',
-              startedAt,
-              endedAt: Date.now(),
-              messages: [],
-              revision: 1,
-            });
-          }, 20);
-          return { planId };
-        });
-        ipcMain.removeHandler('orchestrator:list');
-        ipcMain.handle('orchestrator:list', (_event, projectId: string) =>
+            };
+            setTimeout(() => {
+              const at = Date.now();
+              mirror.set(planId, {
+                planId,
+                projectId,
+                prompt,
+                model,
+                reasoningEffort,
+                status: 'ready',
+                detail: 'Plan ready.',
+                entries: [],
+                plan,
+                rawReply: '',
+                messages: [],
+                revision: 1,
+                acceptedRunId: null,
+                acceptedPlan: null,
+                createdAt: startedAt,
+                updatedAt: at,
+              });
+              BrowserWindow.getAllWindows()[0]?.webContents.send('event:smith-compose-progress', {
+                planId,
+                projectId,
+                status: 'done',
+                model,
+                reasoningEffort,
+                prompt,
+                entries: [],
+                plan,
+                rawReply: '',
+                detail: 'Plan ready.',
+                startedAt,
+                endedAt: Date.now(),
+                messages: [],
+                revision: 1,
+              });
+            }, 20);
+            return { planId };
+          },
+        );
+        ipcMain.removeHandler('smith-compose:list');
+        ipcMain.handle('smith-compose:list', (_event, projectId: string) =>
           [...mirror.values()].filter((row) => row.projectId === projectId),
         );
       });
@@ -160,74 +163,96 @@ test.describe('Runs / Orchestrator', () => {
           },
         ]);
 
-        // Proposal accepts go through `orchestrator:accept` (exactly-once in
+        // Proposal accepts go through `compose:accept` (exactly-once in
         // main), not `runs:start` directly — capture the accepted snapshot here.
-        ipcMain.removeHandler('orchestrator:accept');
-        ipcMain.handle('orchestrator:accept', (_event, planId, plan) => {
+        ipcMain.removeHandler('smith-compose:accept');
+        ipcMain.handle('smith-compose:accept', (_event, planId, plan) => {
           (globalThis as Record<string, unknown>).foundryE2eStartInput = { planId, plan };
           return { ok: true, runId: 'run-e2e-proposal-canvas' };
         });
 
-        ipcMain.removeHandler('orchestrator:plan');
-        ipcMain.handle('orchestrator:plan', (_event, projectId, prompt, model, reasoningEffort) => {
-          const planId = 'plan-e2e-proposal-canvas';
-          const startedAt = Date.now();
-          setTimeout(() => {
-            BrowserWindow.getAllWindows()[0]?.webContents.send('event:orchestrator-progress', {
-              planId,
-              projectId,
-              status: 'done',
-              model,
-              reasoningEffort,
-              prompt,
-              entries: [],
-              plan: {
+        let proposal: Record<string, unknown> | null = null;
+        ipcMain.removeHandler('smith-compose:get');
+        ipcMain.handle('smith-compose:get', (_event, id: string) =>
+          proposal?.planId === id ? proposal : null,
+        );
+        ipcMain.removeHandler('smith-compose:list');
+        ipcMain.handle('smith-compose:list', () => (proposal ? [proposal] : []));
+        ipcMain.removeHandler('smith-compose:start');
+        ipcMain.handle(
+          'smith-compose:start',
+          (_event, projectId, prompt, model, reasoningEffort) => {
+            const planId = 'plan-e2e-proposal-canvas';
+            const startedAt = Date.now();
+            setTimeout(() => {
+              const state = {
                 planId,
                 projectId,
-                prompt,
-                refinedRequest: 'Inspect the proposal on a canvas before starting it.',
-                rationale: 'A build proven by the project test command.',
-                pipeline: {
-                  id: 'generated-plan-e2e-proposal-canvas',
-                  name: 'Canvas proposal',
-                  description: 'Build, then prove it with the test command.',
-                  builtin: false,
-                  acceptance: { kind: 'last_phase_pass' },
-                  phases: [
-                    {
-                      name: 'build',
-                      kind: 'agent',
-                      description: 'Implement the scoped change.',
-                      agent: 'builder',
-                      model: 'fixture/model',
-                      reasoningEffort: 'medium',
-                      gates: ['boundary_respected'],
-                      prompt: { inputs: ['request'] },
-                    },
-                    {
-                      name: 'verify',
-                      kind: 'code',
-                      description: 'Run the focused checks.',
-                      command: { ref: 'test' },
-                      feedbackTo: 'build',
-                    },
-                  ],
-                },
-                agents: [],
-                warnings: [],
+                status: 'done',
                 model,
                 reasoningEffort,
-              },
-              rawReply: '',
-              detail: 'Plan ready.',
-              startedAt,
-              endedAt: Date.now(),
-              messages: [],
-              revision: 1,
-            });
-          }, 20);
-          return { planId };
-        });
+                prompt,
+                entries: [],
+                plan: {
+                  planId,
+                  projectId,
+                  prompt,
+                  refinedRequest: 'Inspect the proposal on a canvas before starting it.',
+                  rationale: 'A build proven by the project test command.',
+                  pipeline: {
+                    id: 'generated-plan-e2e-proposal-canvas',
+                    name: 'Canvas proposal',
+                    description: 'Build, then prove it with the test command.',
+                    builtin: false,
+                    acceptance: { kind: 'last_phase_pass' },
+                    phases: [
+                      {
+                        name: 'build',
+                        kind: 'agent',
+                        description: 'Implement the scoped change.',
+                        agent: 'builder',
+                        model: 'fixture/model',
+                        reasoningEffort: 'medium',
+                        gates: ['boundary_respected'],
+                        prompt: { inputs: ['request'] },
+                      },
+                      {
+                        name: 'verify',
+                        kind: 'code',
+                        description: 'Run the focused checks.',
+                        command: { ref: 'test' },
+                        feedbackTo: 'build',
+                      },
+                    ],
+                  },
+                  agents: [],
+                  warnings: [],
+                  model,
+                  reasoningEffort,
+                },
+                rawReply: '',
+                detail: 'Plan ready.',
+                startedAt,
+                endedAt: Date.now(),
+                messages: [],
+                revision: 1,
+              };
+              proposal = {
+                ...state,
+                status: 'ready',
+                createdAt: startedAt,
+                updatedAt: Date.now(),
+                acceptedRunId: null,
+                acceptedPlan: null,
+              };
+              BrowserWindow.getAllWindows()[0]?.webContents.send(
+                'event:smith-compose-progress',
+                state,
+              );
+            }, 20);
+            return { planId };
+          },
+        );
       });
 
       await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
@@ -336,7 +361,7 @@ test.describe('Runs / Orchestrator', () => {
     }
   });
 
-  test('expands the canvas full screen and revises the proposal through the plan chat', async ({
+  test('expands the canvas and refreshes a pinned proposal when a revision arrives', async ({
     browserName: _browserName,
   }, testInfo) => {
     const fixture = seedOnboardedFixture();
@@ -347,8 +372,8 @@ test.describe('Runs / Orchestrator', () => {
       const { window } = launched;
 
       // Replace the planner and its follow-up boundary; renderer, preload,
-      // IPC push channel, plan card, chat, and full-screen shell stay real.
-      // Mirror `orchestrator:list` so the post-submit refresh cannot wipe the
+      // IPC push channel, plan card, pin, and full-screen shell stay real.
+      // Mirror `compose:list` so the post-submit refresh cannot wipe the
       // progress-patched card (the composer re-reads the durable list).
       await app.evaluate(({ BrowserWindow, ipcMain }) => {
         const planId = 'plan-e2e-chat';
@@ -413,39 +438,48 @@ test.describe('Runs / Orchestrator', () => {
         });
         const push = (): void => {
           mirror.set(planId, snapshot());
-          BrowserWindow.getAllWindows()[0]?.webContents.send('event:orchestrator-progress', {
+          BrowserWindow.getAllWindows()[0]?.webContents.send('event:smith-compose-progress', {
             ...state,
             messages: [...state.messages],
           });
-        };
-        ipcMain.removeHandler('orchestrator:plan');
-        ipcMain.handle('orchestrator:plan', (_event, projectId, prompt, model, reasoningEffort) => {
-          state.projectId = projectId;
-          state.prompt = prompt;
-          state.model = model;
-          state.reasoningEffort = reasoningEffort;
-          state.plan = {
+          BrowserWindow.getAllWindows()[0]?.webContents.send('event:proposals-changed', {
+            projectId: state.projectId,
             planId,
-            projectId,
-            prompt,
-            refinedRequest: 'Talk the proposal over before starting it.',
-            rationale: 'A build proven by the project test command.',
-            pipeline: basePipeline,
-            agents: [],
-            warnings: [],
-            model,
-            reasoningEffort,
-          };
-          mirror.set(planId, snapshot());
-          setTimeout(push, 20);
-          return { planId };
-        });
-        ipcMain.removeHandler('orchestrator:list');
-        ipcMain.handle('orchestrator:list', (_event, projectId: string) =>
+          });
+        };
+        ipcMain.removeHandler('smith-compose:start');
+        ipcMain.handle(
+          'smith-compose:start',
+          (_event, projectId, prompt, model, reasoningEffort) => {
+            state.projectId = projectId;
+            state.prompt = prompt;
+            state.model = model;
+            state.reasoningEffort = reasoningEffort;
+            state.plan = {
+              planId,
+              projectId,
+              prompt,
+              refinedRequest: 'Talk the proposal over before starting it.',
+              rationale: 'A build proven by the project test command.',
+              pipeline: basePipeline,
+              agents: [],
+              warnings: [],
+              model,
+              reasoningEffort,
+            };
+            mirror.set(planId, snapshot());
+            setTimeout(push, 20);
+            return { planId };
+          },
+        );
+        ipcMain.removeHandler('smith-compose:list');
+        ipcMain.handle('smith-compose:list', (_event, projectId: string) =>
           [...mirror.values()].filter((row) => row.projectId === projectId),
         );
-        ipcMain.removeHandler('orchestrator:message');
-        ipcMain.handle('orchestrator:message', (_event, id, text) => {
+        ipcMain.removeHandler('smith-compose:get');
+        ipcMain.handle('smith-compose:get', (_event, id: string) => mirror.get(id) ?? null);
+        ipcMain.removeHandler('smith-compose:revise');
+        ipcMain.handle('smith-compose:revise', (_event, id, text) => {
           if (id !== planId) return 'session not found';
           state.messages.push({
             id: `op-${state.messages.length}`,
@@ -459,7 +493,7 @@ test.describe('Runs / Orchestrator', () => {
           setTimeout(() => {
             state.messages.push({
               id: `or-${state.messages.length}`,
-              role: 'orchestrator',
+              role: 'smith',
               text: 'Renamed the verify phase as asked.',
               revisedPlan: true,
               at: Date.now(),
@@ -482,7 +516,7 @@ test.describe('Runs / Orchestrator', () => {
       });
 
       await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
-      await window.getByTestId('run-request').fill('Prove the plan chat end to end.');
+      await window.getByTestId('run-request').fill('Prove pinned plan refresh.');
       await window.getByTestId('run-plan').click();
 
       const planCard = window.getByTestId('plan-card');
@@ -502,21 +536,32 @@ test.describe('Runs / Orchestrator', () => {
       await window.keyboard.press('Escape');
       await expect(fullscreen).not.toBeVisible();
 
-      // Chat: the reply lands in the transcript and the revision replaces the
-      // proposal without leaving the card.
-      await window.getByTestId('plan-chat-input').fill('rename the verify phase to prove');
-      await window.getByTestId('plan-chat-send').click();
-      await expect(window.getByTestId('plan-chat-operator')).toContainText('rename the verify');
-      await expect(window.getByTestId('plan-chat-orchestrator')).toContainText(
-        'Renamed the verify phase',
+      // Smith owns the conversation now. Drive only the composition boundary
+      // here to verify live pin/card invalidation, not model tool selection.
+      await window.getByTestId('plan-discuss').click();
+      const pin = window.getByTestId('smith-pinned-plan');
+      await expect(pin).toContainText('revision 1');
+      await pin.getByRole('button', { name: 'Open card', exact: true }).click();
+      await window.evaluate(() =>
+        globalThis.window.foundry.compose.revise(
+          'plan-e2e-chat',
+          'rename the verify phase to prove',
+        ),
       );
-      await expect(window.getByTestId('plan-chat-revised')).toBeVisible();
+      await expect(pin).toContainText('revision 2');
+      const discussion = window
+        .getByTestId('smith-pinned-card')
+        .getByTestId('plan-earlier-discussion');
+      await discussion.getByText('Earlier discussion', { exact: true }).click();
+      await expect(discussion).toContainText('rename the verify');
+      await expect(discussion).toContainText('Renamed the verify phase');
+      await expect(discussion).toContainText('proposal revised');
       await expect(window.getByTestId('plan-canvas-node-prove')).toBeVisible();
       await expect(planCard).toBeVisible();
 
-      const chatProof = testInfo.outputPath('plan-chat-revised.png');
+      const chatProof = testInfo.outputPath('pinned-plan-revised.png');
       await window.screenshot({ path: chatProof, fullPage: true, animations: 'disabled' });
-      await testInfo.attach('plan chat revision', { path: chatProof, contentType: 'image/png' });
+      await testInfo.attach('pinned plan revision', { path: chatProof, contentType: 'image/png' });
     } finally {
       await app?.close();
     }
@@ -529,7 +574,7 @@ test.describe('Runs / Parallel proposals (FOU-349)', () => {
    * lifecycle, navigation, sidebar, and proposal cards stay under test; only
    * the expensive planner and run start are replaced. Proposals persist in
    * the main process (globalThis), so a renderer reload re-reads them through
-   * `orchestrator:list` exactly like the real ProposalStore.
+   * `compose:list` exactly like the real ProposalStore.
    */
   async function installParallelStub(app: ElectronApplication, doneDelayMs: number): Promise<void> {
     await app.evaluate(
@@ -574,12 +619,12 @@ test.describe('Runs / Parallel proposals (FOU-349)', () => {
           w?.webContents?.send(channel, payload);
         };
         for (const channel of [
-          'orchestrator:plan',
-          'orchestrator:list',
-          'orchestrator:get',
-          'orchestrator:accept',
-          'orchestrator:discard',
-          'orchestrator:cancel',
+          'smith-compose:start',
+          'smith-compose:list',
+          'smith-compose:get',
+          'smith-compose:accept',
+          'smith-compose:discard',
+          'smith-compose:cancel',
         ]) {
           try {
             ipcMain.removeHandler(channel);
@@ -610,7 +655,7 @@ test.describe('Runs / Parallel proposals (FOU-349)', () => {
               updatedAt: p.updatedAt,
             }));
         ipcMain.handle(
-          'orchestrator:plan',
+          'smith-compose:start',
           (_event: unknown, projectId: string, prompt: string, model: string, effort: string) => {
             const seq = (g.foundryE2eSequence as number) + 1;
             g.foundryE2eSequence = seq;
@@ -672,7 +717,7 @@ test.describe('Runs / Parallel proposals (FOU-349)', () => {
                   revision: 1,
                   updatedAt: Date.now(),
                 });
-                send('event:orchestrator-progress', {
+                send('event:smith-compose-progress', {
                   planId,
                   projectId,
                   status: 'done',
@@ -694,14 +739,14 @@ test.describe('Runs / Parallel proposals (FOU-349)', () => {
             return { planId };
           },
         );
-        ipcMain.handle('orchestrator:list', (_event: unknown, projectId: string) =>
+        ipcMain.handle('smith-compose:list', (_event: unknown, projectId: string) =>
           listed(projectId),
         );
-        ipcMain.handle('orchestrator:get', (_event: unknown, planId: string) => {
+        ipcMain.handle('smith-compose:get', (_event: unknown, planId: string) => {
           const found = store.get(planId as string);
           return found ?? null;
         });
-        ipcMain.handle('orchestrator:cancel', (_event: unknown, planId: string) => {
+        ipcMain.handle('smith-compose:cancel', (_event: unknown, planId: string) => {
           const current = store.get(planId as string);
           if (!current || current.status !== 'generating') return false;
           for (const timer of timers.get(planId as string) ?? []) {
@@ -711,7 +756,7 @@ test.describe('Runs / Parallel proposals (FOU-349)', () => {
           send('event:proposals-changed', { projectId: current.projectId, planId });
           return true;
         });
-        ipcMain.handle('orchestrator:discard', (_event: unknown, planId: string) => {
+        ipcMain.handle('smith-compose:discard', (_event: unknown, planId: string) => {
           const current = store.get(planId as string);
           if (!current || current.status === 'accepted') return false;
           if (current.status === 'discarded') return true;
@@ -722,7 +767,7 @@ test.describe('Runs / Parallel proposals (FOU-349)', () => {
           send('event:proposals-changed', { projectId: current.projectId, planId });
           return true;
         });
-        ipcMain.handle('orchestrator:accept', (_event: unknown, planId: string) => {
+        ipcMain.handle('smith-compose:accept', (_event: unknown, planId: string) => {
           const current = store.get(planId as string);
           if (!current) {
             return {

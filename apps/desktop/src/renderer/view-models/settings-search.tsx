@@ -308,7 +308,7 @@ export const SETTINGS_TOGGLES: SettingsToggleDef[] = [
   {
     id: 'soundEffects',
     title: 'Play sounds for planning, finished steps, and when you are needed',
-    keywords: 'sound effects audio tone ping beep orchestrator pipeline',
+    keywords: 'sound effects audio tone ping beep smith compose pipeline',
   },
 ];
 

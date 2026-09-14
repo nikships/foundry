@@ -65,10 +65,15 @@ describe('the IPC surface', () => {
   });
 
   it('registers the durable proposal channels the Activity sidebar restores from', () => {
-    expect(registered).toContain(IPC.orchestratorList);
-    expect(registered).toContain(IPC.orchestratorGet);
-    expect(registered).toContain(IPC.orchestratorAccept);
-    expect(registered).toContain(IPC.orchestratorDiscard);
+    expect(registered).toContain(IPC.smithComposeList);
+    expect(registered).toContain(IPC.smithComposeGet);
+    expect(registered).toContain(IPC.smithComposeAccept);
+    expect(registered).toContain(IPC.smithComposeDiscard);
+  });
+
+  it('publishes composition progress only on the Smith channel', () => {
+    expect(IPC.eventSmithComposeProgress).toBe('event:smith-compose-progress');
+    expect(Object.values(IPC)).not.toContain('event:orchestrator-progress');
   });
 
   it('registers the Tavily opt-in extension and credential boundary', () => {

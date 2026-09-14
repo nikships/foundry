@@ -6,6 +6,28 @@ import {
 import { IPC } from '../../../src/shared/ipc-contract.js';
 
 describe('Smith capability coverage', () => {
+  it('makes composition and revision immediate while retaining privileged approvals', () => {
+    for (const channel of [
+      IPC.smithComposeStart,
+      IPC.smithComposeRevise,
+      IPC.smithComposeGet,
+      IPC.smithComposeList,
+    ]) {
+      expect(SMITH_CAPABILITY_COVERAGE[channel]).toMatchObject({
+        tool: 'smith_compose',
+        mode: 'immediate',
+      });
+    }
+    for (const channel of [
+      IPC.smithComposeAccept,
+      IPC.smithComposeCancel,
+      IPC.smithComposeDiscard,
+      IPC.runsKill,
+      IPC.runsMergeWorktree,
+    ]) {
+      expect(SMITH_CAPABILITY_COVERAGE[channel]?.mode).toBe('approval');
+    }
+  });
   it('classifies every non-Smith invoke exactly once and treats events separately', () => {
     expect(uncoveredSmithInvokeChannels()).toEqual([]);
 

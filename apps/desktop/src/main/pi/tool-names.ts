@@ -16,7 +16,7 @@ export const FOUNDRY_TOOL_NAMES = [
   'acknowledge_direction',
 ] as const;
 export type FoundryToolName = (typeof FOUNDRY_TOOL_NAMES)[number];
-/** Schema-bound answer channel for one-shot helpers such as the Orchestrator. */
+/** Schema-bound answer channel for one-shot helpers such as the Compose. */
 export const ONESHOT_OUTPUT_TOOL_NAME = 'submit_result';
 
 /** Pi's built-ins. A phase runs all of them; none of them prompts a human. */

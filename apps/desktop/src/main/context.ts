@@ -23,8 +23,8 @@ import { themeBackgroundColor } from '@shared/themes.js';
 import {
   IPC,
   type DetectionState,
-  type OrchestratorAcceptResult,
-  type OrchestratorState,
+  type ComposeAcceptResult,
+  type ComposeState,
   type SetupState,
 } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
@@ -35,8 +35,9 @@ import { EnvelopeStore } from './store/envelopes.js';
 import { RunRegistry } from './engine/registry.js';
 import { createDetections, type DetectStart } from './engine/detect-session.js';
 import { createSetups, type SetupStart } from './engine/setup-session.js';
-import { createPlans, type PlanStart } from './orchestrator/plan-session.js';
-import { ProposalStore, proposalToLiveState } from './orchestrator/proposals.js';
+import { createComposeSessions, type ComposeStart } from './smith/compose/session.js';
+import { ProposalStore, proposalToLiveState } from './smith/compose/proposals.js';
+import { resolveSmithModel } from './smith/compose/model.js';
 import { runDetail, startRun } from './engine/operations.js';
 import { ReadinessSessions } from './readiness/sessions.js';
 import type { PanelRegistry } from './session/index.js';
@@ -52,6 +53,7 @@ import { smithEntitiesTool } from './smith/entity-action-tools.js';
 import { smithSettingsTool } from './smith/settings-tools.js';
 import { smithProjectsTool } from './smith/project-tools.js';
 import { smithRunsTool } from './smith/run-tools.js';
+import { smithComposeTool } from './smith/compose-tools.js';
 import { smithPrsTool } from './smith/pr-tools.js';
 import { smithProvidersTool } from './smith/provider-tools.js';
 import { smithCompanionTool } from './smith/companion-tools.js';
@@ -87,11 +89,11 @@ export class AppContext {
   readonly registry: RunRegistry;
   readonly detections: PanelRegistry<DetectStart, DetectionState>;
   readonly setups: PanelRegistry<SetupStart, SetupState>;
-  readonly plans: PanelRegistry<PlanStart, OrchestratorState>;
+  readonly plans: PanelRegistry<ComposeStart, ComposeState>;
   /**
    * Durable proposal records. The live `plans` registry is only the turn
    * cache; this store is the history that survives navigation, reconnect,
-   * and restart. Renderer reads via `orchestrator:list/get/accept/discard`.
+   * and restart. Renderer reads via `compose:list/get/accept/discard`.
    */
   readonly proposals: ProposalStore;
   readonly readiness: ReadinessSessions;
@@ -168,10 +170,10 @@ export class AppContext {
       this.broadcast(IPC.eventSetupProgress, state),
     );
     // Proposals own the push fan-out: `onProgress` persists the durable row
-    // and broadcasts both `orchestrator-progress` (live turn) and
+    // and broadcasts both `smith-compose-progress` (live turn) and
     // `proposals-changed` (list invalidation). The closure runs async after
     // construction, so referencing `this.proposals` here is safe.
-    this.plans = createPlans(this.oneShot, (state) => this.proposals.onProgress(state));
+    this.plans = createComposeSessions(this.oneShot, (state) => this.proposals.onProgress(state));
     const smithReadinessObservers = new Map<string, (state: ReadinessState) => void>();
     this.readiness = new ReadinessSessions(this.oneShot, (state) => {
       smithReadinessObservers.get(state.projectId)?.(state);
@@ -233,13 +235,12 @@ export class AppContext {
       notifyRuns: () => this.broadcast(IPC.eventRunsChanged),
       enabledModelIds: () => enabledModelIds(this.supportDir, this.settings.get().hiddenModelIds),
       onStateChanged: () => this.broadcast(IPC.eventCompanionChanged),
-      orchestrator: {
+      compose: {
         options: async () => {
           const settings = this.settings.get();
           return {
             models: await this.availableModels(),
-            model: settings.defaultModel,
-            reasoningEffort: settings.defaultReasoningEffort,
+            ...resolveSmithModel(settings, 'compose'),
           };
         },
         start: (input) =>
@@ -247,8 +248,7 @@ export class AppContext {
             this.projects.get(input.projectId),
             {
               prompt: input.prompt,
-              model: input.model,
-              reasoningEffort: input.reasoningEffort,
+              ...resolveSmithModel(this.settings.get(), 'compose', input),
             },
             {
               rosterFor: (id) => this.rosterFor(id),
@@ -298,6 +298,7 @@ export class AppContext {
     // Native chats open lazily per project and share one proposal queue, so
     // every path preserves the one-card-at-a-time approval invariant.
     this.smith = new SmithService({
+      composeProposals: this.proposals,
       broadcast: (channel, payload) => this.broadcast(channel, payload),
       channels: { proposalsChanged: IPC.eventSmithProposalsChanged },
       // The queue awaits a save; store access lives in the IPC layer, so the
@@ -349,6 +350,7 @@ export class AppContext {
               smithSettingsTool(deps),
               smithProjectsTool(deps),
               smithRunsTool(deps),
+              smithComposeTool({ ctx: this, queue: proposals, projectId: deps.projectId }),
               smithPrsTool(deps),
               smithProvidersTool(deps),
               smithCompanionTool(deps),
@@ -386,8 +388,9 @@ export class AppContext {
             ? { kind: 'project', projectId: project.id, projectPath: project.path }
             : { kind: 'global', workspace: globalWorkspace },
           stateDir: chatRoot,
-          smithModel: () => this.settings.get().smithModel,
-          smithReasoningEffort: () => this.settings.get().smithReasoningEffort,
+          smithModel: () => resolveSmithModel(this.settings.get(), 'chat').model,
+          smithReasoningEffort: () =>
+            resolveSmithModel(this.settings.get(), 'chat').reasoningEffort,
           toolFactories,
           transport: (request) =>
             lazyTransport(async () => {
@@ -420,7 +423,7 @@ export class AppContext {
    * present, otherwise the durable row projected onto the live shape. Keeps
    * `start/state/cancel` working while the phone also sees late completion.
    */
-  private proposalLiveState(planId: string): OrchestratorState | null {
+  private proposalLiveState(planId: string): ComposeState | null {
     const live = this.plans.get(planId);
     if (live) return live;
     const durable = this.proposals.get(planId);
@@ -429,11 +432,11 @@ export class AppContext {
 
   /**
    * Exactly-once accept seam: proposal accepts must go through
-   * `orchestrator:accept` (this path), not `runs:start` directly, so the
+   * `compose:accept` (this path), not `runs:start` directly, so the
    * durable `accepted_run_id` idempotency key covers restarts. Manual and
    * Linear-pipeline paths keep using `runs:start`.
    */
-  private async startProposalRun(plan: GeneratedRunPlan): Promise<OrchestratorAcceptResult> {
+  private async startProposalRun(plan: GeneratedRunPlan): Promise<ComposeAcceptResult> {
     const outcome = await startRun(
       {
         projectById: (id) => this.projects.get(id),

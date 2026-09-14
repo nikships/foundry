@@ -11,6 +11,7 @@ The engine deterministically owns phase sequencing, retries, boundaries, gates, 
 - `envelopes.ts`, `gates.ts`, and `registry.ts` define phase protocols.
 - `rewinder.ts` owns correction rollback.
 - `healing.ts` runs bounded repair turns for eligible code phases.
+- `../smith/compose/replan.ts` supplies read-only pipeline-repair proposals; the engine validates and applies the replacement tail.
 - `phase-context.ts` and `prompts.ts` render phase inputs.
 - `compaction.ts` owns the Foundry compact summary and constitution pins.
 

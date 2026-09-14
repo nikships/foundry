@@ -181,7 +181,7 @@ export class Tracer {
     baseRef: string | null;
     branchPointSha?: string | null;
     mode: RunMode;
-    /** The Orchestrator's confirmed plan, when this run was generated from one. */
+    /** Smith composition's confirmed plan, when this run was generated from one. */
     plan?: GeneratedRunPlan | null;
     /** Immutable external issue snapshot, when one triggered this run. */
     source?: RunSource | null;
@@ -342,7 +342,7 @@ export class Tracer {
     );
   }
 
-  // ── proposals (durable orchestrator records, sole-writer: this class) ────
+  // ── proposals (durable compose records, sole-writer: this class) ────
 
   /**
    * One durable row per `startPlan` call, written before any run exists.

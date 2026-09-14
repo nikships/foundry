@@ -1,17 +1,17 @@
 /**
  * Which agent milestones deserve a sound. Tool chatter is not a milestone:
- * only orchestrator turns, proposed pipelines, finished phases, settled runs,
+ * only compose turns, proposed pipelines, finished phases, settled runs,
  * and moments that wait on the operator.
  *
  * First sighting of a run, plan, or Smith id is a baseline, never a concert.
  * Settled runs stay quiet even if a later list row grows phase summaries.
  */
 
-import type { OrchestratorState } from '@shared/ipc-contract.js';
+import type { ComposeState } from '@shared/ipc-contract.js';
 import type { PhaseStatus, RunRow, RunStatus, SmithProposal } from '@shared/types.js';
 
 export type AgentSoundCue =
-  | 'orchestrator-ping'
+  | 'compose-ping'
   | 'plan-proposed'
   | 'phase-success'
   | 'phase-fail'
@@ -20,9 +20,9 @@ export type AgentSoundCue =
   | 'run-failed'
   | 'needs-you';
 
-export interface OrchestratorCueSnapshot {
+export interface ComposeCueSnapshot {
   planId: string;
-  status: OrchestratorState['status'];
+  status: ComposeState['status'];
   hasPlan: boolean;
   revision: number;
   pingKeys: string[];
@@ -38,21 +38,21 @@ export interface SmithCueSnapshot {
   proposalIds: string[];
 }
 
-export function isOrchestratorPingNote(text: string): boolean {
+export function isComposePingNote(text: string): boolean {
   return (
-    text.startsWith('Asking the Orchestrator') ||
+    text.startsWith('Asking Smith to compose') ||
     text.startsWith('Sending the validation errors back')
   );
 }
 
-export function snapshotOrchestrator(state: OrchestratorState): OrchestratorCueSnapshot {
+export function snapshotCompose(state: ComposeState): ComposeCueSnapshot {
   return {
     planId: state.planId,
     status: state.status,
     hasPlan: state.plan !== null,
     revision: state.revision,
     pingKeys: state.entries
-      .filter((entry) => entry.kind === 'note' && isOrchestratorPingNote(entry.text))
+      .filter((entry) => entry.kind === 'note' && isComposePingNote(entry.text))
       .map((entry) => entry.id),
   };
 }
@@ -78,15 +78,15 @@ export function snapshotSmith(proposals: readonly Pick<SmithProposal, 'id'>[]): 
  * that arrives as the first event is the same late join: its ask notes are
  * history, not a ping.
  */
-export function orchestratorCues(
-  prev: OrchestratorCueSnapshot | undefined,
-  next: OrchestratorCueSnapshot,
+export function composeCues(
+  prev: ComposeCueSnapshot | undefined,
+  next: ComposeCueSnapshot,
 ): AgentSoundCue[] {
   const cues: AgentSoundCue[] = [];
   const seenPings = new Set(prev?.pingKeys ?? []);
   const hasNewPing = next.pingKeys.some((key) => !seenPings.has(key));
   if (hasNewPing && (prev !== undefined || next.status === 'running')) {
-    cues.push('orchestrator-ping');
+    cues.push('compose-ping');
   }
   if (prev && !prev.hasPlan && next.hasPlan) cues.push('plan-proposed');
   if (prev?.hasPlan && next.revision > prev.revision) cues.push('plan-proposed');

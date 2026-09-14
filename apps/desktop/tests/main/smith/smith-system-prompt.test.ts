@@ -9,8 +9,8 @@ import {
   compositionRuleBullets,
   isPhaseKind,
   PHASE_KINDS,
-} from '../../../src/main/orchestrator/composition-rules.js';
-import { ORCHESTRATOR_PROMPT } from '../../../src/main/orchestrator/plan.js';
+} from '../../../src/main/smith/compose/composition-rules.js';
+import { SMITH_COMPOSE_PROMPT } from '../../../src/main/smith/compose/plan.js';
 import {
   SMITH_CHAT_HARNESS,
   permissionContextBlock,
@@ -22,9 +22,8 @@ import type { PhaseKind } from '../../../src/shared/types.js';
 
 describe('SMITH_CHAT_HARNESS', () => {
   it('states the Smith identity and its place inside the app', () => {
-    expect(SMITH_CHAT_HARNESS).toContain("You are Smith, Foundry's entity-smith");
-    expect(SMITH_CHAT_HARNESS).toContain('inside the');
-    expect(SMITH_CHAT_HARNESS).toContain('Foundry app');
+    expect(SMITH_CHAT_HARNESS).toContain("You are Smith, Foundry's native operator agent");
+    expect(SMITH_CHAT_HARNESS).toContain('Foundry turns a prompt into reviewed code');
   });
 
   it('keeps the Foundry vocabulary the skill taught', () => {
@@ -33,17 +32,18 @@ describe('SMITH_CHAT_HARNESS', () => {
     }
   });
 
-  it('teaches Orchestrator as the default and Manual as opt-in', () => {
-    expect(SMITH_CHAT_HARNESS).toContain('For a new isolated run, use the Orchestrator by default');
+  it('teaches Smith composition as the default and Manual as opt-in', () => {
+    expect(SMITH_CHAT_HARNESS).toContain('For a new isolated run, compose a plan by default');
     expect(SMITH_CHAT_HARNESS).toContain(
       'pipeline only when the operator asks for a manual pipeline',
     );
     expect(SMITH_CHAT_HARNESS).not.toContain('picks a pipeline');
     expect(SMITH_CHAT_HARNESS).toContain('smith_present');
-    expect(SMITH_CHAT_HARNESS).toContain('orchestrator_accept');
+    expect(SMITH_CHAT_HARNESS).toContain('`smith_compose` accept (approval)');
+    expect(SMITH_CHAT_HARNESS).not.toContain('orchestrator_');
     const what = SMITH_CHAT_HARNESS.split('## How you work')[0]!;
-    expect(what.toLowerCase().indexOf('orchestrator')).toBeGreaterThan(-1);
-    expect(what.toLowerCase().indexOf('orchestrator')).toBeLessThan(
+    expect(what.toLowerCase()).not.toContain('orchestrator');
+    expect(what.toLowerCase().indexOf('compose')).toBeLessThan(
       what.toLowerCase().indexOf('manual'),
     );
   });
@@ -81,7 +81,7 @@ describe('SMITH_CHAT_HARNESS', () => {
     );
     expect(SMITH_CHAT_HARNESS).toContain('reasoningEffort');
     expect(SMITH_CHAT_HARNESS).toContain(compositionRuleBullets());
-    expect(ORCHESTRATOR_PROMPT).toContain(compositionRuleBullets());
+    expect(SMITH_COMPOSE_PROMPT).toContain(compositionRuleBullets());
   });
 
   it('carries the entity schemas: fields, enums, and reserved names', () => {
@@ -190,6 +190,15 @@ describe('scopeContextBlock', () => {
 });
 
 describe('screenContextBlock', () => {
+  it('resolves unnamed revisions to the pinned plan and names the in-process tool', () => {
+    const block = screenContextBlock({ route: 'runs', plan: { planId: 'plan-72', revision: 4 } });
+    expect(block).toContain('A plan is pinned: "plan-72" (revision 4)');
+    expect(block).toContain("'This plan', 'the proposal', or an unnamed revision request");
+    expect(block).toContain('smith_compose revise for changes (immediate)');
+    expect(block).toContain('smith_compose get for the current state');
+    expect(block).not.toContain('orchestrator_');
+    expect(screenContextBlock({ route: 'runs' })).not.toContain('A plan is pinned');
+  });
   it('names the route and the entity the operator is looking at', () => {
     const block = screenContextBlock({ route: 'runs', entity: { kind: 'run', id: 'run_42' } });
     expect(block).toContain('## Operator screen context');

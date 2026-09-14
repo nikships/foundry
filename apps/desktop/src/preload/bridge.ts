@@ -17,7 +17,7 @@ const EVENT_CHANNELS = {
   'updater-status': IPC.eventUpdaterStatus,
   'detection-progress': IPC.eventDetectionProgress,
   'setup-progress': IPC.eventSetupProgress,
-  'orchestrator-progress': IPC.eventOrchestratorProgress,
+  'smith-compose-progress': IPC.eventSmithComposeProgress,
   'proposals-changed': IPC.eventProposalsChanged,
   'smith-proposals-changed': IPC.eventSmithProposalsChanged,
   'smith-progress': IPC.eventSmithProgress,
@@ -185,15 +185,15 @@ const api: FoundryApi = {
       call(IPC.runsRestorableCheckpoints, projectId, runId),
     restoreCheckpoint: (projectId, input) => call(IPC.runsRestoreCheckpoint, projectId, input),
   },
-  orchestrator: {
-    plan: (projectId, prompt, model, reasoningEffort, images) =>
-      call(IPC.orchestratorPlan, projectId, prompt, model, reasoningEffort, images),
-    message: (planId, text) => call(IPC.orchestratorMessage, planId, text),
-    cancel: (planId) => call(IPC.orchestratorCancel, planId),
-    list: (projectId) => call(IPC.orchestratorList, projectId),
-    get: (planId) => call(IPC.orchestratorGet, planId),
-    accept: (planId, plan) => call(IPC.orchestratorAccept, planId, plan),
-    discard: (planId) => call(IPC.orchestratorDiscard, planId),
+  compose: {
+    start: (projectId, prompt, model, reasoningEffort, images) =>
+      call(IPC.smithComposeStart, projectId, prompt, model, reasoningEffort, images),
+    revise: (planId, text) => call(IPC.smithComposeRevise, planId, text),
+    cancel: (planId) => call(IPC.smithComposeCancel, planId),
+    list: (projectId) => call(IPC.smithComposeList, projectId),
+    get: (planId) => call(IPC.smithComposeGet, planId),
+    accept: (planId, plan) => call(IPC.smithComposeAccept, planId, plan),
+    discard: (planId) => call(IPC.smithComposeDiscard, planId),
   },
   prs: {
     status: (projectId) => call(IPC.prsStatus, projectId),

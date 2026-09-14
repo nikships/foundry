@@ -321,30 +321,30 @@ class HttpCompanionRepository(
         postJson("/v1/runs", CompanionStartResult.serializer(), encode(StartRunInput.serializer(), input))
 
     override suspend fun getOrchestratorOptions(): Result<OrchestratorOptions> =
-        getJson("/v1/orchestrator/options", OrchestratorOptions.serializer())
+        getJson("/v1/smith/compose/options", OrchestratorOptions.serializer())
 
     override suspend fun startOrchestratorPlan(
         request: OrchestratorStartRequest
     ): Result<OrchestratorStartResult> =
         postJson(
-            "/v1/orchestrator/plans",
+            "/v1/smith/compose/plans",
             OrchestratorStartResult.serializer(),
             encode(OrchestratorStartRequest.serializer(), request)
         )
 
     override suspend fun getOrchestratorPlan(planId: String): Result<OrchestratorState> =
-        getJson("/v1/orchestrator/plans/$planId", OrchestratorState.serializer())
+        getJson("/v1/smith/compose/plans/$planId", OrchestratorState.serializer())
 
     override suspend fun cancelOrchestratorPlan(planId: String): Result<Boolean> =
         authenticatedCall(
-            "/v1/orchestrator/plans/$planId/cancel",
+            "/v1/smith/compose/plans/$planId/cancel",
             { it.postJson() }
         ) { json.decodeFromString(CompanionKillResult.serializer(), it).ok }
 
     override suspend fun listOrchestratorPlans(projectId: String): Result<List<ProposalSnapshot>> {
         val encoded = URLEncoder.encode(projectId, StandardCharsets.UTF_8.name())
         return getJson(
-            "/v1/orchestrator/plans?projectId=$encoded",
+            "/v1/smith/compose/plans?projectId=$encoded",
             ListSerializer(ProposalSnapshot.serializer())
         )
     }
@@ -355,7 +355,7 @@ class HttpCompanionRepository(
     ): Result<OrchestratorAcceptResult> {
         val encoded = URLEncoder.encode(planId, StandardCharsets.UTF_8.name())
         return postJson(
-            "/v1/orchestrator/plans/$encoded/accept",
+            "/v1/smith/compose/plans/$encoded/accept",
             OrchestratorAcceptResult.serializer(),
             encode(OrchestratorAcceptRequest.serializer(), OrchestratorAcceptRequest(plan = plan))
         )

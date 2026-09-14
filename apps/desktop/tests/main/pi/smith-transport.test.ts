@@ -277,7 +277,7 @@ describe('opening the chat session', () => {
     expect(loader.noThemes).toBe(true);
     expect(loader.noContextFiles).toBe(true);
     expect(loader.systemPromptOverride?.(undefined)).toContain(
-      "You are Smith, Foundry's entity-smith",
+      "You are Smith, Foundry's native operator agent",
     );
   });
 

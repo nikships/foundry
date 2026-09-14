@@ -211,9 +211,9 @@ describe('voice work handoff language', () => {
 });
 
 describe('voice user-level capability routing', () => {
-  it('advertises orchestrator, assigned Linear work, pipelines, and key state via smith_work', () => {
+  it('advertises Smith composition, assigned Linear work, pipelines, and key state via smith_work', () => {
     const work = voiceToolDeclarations()[0];
-    expect(work.description).toContain('orchestrator');
+    expect(work.description).toContain('run-plan composition');
     expect(work.description).toMatch(/assigned Linear/i);
     expect(work.description).toMatch(/saved pipeline/i);
     expect(work.description).toMatch(/Voice key/i);
@@ -222,22 +222,17 @@ describe('voice user-level capability routing', () => {
 
   it('covers the spoken entry points with self-contained work text', () => {
     const ids = SMITH_VOICE_CAPABILITY_PROMPTS.map((item) => item.id);
-    for (const id of [
-      'assigned-work',
-      'ticket-status',
-      'orchestrator-plan',
-      'pipeline-run',
-    ] as const) {
+    for (const id of ['assigned-work', 'ticket-status', 'compose-plan', 'pipeline-run'] as const) {
       expect(ids).toContain(id);
     }
     expect(voiceCapabilityWorkText('assigned-work')).toMatch(/assigned to me/i);
     expect(voiceCapabilityWorkText('assigned-work', 'FOU')).toContain('FOU');
     expect(voiceCapabilityWorkText('ticket-status', 'FOU-123')).toContain('FOU-123');
-    expect(voiceCapabilityWorkText('orchestrator-plan', 'fix login')).toContain('fix login');
+    expect(voiceCapabilityWorkText('compose-plan', 'fix login')).toContain('fix login');
     expect(voiceCapabilityWorkText('pipeline-run', 'ship-it')).toContain('ship-it');
   });
 
-  it('narrates a settled orchestrator plan id instead of claiming an outcome', () => {
+  it('narrates a settled compose plan id instead of claiming an outcome', () => {
     const prompt = settledWorkPrompt('Your plan plan-a1b2c3d4e5f6 is ready for review.');
     expect(prompt).toContain('plan-a1b2c3d4e5f6');
     expect(prompt).toContain('Continue the conversation as Smith');

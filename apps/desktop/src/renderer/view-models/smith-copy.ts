@@ -17,7 +17,7 @@ export const SMITH_NO_PROVIDER_COPY =
  * privileged runs without their say-so.
  */
 export const SMITH_USER_ACCESS_COPY =
-  'Ask about your assigned Linear tickets, start an orchestrator plan, or run a saved pipeline — by text here or by voice. App actions wait for approval unless you enable YOLO mode for this chat.';
+  'Ask about your assigned Linear tickets, have Smith compose a run plan, or run a saved pipeline — by text here or by voice. App actions wait for approval unless you enable YOLO mode for this chat.';
 
 export const SMITH_YOLO_WARNING =
   'Smith will execute app actions and save definitions without approval cards in this chat, including requests sent by voice. It can delete data, run commands, change credentials, publish or merge code, and close the app. API key entry and Companion pairing still use private cards. Project boundaries and validation stay on. This mode resets on New chat or app restart. Enable it only for work you trust.';
@@ -45,7 +45,7 @@ export const SMITH_SECRET_VOICE_COPY =
  * arrives as progress, so polling or asking for status is the workflow —
  * never waiting silently for an outcome.
  */
-export const SMITH_ORCHESTRATOR_ASYNC_COPY =
+export const SMITH_COMPOSE_ASYNC_COPY =
   'Planning runs in the background. Smith hands back a plan ID right away — ask for its status any time.';
 
 /** Empty assigned-work result: valid, not an error. */

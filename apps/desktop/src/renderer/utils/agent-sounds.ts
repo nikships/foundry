@@ -17,7 +17,7 @@ interface Tone {
 const MASTER = 0.22;
 
 const CUES: Record<AgentSoundCue, Tone[]> = {
-  'orchestrator-ping': [
+  'compose-ping': [
     { freq: 880, duration: 0.055, gain: 0.09 },
     { freq: 1320, duration: 0.07, delay: 0.06, gain: 0.07 },
   ],

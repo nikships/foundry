@@ -31,8 +31,8 @@ import type {
   GeminiLiveToken,
   LinearConnectionState,
   LinearStartRunInput,
-  OrchestratorAcceptResult,
-  OrchestratorState,
+  ComposeAcceptResult,
+  ComposeState,
   PrAction,
   RunDetail,
   SmithChatState,
@@ -153,15 +153,15 @@ export interface CompanionContinueResult {
   detail: string;
 }
 
-/** The planning defaults and live catalog behind the Orchestrator picker. */
-export interface CompanionOrchestratorOptions {
+/** The planning defaults and live catalog behind Smith picker. */
+export interface CompanionComposeOptions {
   models: ModelInfo[];
   model: string;
   reasoningEffort: ReasoningEffort;
 }
 
-/** Body of `POST /v1/orchestrator/plans`. */
-export interface CompanionOrchestratorStartRequest {
+/** Body of `POST /v1/smith/compose/plans`. */
+export interface CompanionComposeStartRequest {
   projectId: string;
   prompt: string;
   model: string;
@@ -169,10 +169,10 @@ export interface CompanionOrchestratorStartRequest {
 }
 
 /** Planning starts asynchronously; the phone polls the returned id. */
-export type CompanionOrchestratorStartResult = { planId: string } | { error: string };
+export type CompanionComposeStartResult = { planId: string } | { error: string };
 
-/** Body of `POST /v1/orchestrator/plans/:planId/accept`. `plan` is optional. */
-export interface CompanionOrchestratorAcceptRequest {
+/** Body of `POST /v1/smith/compose/plans/:planId/accept`. `plan` is optional. */
+export interface CompanionComposeAcceptRequest {
   plan?: GeneratedRunPlan;
 }
 
@@ -261,19 +261,19 @@ export interface CompanionRoutes {
   'GET /v1/projects/:projectId/runs/:runId': { response: RunDetail };
   'GET /v1/projects/:projectId/runs/:runId/events': { response: EventPage };
   'POST /v1/runs': { request: StartRunInput; response: CompanionStartResult };
-  'GET /v1/orchestrator/options': { response: CompanionOrchestratorOptions };
-  'POST /v1/orchestrator/plans': {
-    request: CompanionOrchestratorStartRequest;
-    response: CompanionOrchestratorStartResult;
+  'GET /v1/smith/compose/options': { response: CompanionComposeOptions };
+  'POST /v1/smith/compose/plans': {
+    request: CompanionComposeStartRequest;
+    response: CompanionComposeStartResult;
   };
-  'GET /v1/orchestrator/plans/:planId': { response: OrchestratorState };
-  'POST /v1/orchestrator/plans/:planId/cancel': { response: { ok: boolean } };
+  'GET /v1/smith/compose/plans/:planId': { response: ComposeState };
+  'POST /v1/smith/compose/plans/:planId/cancel': { response: { ok: boolean } };
   /** Durable proposal list for a project; same rows the Activity sidebar reads. */
-  'GET /v1/orchestrator/plans': { response: ProposalSnapshot[] };
+  'GET /v1/smith/compose/plans': { response: ProposalSnapshot[] };
   /** Exactly-once accept; the accepted snapshot becomes the run plan. */
-  'POST /v1/orchestrator/plans/:planId/accept': {
-    request: CompanionOrchestratorAcceptRequest;
-    response: OrchestratorAcceptResult;
+  'POST /v1/smith/compose/plans/:planId/accept': {
+    request: CompanionComposeAcceptRequest;
+    response: ComposeAcceptResult;
   };
   'GET /v1/linear': { response: CompanionLinearState };
   'GET /v1/linear/issues': { response: LinearIssueSnapshot[] };

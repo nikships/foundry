@@ -1,5 +1,5 @@
 /**
- * Pure clipboard-image parsing for the Orchestrator composer.
+ * Pure clipboard-image parsing for Smith's run composer.
  *
  * Renderer tests run in Node, not jsdom, so paste handling is extracted here
  * and the React `onPaste` stays a thin snapshot of files/items.
