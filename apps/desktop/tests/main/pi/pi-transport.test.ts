@@ -453,18 +453,18 @@ describe('opening a session', () => {
     expect(spy.loaders[0]!.cwd).toBe(h.cwd);
   });
 
-  it('turns off every form of resource discovery', async () => {
+  it('turns off tool discovery and loads repository context files', async () => {
     const h = harness();
     await h.transport.start();
     const loader = spy.loaders[0]!;
     // An agent's tools, prompt, and policy come from the roster and from
     // src/main/pi. Whatever the operator installed for their own pi must not
-    // change what a run does.
+    // change what a run does. AGENTS.md in the worktree is loaded.
     expect(loader.noExtensions).toBe(true);
     expect(loader.noSkills).toBe(true);
     expect(loader.noPromptTemplates).toBe(true);
     expect(loader.noThemes).toBe(true);
-    expect(loader.noContextFiles).toBe(true);
+    expect(loader.noContextFiles).toBe(false);
     expect(loader.appendSystemPromptOverride?.([])).toEqual([]);
     const promptHarness = loader.systemPromptOverride?.(undefined) ?? '';
     expect(promptHarness).toMatch(/Foundry pipeline agent/i);

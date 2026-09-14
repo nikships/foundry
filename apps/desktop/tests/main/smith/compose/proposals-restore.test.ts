@@ -63,7 +63,7 @@ function setup() {
     return tracer;
   };
   let now = 1000;
-  const project = { id: 'proj_a', path: '/tmp/repo', contextSummary: '', commands: [] };
+  const project = { id: 'proj_a', path: '/tmp/repo', commands: [] };
   const services = {
     rosterFor: () => [],
     envelopeDefs: [],

@@ -38,7 +38,6 @@ describe('start-run command fill', () => {
       commands: [],
       // Keep this test on command detection; project-card backfill owns a
       // separate one-shot and has its own startRun integration coverage.
-      contextSummary: 'Cached project context.',
     };
     const oneShots = scriptedOneShots([
       {

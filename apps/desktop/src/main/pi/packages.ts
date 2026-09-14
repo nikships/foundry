@@ -14,9 +14,9 @@
  *
  * A package supplies extensions (tools an agent can call) and skills
  * (instructions only). Both reach a session through pi's additional-path
- * options, which are honoured while every discovery flag stays off — so what
- * loads is exactly these lists, and never a `.pi/` directory belonging to
- * whatever repository happens to be open.
+ * options, which are honoured while extension and skill discovery stay off —
+ * so what loads is exactly these lists, and never a `.pi/` directory belonging
+ * to whatever repository happens to be open.
  */
 
 import { DefaultPackageManager, SettingsManager } from '@earendil-works/pi-coding-agent';

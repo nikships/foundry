@@ -41,7 +41,6 @@ export const SMITH_PROJECT_OPERATIONS = [
   'scope_copies',
   'base_inspect',
   'base_sync',
-  'refresh_context',
 ] as const;
 
 type ProjectOperation = (typeof SMITH_PROJECT_OPERATIONS)[number];
@@ -134,8 +133,6 @@ const ACTIONS: Partial<Record<ProjectOperation, ActionSpec>> = {
     args: [{ name: 'path', kind: 'string' }],
   },
   base_sync: { channel: IPC.projectsBaseSync, risk: 'git', args: PROJECT_ID },
-  // Rebuilds the repository fact card run agents receive as context.
-  refresh_context: { channel: IPC.projectsRefreshContext, risk: 'write', args: PROJECT_ID },
 };
 
 function readArg(params: unknown, arg: ArgSpec): unknown {
@@ -158,7 +155,7 @@ export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_projects',
     label: 'Smith projects',
     description:
-      'Inspect and manage projects. Always supply projectId when an operation names it; this tool does not use the chat scope as a default. Read now: list, show(projectId), github_account, detection(detectionId), setup_get/setup_sniff(projectId), setup_progress(setupId), check/scope_copies/base_inspect(projectId). Approval: add opens a folder chooser; choose_parent opens a parent-folder chooser; create_github(input), save(project), remove/export(projectId), try_command(projectId,argv), sniff_commands/ask_commands(projectId), cancel_detection(detectionId), setup_save/setup_try(projectId,script), setup_ask(projectId), setup_cancel(setupId), base_sync/refresh_context(projectId), reveal(path). Read show before save and preserve other fields. Use returned detectionId/setupId to inspect progress, not to start the same work again. refresh_context rebuilds the repository fact card for run agents.',
+      'Inspect and manage projects. Always supply projectId when an operation names it; this tool does not use the chat scope as a default. Read now: list, show(projectId), github_account, detection(detectionId), setup_get/setup_sniff(projectId), setup_progress(setupId), check/scope_copies/base_inspect(projectId). Approval: add opens a folder chooser; choose_parent opens a parent-folder chooser; create_github(input), save(project), remove/export(projectId), try_command(projectId,argv), sniff_commands/ask_commands(projectId), cancel_detection(detectionId), setup_save/setup_try(projectId,script), setup_ask(projectId), setup_cancel(setupId), base_sync(projectId), reveal(path). Read show before save and preserve other fields. Use returned detectionId/setupId to inspect progress, not to start the same work again.',
     parameters: {
       type: 'object',
       properties: {

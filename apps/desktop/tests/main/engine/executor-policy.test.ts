@@ -173,7 +173,7 @@ describe('feedback re-entry into an already-prompted phase', () => {
 
     const outcome = await run({
       scripted,
-      project: { ...project, contextSummary: '## Stack\nTypeScript' },
+      project,
       pipeline: repairPipeline(),
     });
     expect(outcome.status).toBe('accepted');
@@ -193,8 +193,8 @@ describe('feedback re-entry into an already-prompted phase', () => {
         .map((e) => e.payload.kind),
     ).toEqual(['full', 'delta']);
 
-    // The project card stays in the standing role, which is re-injected every turn.
-    expect(turnRequests(scripted)[1]!.systemPrompt).toContain('## Stack\nTypeScript');
+    // The standing role is re-injected every turn.
+    expect(turnRequests(scripted)[1]!.systemPrompt).toContain('You build.');
   });
 
   it('leaves the ledger intact when compact fails, so feedbackTo stays a delta', async () => {

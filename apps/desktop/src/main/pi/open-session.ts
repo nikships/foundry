@@ -60,16 +60,17 @@ export function foundryResourceLoader(opts: {
     cwd: opts.cwd,
     agentDir: opts.agentDir,
     settingsManager: opts.settingsManager,
-    // Discovery is off: an agent's tools, prompt, and policy come from the
-    // roster and this directory. Context files (AGENTS.md walking to /) and
-    // .pi/APPEND_SYSTEM.md are prompt injection if left on. These flags stay
-    // true with package resources present: the `no*` flags drop what pi
-    // *discovered*, never what a caller named.
+    // Extension, skill, prompt-template, and theme discovery stay off: an
+    // agent's tools, prompt, and policy come from the roster and this
+    // directory. Context files (AGENTS.md walking from cwd) are loaded so
+    // repository instructions reach the agent. APPEND_SYSTEM.md stays off.
+    // Remaining `no*` flags drop what pi *discovered*, never what a caller
+    // named via additional paths.
     noExtensions: true,
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
-    noContextFiles: true,
+    noContextFiles: false,
     ...(opts.packageResources?.extensionPaths.length
       ? { additionalExtensionPaths: [...opts.packageResources.extensionPaths] }
       : {}),

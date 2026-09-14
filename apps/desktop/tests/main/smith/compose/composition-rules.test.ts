@@ -200,7 +200,6 @@ describe('compose composition rules', () => {
   it('lists more than two cast-pool ids when more are enabled', () => {
     const inputs: PlanPromptInputs = {
       request: 'add a changes file',
-      contextSummary: 'A small demo repository.',
       commands: [{ name: 'test', argv: ['npm', 'test'] }],
       roster: [],
       envelopeDefs: [],

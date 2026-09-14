@@ -63,12 +63,6 @@ function SetupPanel({
           </div>
         </div>
       )}
-      {state.rawReply && !live && (
-        <details className={`faint ${styles.setupResult}`}>
-          <summary className="linkish">Raw reply</summary>
-          <CodeBlock maxHeight={160}>{state.rawReply}</CodeBlock>
-        </details>
-      )}
     </div>
   );
 }

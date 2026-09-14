@@ -79,7 +79,7 @@ function harness() {
     now: () => now,
     startRun: async () => ({ ok: false, issues: [] }),
   });
-  const project = { id: 'proj_a', path: '/tmp/repo', contextSummary: '', commands: [] };
+  const project = { id: 'proj_a', path: '/tmp/repo', commands: [] };
   const services = {
     rosterFor: () => [],
     envelopeDefs: [],

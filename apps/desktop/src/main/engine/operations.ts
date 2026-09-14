@@ -33,7 +33,6 @@ import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './pr
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
 import { checkPlanRails } from '../smith/compose/plan.js';
-import { ensureProjectContext } from '../project-context.js';
 
 export interface StartRunOutcome {
   ok: boolean;
@@ -86,57 +85,26 @@ async function modelIdsForPlan(
 
 export interface WarmStartDeps {
   projectById(id: string): ProjectDef | null;
-  settings(): AppSettings;
-  /** Persists the merged project row. */
-  saveProject(next: ProjectDef): void;
   /**
    * Same catalog read the start rail uses. Warming it builds pi's runtime
    * while the proposal is under review instead of inside the Start click.
    */
   enabledModelIds?(): Promise<string[]>;
-  oneShot: OneShotFactory;
 }
 
 /**
- * Pre-start work worth doing while the proposal is under review: the project
- * card backfill and the model-catalog build `startRun` would otherwise await
- * inside the Start click. Both are cached upstream (`ensureProjectContext`'s
- * in-flight map, the memoized model runtime), so a start that follows reuses
+ * Pre-start work worth doing while the proposal is under review: the
+ * model-catalog build `startRun` would otherwise await inside the Start click.
+ * Cached upstream (the memoized model runtime), so a start that follows reuses
  * whatever finished and retries whatever failed. Never rejects.
  */
 export async function warmStartPrep(deps: WarmStartDeps, projectId: string): Promise<void> {
-  const project = deps.projectById(projectId);
-  if (!project) return;
-  const settings = deps.settings();
-  const quiet = async (work: Promise<unknown>): Promise<void> => {
-    try {
-      await work;
-    } catch {
-      // A failed warm is retried at start time; the click never hears about it.
-    }
-  };
-  await Promise.all([
-    quiet(deps.enabledModelIds ? deps.enabledModelIds() : Promise.resolve()),
-    quiet(
-      ensureProjectContext({
-        project,
-        settings,
-        oneShot: deps.oneShot,
-        persist: (next) => {
-          // Operator edits during review (commands, base ref) must survive:
-          // merge the fresh card onto the current row, never the stale snapshot.
-          const current = deps.projectById(next.id);
-          if (!current) return;
-          deps.saveProject({
-            ...current,
-            contextSummary: next.contextSummary,
-            contextSummarySha: next.contextSummarySha,
-          });
-        },
-        refreshIfStale: true,
-      }),
-    ),
-  ]);
+  if (!deps.projectById(projectId)) return;
+  try {
+    await (deps.enabledModelIds ? deps.enabledModelIds() : Promise.resolve());
+  } catch {
+    // A failed warm is retried at start time; the click never hears about it.
+  }
 }
 
 export async function startRun(
@@ -228,19 +196,6 @@ export async function startRun(
     });
     project = ensured.project;
   }
-
-  // Missing cards are generated here so the first agent turn already has
-  // Stack / layout / conventions / verification. A card whose baseRef HEAD
-  // moved is rebuilt the same way. Failure is non-fatal: the run still starts.
-  project = await ensureProjectContext({
-    project,
-    settings: deps.settings(),
-    oneShot: deps.oneShot,
-    persist: (next) => {
-      project = deps.saveProject(next);
-    },
-    refreshIfStale: true,
-  });
 
   const knownEnvelopes = deps.envelopeDefs().map((e) => e.name);
   const commandNames = project.commands.map((c) => c.name);

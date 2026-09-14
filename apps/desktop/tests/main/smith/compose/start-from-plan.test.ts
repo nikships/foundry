@@ -172,7 +172,6 @@ beforeEach(() => {
     project: {
       ...defaultProject(repo),
       mergePolicy: 'never',
-      contextSummary: '## Stack\nTypeScript',
     },
   };
 });

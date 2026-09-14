@@ -2,20 +2,12 @@ import type { AppContext } from '../../context.js';
 import { warmStartPrep } from '../../engine/operations.js';
 import { enabledModelIds, enabledModels } from '../../pi/enabled-models.js';
 import { ghStatus } from '../../system/gh.js';
-import { IPC } from '@shared/ipc-contract.js';
 import type { PlanImageAttachment, ReasoningEffort } from '@shared/types.js';
 import { resolveSmithModel } from './model.js';
 
 export type ComposeContext = Pick<
   AppContext,
-  | 'projects'
-  | 'proposals'
-  | 'rosterFor'
-  | 'envelopes'
-  | 'supportDir'
-  | 'settings'
-  | 'oneShot'
-  | 'broadcast'
+  'projects' | 'proposals' | 'rosterFor' | 'envelopes' | 'supportDir' | 'settings'
 >;
 
 /** The desktop and chat share guards, model resolution, and non-blocking prep. */
@@ -45,16 +37,11 @@ export function startComposeWithPrep(
 }
 
 function afterComposeStart(ctx: ComposeContext, projectId: string): void {
-  // Both resources are deduped upstream. Start reuses successes and retries failures.
+  // The catalog read is memoized upstream. Start reuses a success and retries a failure.
   void warmStartPrep(
     {
       projectById: (id) => ctx.projects.get(id),
-      settings: () => ctx.settings.get(),
-      saveProject: (next) => {
-        if (ctx.projects.save(next).ok) ctx.broadcast(IPC.eventSettingsChanged);
-      },
       enabledModelIds: () => enabledModelIds(ctx.supportDir, ctx.settings.get().hiddenModelIds),
-      oneShot: ctx.oneShot,
     },
     projectId,
   );

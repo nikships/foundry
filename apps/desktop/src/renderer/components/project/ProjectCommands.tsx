@@ -41,7 +41,6 @@ export default function ProjectCommands({
   const [detection, setDetection] = useState<DetectionState | null>(null);
   const [starting, setStarting] = useState(false);
   const [detectError, setDetectError] = useState('');
-  const [showRaw, setShowRaw] = useState(false);
 
   // Which detection this component is showing. A stale session's progress must
   // not paint over a newer one the user just started.
@@ -78,7 +77,6 @@ export default function ProjectCommands({
     setDetectError('');
     setFound(null);
     setDetection(null);
-    setShowRaw(false);
     try {
       const started = await api.projects.askAgentCommands(project.id);
       if ('error' in started) {
@@ -278,8 +276,6 @@ export default function ProjectCommands({
           onCancel={cancelDetection}
           onAccept={acceptProposal}
           onAcceptAll={acceptAllProposals}
-          showRaw={showRaw}
-          onToggleRaw={() => setShowRaw((v) => !v)}
         />
       )}
       {found && (

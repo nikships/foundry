@@ -23,8 +23,6 @@ export interface CompactionFacts {
   requiredFields: readonly string[];
   /** Current phase user prompt with the Report block removed. */
   phaseUserPrompt: string;
-  /** Repository / project card, already standing in the system role. */
-  projectCard: string;
 }
 
 /** Drops the trailing `## Report` example so a pin does not re-teach the envelope. */
@@ -93,9 +91,6 @@ export function foundryCompactionSummary(facts: CompactionFacts): string {
   const sections: string[] = [];
   if (facts.phaseUserPrompt.trim()) {
     sections.push(['## Phase prompt', '', facts.phaseUserPrompt.trim()].join('\n'));
-  }
-  if (facts.projectCard.trim()) {
-    sections.push(['## Project card', '', facts.projectCard.trim()].join('\n'));
   }
   sections.push(
     ['## Request', '', facts.request.trim() || '(none)'].join('\n'),

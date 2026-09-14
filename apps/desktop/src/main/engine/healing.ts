@@ -25,11 +25,7 @@ import type {
 } from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
-import {
-  envelopeSummaryBlock,
-  projectCommandBlock,
-  repositoryContextBlock,
-} from './agent-context.js';
+import { envelopeSummaryBlock, projectCommandBlock } from './agent-context.js';
 import { enforce, restoreToPhaseStart, snapshot, type Snapshot } from './boundary.js';
 
 /** The one method a healing turn needs; a one-shot session satisfies it. */
@@ -41,7 +37,6 @@ export interface HealingAgent {
 
 /** Facts appended beside HEALING_SYSTEM for a write-capable healer one-shot. */
 export interface HealingPromptContext {
-  repositoryContext?: string;
   envelopeSummaries?: { phase: string; summary: string }[];
   commands?: readonly ProjectCommand[];
 }
@@ -148,11 +143,9 @@ export function healingSupport(
   };
 }
 
-/** Standing healing rules plus the same repository card run agents receive. */
+/** Standing healing rules plus prior envelopes and project commands. */
 export function healingSystemRole(context?: HealingPromptContext): string {
   const sections = [HEALING_SYSTEM];
-  const card = repositoryContextBlock(context?.repositoryContext);
-  if (card) sections.push(card);
   const envelopes = envelopeSummaryBlock(context?.envelopeSummaries);
   if (envelopes) sections.push(envelopes);
   const commands = projectCommandBlock(context?.commands);

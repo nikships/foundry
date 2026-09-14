@@ -506,7 +506,7 @@ describe('healingAgent', () => {
     expect(oneShots.calls[0]!.systemPrompt).toBe(HEALING_SYSTEM);
   });
 
-  it('appends the repository card, prior envelope, and project commands', async () => {
+  it('appends prior envelopes and project commands', async () => {
     const cwd = scratchRepo();
     const oneShots = scriptedOneShots([{ text: 'done' }]);
     const support = healingSupport(
@@ -517,7 +517,6 @@ describe('healingAgent', () => {
 
     await support
       .open(cwd, {
-        repositoryContext: '## Stack\nTypeScript\n## Verification\n`npm test`',
         envelopeSummaries: [{ phase: 'build', summary: 'added the widget' }],
         commands: [
           { name: 'test', argv: ['npm', 'test'] },
@@ -528,9 +527,7 @@ describe('healingAgent', () => {
 
     const system = oneShots.calls[0]!.systemPrompt ?? '';
     expect(system.startsWith(HEALING_SYSTEM)).toBe(true);
-    expect(system).toContain('# Repository context');
-    expect(system).toContain('## Stack');
-    expect(system).toContain('## Verification');
+    expect(system).not.toContain('# Repository context');
     expect(system).toContain('added the widget');
     expect(system).toContain('npm test');
     expect(system).toContain('npm run lint');
@@ -558,21 +555,18 @@ describe('healingAgent', () => {
 });
 
 describe('healingSystemRole', () => {
-  it('keeps the standing rules and appends the card, envelope, and commands when set', () => {
+  it('keeps the standing rules and appends envelopes and commands when set', () => {
     const role = healingSystemRole({
-      repositoryContext: '## Stack\nTypeScript\n## Verification\n`npm test`',
       envelopeSummaries: [{ phase: 'build', summary: 'added the widget' }],
       commands: [{ name: 'test', argv: ['npm', 'test'] }],
     });
     expect(role.startsWith(HEALING_SYSTEM)).toBe(true);
-    expect(role).toContain('## Stack');
-    expect(role).toContain('## Verification');
+    expect(role).not.toContain('# Repository context');
     expect(role).toContain('added the widget');
     expect(role).toContain('npm test');
   });
 
-  it('stays on the standing rules when the card is empty', () => {
+  it('stays on the standing rules when no extra context is set', () => {
     expect(healingSystemRole()).toBe(HEALING_SYSTEM);
-    expect(healingSystemRole({ repositoryContext: '  ' })).toBe(HEALING_SYSTEM);
   });
 });

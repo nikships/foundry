@@ -1582,7 +1582,6 @@ function validateProjectStrings(issues: ValidationIssue[], raw: Record<string, u
     ['title', raw.title, 200],
     ['summary', raw.summary, 500],
     ['setupScript', raw.setupScript, 8_000],
-    ['contextSummary', raw.contextSummary, 4_000],
   ] as const;
   for (const [where, value, max] of fields) {
     if (value === null) {
@@ -1746,7 +1745,6 @@ export function deriveProjectCard(params: {
     divergence,
     scopes: params.scopes,
     health,
-    contextSummary: params.project.contextSummary?.slice(0, 4000),
   };
 }
 

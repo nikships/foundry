@@ -9,9 +9,8 @@ import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifySettings } from './shared.js';
 import { inspectProject } from '../readiness/sessions.js';
-import { ensureProjectContext } from '../project-context.js';
 
-type Ctx = Pick<AppContext, 'projects' | 'settings' | 'readiness' | 'broadcast' | 'oneShot'>;
+type Ctx = Pick<AppContext, 'projects' | 'settings' | 'readiness' | 'broadcast'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const persist = (project: ProjectDef): void => {
@@ -20,23 +19,7 @@ export function register(ctx: Ctx, handle: Handle): void {
   };
 
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
-  const withContext = (project: ProjectDef): Promise<ProjectDef> =>
-    ensureProjectContext({
-      project,
-      settings: ctx.settings.get(),
-      oneShot: ctx.oneShot,
-      persist: (next) => {
-        persist({
-          ...(projectOf(next.id) ?? next),
-          contextSummary: next.contextSummary,
-          contextSummarySha: next.contextSummarySha,
-        });
-      },
-    });
-  const loadProject = async (projectId: string): Promise<ProjectDef | null> => {
-    const found = projectOf(projectId);
-    return found ? withContext(found) : null;
-  };
+  const loadProject = (projectId: string): ProjectDef | null => projectOf(projectId);
 
   handle(
     IPC.readinessInspect,

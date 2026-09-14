@@ -6,6 +6,14 @@
 # false = install script stays blocked, exactly as under npm.
 # This repo is a single pnpm project: apps/website is standalone per AGENTS.md
 # and keeps its own installer, so there is deliberately no `packages:` glob.
+#
+# pnpm 12 defaults verifyDepsBeforeRun to `install`, so every `pnpm run` /
+# `pnpm exec` first runs `pnpm install`. That re-runs allowed native install
+# scripts (better-sqlite3's injected `node-gyp rebuild`) even when the lockfile
+# is already satisfied, and fails if node-gyp is not on PATH. Install is an
+# explicit step (`pnpm install --frozen-lockfile`); scripts must not mutate
+# node_modules.
+verifyDepsBeforeRun: false
 allowBuilds:
   electron: true
   esbuild: true
