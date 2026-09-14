@@ -122,6 +122,66 @@ describe('Smith activity display', () => {
     expect(smithActivityStatus([], true).label).toBe('Notes');
   });
 
+  it('keeps activity summary neutral on partial failures without work language', () => {
+    const success: SmithChatEntry = { ...tool, id: 't1', done: true, at: 1000 };
+    const failure: SmithChatEntry = { ...tool, id: 't2', failed: true, at: 3500 };
+
+    const status = smithActivityStatus([success, failure], false);
+    expect(status).toEqual({
+      active: false,
+      failed: false,
+      label: '2 tools · 2.5s',
+    });
+    expect(status.label).not.toMatch(/work/i);
+    // Individual failed tool preserves its failure state
+    expect(failure.failed).toBe(true);
+
+    // Multi-tool partial failure with elapsed time
+    const multi = smithActivityStatus(
+      [
+        { ...tool, id: 't1', done: true, at: 1000 },
+        { ...tool, id: 't2', failed: true, at: 2000 },
+        { ...tool, id: 't3', done: true, at: 6000 },
+      ],
+      false,
+    );
+    expect(multi).toEqual({
+      active: false,
+      failed: false,
+      label: '3 tools · 5.0s',
+    });
+
+    // Zero elapsed time renders bounded 0ms unit
+    expect(
+      smithActivityStatus(
+        [
+          { ...tool, done: true, at: 0 },
+          { ...tool, id: 't2', failed: true, at: 0 },
+        ],
+        false,
+      ),
+    ).toEqual({
+      active: false,
+      failed: false,
+      label: '2 tools · 0ms',
+    });
+
+    // Total failure still reports failure and uses standard work language
+    expect(
+      smithActivityStatus(
+        [
+          { ...tool, id: 't1', failed: true },
+          { ...tool, id: 't2', failed: true },
+        ],
+        false,
+      ),
+    ).toEqual({
+      active: false,
+      failed: true,
+      label: 'Work failed · 2 tools',
+    });
+  });
+
   it('bounds summaries but preserves full tool output', () => {
     expect(smithToolSummary(tool)).toBe('pnpm test');
     expect(tool.text.length).toBeGreaterThan(2000);

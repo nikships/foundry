@@ -1,4 +1,5 @@
 import type { SmithChatEntry, SmithTranscriptEntry } from '@shared/ipc-contract.js';
+import { duration } from '../utils/format.js';
 
 export type SmithActivityItem =
   | { kind: 'activity'; id: string; entries: SmithChatEntry[] }
@@ -18,6 +19,27 @@ export function smithActivityItems(entries: SmithTranscriptEntry[]): SmithActivi
   return items;
 }
 
+function activityElapsedMs(entries: SmithChatEntry[]): number {
+  if (entries.length === 0) return 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const entry of entries) {
+    const start = typeof entry.at === 'number' ? entry.at : 0;
+    const dur =
+      typeof (entry as { durationMs?: number }).durationMs === 'number'
+        ? (entry as { durationMs?: number }).durationMs!
+        : 0;
+    const end =
+      typeof (entry as { endedAt?: number }).endedAt === 'number'
+        ? (entry as { endedAt?: number }).endedAt!
+        : start + dur;
+    if (start < min) min = start;
+    if (end > max) max = end;
+  }
+  if (!isFinite(min) || !isFinite(max) || max < min) return 0;
+  return max - min;
+}
+
 export function smithActivityStatus(
   entries: SmithChatEntry[],
   running: boolean,
@@ -28,20 +50,37 @@ export function smithActivityStatus(
 } {
   const tools = entries.filter((entry) => entry.kind === 'tool');
   const active = running && tools.some((entry) => !entry.done && !entry.failed);
-  const failed = tools.some((entry) => entry.failed);
   const stopped = !running && tools.some((entry) => !entry.done && !entry.failed);
   const count = tools.length;
-  const label = active
-    ? 'Working'
-    : failed
-      ? 'Work failed'
-      : stopped
-        ? 'Work stopped'
-        : 'Work complete';
+
+  const hasFailed = tools.some((entry) => entry.failed);
+  const hasSuccessful = tools.some(
+    (entry) => !entry.failed && (entry.done || (!active && !stopped)),
+  );
+  const partialFailure = hasFailed && hasSuccessful;
+  const failed = !partialFailure && hasFailed;
+
+  let label: string;
+  if (!count) {
+    label = 'Notes';
+  } else if (partialFailure) {
+    const elapsed = activityElapsedMs(entries);
+    label = `${count} ${count === 1 ? 'tool' : 'tools'} · ${duration(elapsed)}`;
+  } else {
+    const state = active
+      ? 'Working'
+      : failed
+        ? 'Work failed'
+        : stopped
+          ? 'Work stopped'
+          : 'Work complete';
+    label = `${state} · ${count} ${count === 1 ? 'tool' : 'tools'}`;
+  }
+
   return {
     active,
     failed,
-    label: count ? `${label} · ${count} ${count === 1 ? 'tool' : 'tools'}` : 'Notes',
+    label,
   };
 }
 
