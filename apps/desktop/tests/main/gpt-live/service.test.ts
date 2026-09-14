@@ -84,10 +84,27 @@ describe('GptLiveService', () => {
     const instruction = voiceSystemInstruction();
     expect(instruction).toContain('You are Smith');
     expect(instruction).toContain('one identity and one continuous first-person conversation');
-    expect(instruction).toContain('briefly say something natural');
+    expect(instruction).toContain('self-contained optimized imperative request');
     expect(instruction).toContain('Never say you need to delegate, ask Smith, hand this off');
     expect(instruction).not.toContain('front-end over the real Smith');
     expect(instruction).not.toContain('You do not do the work yourself');
+  });
+
+  it('makes the delegation statement a direct imperative query, never a bare filler', () => {
+    const instruction = voiceSystemInstruction();
+    expect(instruction).toContain('speak exactly one self-contained optimized imperative request');
+    expect(instruction).toContain('No greeting, filler, acknowledgement, first-person future');
+    expect(instruction).toContain('routing language');
+    expect(instruction).toContain('raw speech transcript is never sent to Smith');
+    expect(instruction).toContain('Remove filler, false starts, and repetition');
+    expect(instruction).toContain('resolve references');
+    expect(instruction).toContain('preserve exact IDs, names, commands, numbers, and constraints');
+    expect(instruction).toContain('include the useful requested detail');
+    expect(instruction).toContain('Never delegate with only');
+    expect(instruction).toContain(
+      'Describe all currently running runs with their current phase, elapsed time, and blockers.',
+    );
+    expect(instruction).not.toContain('I’ll describe all currently running runs');
   });
 
   it('configures gpt-live-1 with client delegation and the chosen voice', () => {

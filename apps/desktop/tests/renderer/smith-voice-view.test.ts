@@ -10,6 +10,7 @@ import {
   foldSettleWatch,
   friendlyVoiceError,
   proposalSummary,
+  selectVoiceDelegationQuery,
   settledAnswerText,
   settledWorkPrompt,
   SMITH_VOICE_CAPABILITY_PROMPTS,
@@ -278,5 +279,74 @@ describe('voice secret handling', () => {
       },
     ]);
     expect(summary).not.toContain(VOICE_SECRET_REDIRECT);
+  });
+});
+
+describe('selectVoiceDelegationQuery', () => {
+  const rawInput =
+    "Hey, um, I'm wondering if there are any runs that are going on right now. Can you tell me more info?";
+  const optimizedOutput =
+    'I’ll describe all currently running runs with their current phase, elapsed time, and blockers.';
+
+  it('sends the model output statement, never the raw input transcript', () => {
+    expect(selectVoiceDelegationQuery({ input: rawInput, output: optimizedOutput })).toBe(
+      optimizedOutput,
+    );
+  });
+
+  it('cleans the optimized statement without reaching for the input', () => {
+    expect(
+      selectVoiceDelegationQuery({ input: rawInput, output: '  I’ll  describe\n runs  ' }),
+    ).toBe('I’ll describe runs');
+  });
+
+  it('never falls back to raw speech when no model statement exists', () => {
+    expect(selectVoiceDelegationQuery({ input: rawInput, output: '   ' })).toBeNull();
+    expect(selectVoiceDelegationQuery({ input: rawInput, output: '' })).toBeNull();
+  });
+
+  it('caps a runaway statement at the transcript budget', () => {
+    const long = `I’ll describe ${'x'.repeat(5000)}`;
+    const selected = selectVoiceDelegationQuery({ input: rawInput, output: long });
+    expect(selected).not.toBeNull();
+    expect(selected!.length).toBeLessThanOrEqual(4000);
+    expect(selected).toContain('I’ll describe');
+  });
+});
+
+describe('voice delegation renderer seam', () => {
+  it('delegates the model output through the ordinary smith send, never raw input', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const hookSrc = readFileSync(join(here, '../../src/renderer/hooks/useSmithVoice.ts'), 'utf8');
+    // The call wraps across lines (`api.smith\n  .send(…)`), so match the
+    // delegation call shape rather than a single-line spelling.
+    expect(hookSrc).toMatch(/\.send\(scopeId,\s*query/);
+    expect(hookSrc).toContain('selectVoiceDelegationQuery');
+    expect(hookSrc).not.toMatch(/\.voiceQuery\(/);
+    expect(hookSrc).not.toMatch(/voiceQuery:\s*true/);
+  });
+
+  it('restates instead of falling back when the model statement is empty', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const hookSrc = readFileSync(join(here, '../../src/renderer/hooks/useSmithVoice.ts'), 'utf8');
+    expect(hookSrc).toContain('session.commentary.append');
+    expect(hookSrc).toMatch(/Restate.*self-contained Smith request/);
+    expect(hookSrc).toContain('MAX_TRANSCRIPT_CHARS = 4000');
+  });
+
+  it('exposes no voiceQuery on the preload bridge', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const bridgeSrc = readFileSync(join(here, '../../src/preload/bridge.ts'), 'utf8');
+    expect(bridgeSrc).not.toContain('voiceQuery');
+    expect(bridgeSrc).not.toContain('smithVoiceQuery');
   });
 });

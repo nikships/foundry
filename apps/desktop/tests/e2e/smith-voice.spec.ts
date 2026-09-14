@@ -143,6 +143,53 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
   }
 });
 
+test('voice: delegation sends the model output statement through smith send, not raw input', async () => {
+  const { app, window } = await launchFoundry(seedOnboardedFixture().userDataDir);
+  try {
+    await expect(window.getByTestId('run-composer')).toBeVisible();
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('gpt-live:createSession');
+      ipcMain.handle('gpt-live:createSession', () => ({
+        sessionId: 'live_test',
+        sdp: 'test-answer',
+      }));
+      // Capture the delegation payload: the voice layer must send the model's
+      // optimized work statement through the ordinary send path.
+      const target = globalThis as unknown as { voiceSendText: string | null };
+      target.voiceSendText = null;
+      ipcMain.removeHandler('smith:send');
+      ipcMain.handle('smith:send', (_event, _projectId: string, text: string, _screen: unknown) => {
+        target.voiceSendText = text;
+        return null;
+      });
+    });
+    await controlledMicrophone(window);
+    await controlledPeer(window);
+    await openVoice(window);
+    await window.getByTestId('smith-voice-start').click();
+    await emit(window, { type: 'session.started', session: { id: 'live_test' } });
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
+    const rawInput =
+      'Hey, um, I’m wondering if there are any runs going on right now. Can you tell me more info?';
+    const optimizedOutput =
+      'Describe all currently running runs with their current phase, elapsed time, and blockers.';
+    await emit(window, { type: 'session.input_transcript.delta', delta: rawInput });
+    await emit(window, { type: 'session.output_transcript.delta', delta: optimizedOutput });
+    await emit(window, { type: 'session.delegation.created', delegation: { id: 'dlg_1' } });
+    await expect
+      .poll(() =>
+        app.evaluate(
+          () => (globalThis as unknown as { voiceSendText: string | null }).voiceSendText,
+        ),
+      )
+      .toBe(optimizedOutput);
+    // The overlay still shows the raw speech for the operator to read back.
+    await expect(window.getByTestId('smith-voice-panel')).toContainText(rawInput);
+  } finally {
+    await app.close();
+  }
+});
+
 test('voice: cancelling a pending session cannot revive an old connection', async () => {
   const { app, window } = await launchFoundry(seedOnboardedFixture().userDataDir);
   try {

@@ -2,12 +2,16 @@
  * Smith's live voice session: one GPT-Live WebRTC connection, its mic and
  * speaker plumbing, and client delegation into the same Smith chat.
  *
- * The voice model (`gpt-live-1`) speaks and listens. When it delegates, the
- * latest operator transcript is sent through `smith.send` into the same
- * `SmithChatSession` the Smith UI drives. Settled text is returned with
- * `session.commentary.append` so the voice model can narrate it. A proposal
- * that needs a secret is never approved by voice — the masked desktop card
- * owns the key.
+ * The voice model (`gpt-live-1`) speaks and listens. When it delegates, its
+ * spoken output transcript — the concise optimized work statement it just
+ * said aloud — is sent through the ordinary `smith.send` into the same
+ * `SmithChatSession` the Smith UI drives, where it lands verbatim as the
+ * visible operator row. The raw input transcript stays display-only in the
+ * overlay and is never sent; an empty model statement asks the model to
+ * restate rather than falling back to raw speech. Settled text is returned
+ * with `session.commentary.append` so the voice model can narrate it. A
+ * proposal that needs a secret is never approved by voice — the masked
+ * desktop card owns the key.
  *
  * All state is refs inside one `useRef` bundle plus `useState` only for what
  * the overlay renders, so reconnects and view changes never remount the
@@ -22,6 +26,7 @@ import {
   EMPTY_SETTLE_WATCH,
   foldSettleWatch,
   friendlyVoiceError,
+  selectVoiceDelegationQuery,
   settledAnswerText,
   settledWorkPrompt,
 } from '../view-models/smith-voice-view.js';
@@ -52,7 +57,12 @@ type LiveEvent = {
   delegation?: { id?: string; target?: string };
 };
 
-const MAX_TRANSCRIPT_CHARS = 200;
+/**
+ * How much of the running transcripts the overlay keeps. The raw input stays
+ * display-only; delegation sends the model's spoken optimized statement
+ * through the ordinary Smith send path, never the raw speech.
+ */
+const MAX_TRANSCRIPT_CHARS = 4000;
 const DATA_CHANNEL = 'oai-events';
 
 function errorMessage(e: unknown): string {
@@ -169,15 +179,19 @@ export function useSmithVoice(): {
   );
 
   const startWork = useCallback(
-    async (text: string, delegationId: string): Promise<void> => {
+    async (outputText: string, delegationId: string): Promise<void> => {
       const generation = generationRef.current;
       const current = (): boolean => generation === generationRef.current;
-      const trimmed = text.trim();
-      if (!trimmed) {
+      // GPT-Live's spoken statement is the optimized Smith query. The raw
+      // input transcript is display-only: an empty statement never falls
+      // back to raw speech, it asks the model to restate a concrete query.
+      const query = selectVoiceDelegationQuery({ input: '', output: outputText });
+      if (!query) {
         sendEvent({
           type: 'session.commentary.append',
           delegation_id: delegationId,
-          content: 'I did not catch a request to work on.',
+          content:
+            'I did not speak a concrete work query. Restate it as a concise, self-contained Smith request, then delegate again.',
         });
         return;
       }
@@ -191,8 +205,10 @@ export function useSmithVoice(): {
       }
       settleWatchRef.current = { delegated: true, running: true };
       delegationRef.current = delegationId;
+      // Voice delegation rides the ordinary text composer path: the model's
+      // optimized work statement lands verbatim as the visible operator row.
       const result = await api.smith
-        .send(scopeId, trimmed, screenRef.current ?? { route: 'runs' })
+        .send(scopeId, query, screenRef.current ?? { route: 'runs' })
         .catch((error: unknown) => {
           if (current()) settleWatchRef.current = EMPTY_SETTLE_WATCH;
           throw error;
@@ -236,15 +252,22 @@ export function useSmithVoice(): {
         return;
       }
       if (event.type === 'session.output_transcript.delta' && event.delta) {
-        transcriptRef.current.output = (transcriptRef.current.output + event.delta).slice(-600);
+        transcriptRef.current.output = (transcriptRef.current.output + event.delta).slice(
+          -MAX_TRANSCRIPT_CHARS,
+        );
         patch({ outputText: transcriptRef.current.output, speaking: true });
         window.clearTimeout(speakingTimerRef.current);
         speakingTimerRef.current = window.setTimeout(() => patch({ speaking: false }), 800);
         return;
       }
       if (event.type === 'session.delegation.created' && event.delegation?.id) {
+        // Snapshot the optimized statement, then reset the ref so a later
+        // turn can never reuse a previous statement. The next input delta
+        // starts the new turn fresh; the overlay display is separate state.
+        const optimized = transcriptRef.current.output;
         transcriptRef.current.finished = true;
-        void startWork(transcriptRef.current.input, event.delegation.id).catch((error: unknown) => {
+        transcriptRef.current.output = '';
+        void startWork(optimized, event.delegation.id).catch((error: unknown) => {
           failSession(error);
         });
       }

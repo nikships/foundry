@@ -108,6 +108,24 @@ export function friendlyVoiceError(raw: unknown): string {
   return oneLine || 'The live session failed. Try connecting again.';
 }
 
+/**
+ * Selects the GPT-Live-optimized delegation query for one voice turn.
+ * GPT-Live itself is the interaction/optimization layer both directions: on
+ * delegation it speaks a concise work statement that is also the
+ * self-contained Smith query, and only that model output enters Smith text.
+ * The raw input transcript is display-only and never a fallback — an empty
+ * optimized statement returns null so the caller asks the model to restate
+ * instead of sending raw speech.
+ */
+export function selectVoiceDelegationQuery(
+  transcript: { input: string; output: string },
+  maxChars = 4000,
+): string | null {
+  void transcript.input;
+  const cleaned = transcript.output.replace(/\s+/g, ' ').trim().slice(0, maxChars).trim();
+  return cleaned ? cleaned : null;
+}
+
 /** What the live session should show for one asynchronous work turn's progress. */
 export interface VoiceSettleWatch {
   /** True once a work call marked a turn live. */
