@@ -5,9 +5,9 @@
 // contributor alone once the Meta key is stored.
 //
 // Secrets never live here or in the repo. Provider keys belong to pi's auth
-// store (`<state>/foundry/pi/auth.json`) and the OpenAI voice key to its
-// encrypted credential file (`<state>/foundry/credentials/`); both are written
-// by the running app when the key is saved in Settings, never by this script. The
+// store (`<state>/foundry/pi/auth.json`) and the Gemini key to its encrypted
+// credential file (`<state>/foundry/credentials/`); both are written by the
+// running app when the key is saved in Settings, never by this script. The
 // first launch prints which keys still need that one-time entry; every later
 // launch reuses them untouched.
 //
@@ -105,8 +105,8 @@ if (existsSync(settingsFile) && !reset) {
 const missing = [];
 if (!piHasCredential(join(supportDir, 'pi', 'auth.json')))
   missing.push('Meta API key → Settings → Models & agent defaults → Meta key row');
-if (!existsSync(join(supportDir, 'credentials', 'gpt-live-api-key.bin')))
-  missing.push('OpenAI API key → Settings → Integrations → Smith voice mode card');
+if (!existsSync(join(supportDir, 'credentials', 'gemini-live-api-key.bin')))
+  missing.push('Gemini API key → Settings → Integrations → Smith voice mode card');
 
 /** True when pi's auth store holds at least one stored credential. */
 function piHasCredential(authFile) {

@@ -10,7 +10,6 @@ import {
   foldSettleWatch,
   friendlyVoiceError,
   proposalSummary,
-  selectVoiceDelegationQuery,
   settledAnswerText,
   settledWorkPrompt,
   SMITH_VOICE_CAPABILITY_PROMPTS,
@@ -157,10 +156,12 @@ describe('friendlyVoiceError', () => {
 
   it('maps an invalid-key blob to the Settings pointer, never the raw JSON', () => {
     const raw = new Error(
-      'Could not start a GPT-Live session: {"error":{"message":"Incorrect API key provided"}}',
+      'Could not mint a Live API token: {"error":{"code":400,"message":"API key not valid.",' +
+        '"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo",' +
+        '"reason":"API_KEY_INVALID"}]}}',
     );
     expect(friendlyVoiceError(raw)).toBe(
-      'Your OpenAI API key was rejected. Replace it in Settings → Integrations.',
+      'Your Gemini API key was rejected. Replace it in Settings → Integrations.',
     );
   });
 
@@ -252,15 +253,15 @@ describe('voice secret handling', () => {
         projectId: 'proj_1',
         createdAt: new Date().toISOString(),
         type: 'action',
-        operation: 'gpt_live_set_api_key',
-        title: 'gpt live set api key',
-        summary: 'gpt live set api key.',
+        operation: 'gemini_live_set_api_key',
+        title: 'gemini live set api key',
+        summary: 'gemini live set api key.',
         args: {},
         risk: 'credential',
-        secretRequest: { kind: 'api-key', label: 'OpenAI API key for Live Voice' },
+        secretRequest: { kind: 'api-key', label: 'Gemini API key for Live Voice' },
       },
     ]);
-    expect(summary).toContain('gpt live set api key');
+    expect(summary).toContain('gemini live set api key');
     expect(summary).toContain(VOICE_SECRET_REDIRECT);
   });
 
@@ -279,74 +280,5 @@ describe('voice secret handling', () => {
       },
     ]);
     expect(summary).not.toContain(VOICE_SECRET_REDIRECT);
-  });
-});
-
-describe('selectVoiceDelegationQuery', () => {
-  const rawInput =
-    "Hey, um, I'm wondering if there are any runs that are going on right now. Can you tell me more info?";
-  const optimizedOutput =
-    'I’ll describe all currently running runs with their current phase, elapsed time, and blockers.';
-
-  it('sends the model output statement, never the raw input transcript', () => {
-    expect(selectVoiceDelegationQuery({ input: rawInput, output: optimizedOutput })).toBe(
-      optimizedOutput,
-    );
-  });
-
-  it('cleans the optimized statement without reaching for the input', () => {
-    expect(
-      selectVoiceDelegationQuery({ input: rawInput, output: '  I’ll  describe\n runs  ' }),
-    ).toBe('I’ll describe runs');
-  });
-
-  it('never falls back to raw speech when no model statement exists', () => {
-    expect(selectVoiceDelegationQuery({ input: rawInput, output: '   ' })).toBeNull();
-    expect(selectVoiceDelegationQuery({ input: rawInput, output: '' })).toBeNull();
-  });
-
-  it('caps a runaway statement at the transcript budget', () => {
-    const long = `I’ll describe ${'x'.repeat(5000)}`;
-    const selected = selectVoiceDelegationQuery({ input: rawInput, output: long });
-    expect(selected).not.toBeNull();
-    expect(selected!.length).toBeLessThanOrEqual(4000);
-    expect(selected).toContain('I’ll describe');
-  });
-});
-
-describe('voice delegation renderer seam', () => {
-  it('delegates the model output through the ordinary smith send, never raw input', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { dirname, join } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const here = dirname(fileURLToPath(import.meta.url));
-    const hookSrc = readFileSync(join(here, '../../src/renderer/hooks/useSmithVoice.ts'), 'utf8');
-    // The call wraps across lines (`api.smith\n  .send(…)`), so match the
-    // delegation call shape rather than a single-line spelling.
-    expect(hookSrc).toMatch(/\.send\(scopeId,\s*query/);
-    expect(hookSrc).toContain('selectVoiceDelegationQuery');
-    expect(hookSrc).not.toMatch(/\.voiceQuery\(/);
-    expect(hookSrc).not.toMatch(/voiceQuery:\s*true/);
-  });
-
-  it('restates instead of falling back when the model statement is empty', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { dirname, join } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const here = dirname(fileURLToPath(import.meta.url));
-    const hookSrc = readFileSync(join(here, '../../src/renderer/hooks/useSmithVoice.ts'), 'utf8');
-    expect(hookSrc).toContain('session.commentary.append');
-    expect(hookSrc).toMatch(/Restate.*self-contained Smith request/);
-    expect(hookSrc).toContain('MAX_TRANSCRIPT_CHARS = 4000');
-  });
-
-  it('exposes no voiceQuery on the preload bridge', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { dirname, join } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const here = dirname(fileURLToPath(import.meta.url));
-    const bridgeSrc = readFileSync(join(here, '../../src/preload/bridge.ts'), 'utf8');
-    expect(bridgeSrc).not.toContain('voiceQuery');
-    expect(bridgeSrc).not.toContain('smithVoiceQuery');
   });
 });

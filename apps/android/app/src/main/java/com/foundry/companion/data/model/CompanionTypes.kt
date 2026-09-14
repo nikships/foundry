@@ -3,7 +3,7 @@ package com.foundry.companion.data.model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
-const val COMPANION_PROTOCOL_VERSION = 7
+const val COMPANION_PROTOCOL_VERSION = 6
 
 @Serializable
 data class CompanionPairingPayload(
@@ -1010,6 +1010,13 @@ data class SmithSendRequest(
 @Serializable
 data class SmithScopeRequest(
     val projectId: String? = null
+)
+
+@Serializable
+data class SmithVoiceToken(
+    val token: String,
+    val model: String,
+    val systemInstruction: String
 )
 
 @Serializable

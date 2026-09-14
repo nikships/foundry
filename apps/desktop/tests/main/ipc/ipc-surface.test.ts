@@ -84,13 +84,6 @@ describe('the IPC surface', () => {
     expect(registered).toContain(IPC.tavilyClearApiKey);
   });
 
-  it('registers the GPT-Live credential and session-create boundary', () => {
-    expect(registered).toContain(IPC.gptLiveState);
-    expect(registered).toContain(IPC.gptLiveSetApiKey);
-    expect(registered).toContain(IPC.gptLiveClearApiKey);
-    expect(registered).toContain(IPC.gptLiveCreateSession);
-  });
-
   it('registers the artifact channel the phase Document tab reads', () => {
     expect(registered).toContain(IPC.runsArtifacts);
   });

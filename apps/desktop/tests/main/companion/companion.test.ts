@@ -371,11 +371,13 @@ interface Harness {
 
 let h: Harness;
 let scriptedOptions: ScriptedAgentOptions = {};
-let voiceKey: string | null = 'sk-test';
+let voiceMints = 0;
+let voiceError: string | null = null;
 
 beforeEach(async () => {
   scriptedOptions = {};
-  voiceKey = 'sk-test';
+  voiceMints = 0;
+  voiceError = null;
   const repo = scratchRepo();
   const support = tempDir('foundry-companion-support-');
   const project = { ...defaultProject(repo), mergePolicy: 'never' as const };
@@ -487,14 +489,17 @@ beforeEach(async () => {
         models: async () => smith.models,
       },
       voice: {
-        state: () => ({
-          keySet: Boolean(voiceKey),
-          detail: voiceKey
-            ? 'Voice is configured.'
-            : 'Save an OpenAI API key to enable Smith voice mode.',
-        }),
-        apiKey: () => voiceKey,
-        voice: () => 'marin',
+        state: () => ({ keySet: true, detail: 'Voice is configured.' }),
+        mintToken: async () => {
+          voiceMints++;
+          return voiceError
+            ? { error: voiceError }
+            : {
+                token: `auth_tokens/one-use-${voiceMints}`,
+                model: 'gemini-3.1-flash-live-preview',
+                systemInstruction: 'Speak as Smith.',
+              };
+        },
       },
       bindHost: '127.0.0.1',
       ...(tailscaleHost ? { tailscaleHost } : {}),
@@ -548,26 +553,45 @@ function authed(token: string, path: string, init: RequestInit = {}): Promise<Re
 }
 
 describe('companion voice credentials', () => {
-  it('requires a paired bearer token before reading voice state', async () => {
-    const unauthenticated = await fetch(`${h.origin()}/v1/smith/voice`);
+  it('requires a paired bearer token before minting and marks tokens non-cacheable', async () => {
+    const unauthenticated = await fetch(`${h.origin()}/v1/smith/voice/token`, { method: 'POST' });
     expect(unauthenticated.status).toBe(401);
+    expect(voiceMints).toBe(0);
     const paired = await pairPhone();
     const status = await authed(paired.token, '/v1/smith/voice');
     expect(await status.json()).toEqual({ keySet: true, detail: 'Voice is configured.' });
-    expect((await authed(paired.token, '/v1/smith/voice/token', { method: 'POST' })).status).toBe(
-      404,
-    );
+    const malformed = await authed(paired.token, '/v1/smith/voice/token', {
+      method: 'POST',
+      body: '{',
+    });
+    expect(malformed.status).toBe(400);
+    expect(voiceMints).toBe(0);
+    const first = await authed(paired.token, '/v1/smith/voice/token', {
+      method: 'POST',
+      body: JSON.stringify({ projectId: 'project-1' }),
+    });
+    expect(first.headers.get('cache-control')).toBe('no-store');
+    expect(await first.json()).toEqual({
+      token: 'auth_tokens/one-use-1',
+      model: 'gemini-3.1-flash-live-preview',
+      systemInstruction: 'Speak as Smith.',
+    });
+    const second = await authed(paired.token, '/v1/smith/voice/token', { method: 'POST' });
+    expect(((await second.json()) as { token: string }).token).toBe('auth_tokens/one-use-2');
     h.host.unpair(paired.deviceId);
-    expect((await authed(paired.token, '/v1/smith/voice')).status).toBe(401);
+    expect((await authed(paired.token, '/v1/smith/voice/token', { method: 'POST' })).status).toBe(
+      401,
+    );
+    expect(voiceMints).toBe(2);
   });
 
-  it('reports missing-key state without exposing a token mint route', async () => {
+  it('returns a normal companion error when the Gemini key is missing or rejected', async () => {
     const paired = await pairPhone();
-    voiceKey = null;
-    const response = await authed(paired.token, '/v1/smith/voice');
+    voiceError = 'Configure the Gemini key in Settings → Integrations.';
+    const response = await authed(paired.token, '/v1/smith/voice/token', { method: 'POST' });
+    expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
-      keySet: false,
-      detail: expect.stringContaining('OpenAI'),
+      error: { code: 'bad_request', message: voiceError },
     });
   });
 });
@@ -1617,16 +1641,12 @@ describe('Tailscale companion listener', () => {
       expect(tail).toBe(`http://${secondBind}:${new URL(lan).port}`);
       expect(await host.start()).toEqual(state);
       const payload = host.pairingPayload()!;
-      expect(payload).toMatchObject({
-        origin: lan,
-        origins: [lan, tail],
-        protocolVersion: COMPANION_PROTOCOL_VERSION,
-      });
+      expect(payload).toMatchObject({ origin: lan, origins: [lan, tail], protocolVersion: 6 });
       expect((await fetch(`${tail}/v1/session`)).status).toBe(401);
       const request = {
         method: 'POST',
         body: JSON.stringify({
-          protocolVersion: COMPANION_PROTOCOL_VERSION,
+          protocolVersion: 6,
           secret: payload.secret,
           deviceName: 'Tailnet phone',
         }),
@@ -1641,7 +1661,7 @@ describe('Tailscale companion listener', () => {
         expect(session.status).toBe(200);
         expect(await session.json()).toMatchObject({
           desktopId: paired.desktopId,
-          protocolVersion: COMPANION_PROTOCOL_VERSION,
+          protocolVersion: 6,
         });
       }
       expect(host.unpair(paired.deviceId)).toBe(true);

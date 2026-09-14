@@ -27,7 +27,8 @@ import type {
 } from './types.js';
 import type {
   EventPage,
-  GptLiveConnectionState,
+  GeminiLiveConnectionState,
+  GeminiLiveToken,
   LinearConnectionState,
   LinearStartRunInput,
   ComposeAcceptResult,
@@ -43,7 +44,7 @@ import type {
  * it so a phone knows before pairing, and the pair exchange enforces it so a
  * stale client gets a readable refusal instead of a half-working session.
  */
-export const COMPANION_PROTOCOL_VERSION = 7;
+export const COMPANION_PROTOCOL_VERSION = 6;
 
 /**
  * What the desktop encodes in the pairing QR (FOU-85 renders it). Everything a
@@ -303,7 +304,8 @@ export interface CompanionRoutes {
    */
   'GET /v1/smith': { response: SmithChatState };
   /** Optional voice capability; older hosts return 404. The stored API key never crosses LAN. */
-  'GET /v1/smith/voice': { response: GptLiveConnectionState };
+  'GET /v1/smith/voice': { response: GeminiLiveConnectionState };
+  'POST /v1/smith/voice/token': { request: CompanionSmithScopeRequest; response: GeminiLiveToken };
   'POST /v1/smith/send': { request: CompanionSmithSendRequest; response: SmithChatState };
   'POST /v1/smith/cancel': { request: CompanionSmithScopeRequest; response: SmithChatState };
   'POST /v1/smith/new': { request: CompanionSmithScopeRequest; response: SmithChatState };

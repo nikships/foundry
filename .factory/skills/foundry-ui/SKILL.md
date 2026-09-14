@@ -579,7 +579,7 @@ project.
   Changing modes keeps the draft and voice connection. The mode bar shows the
   microphone state and an End button while voice is connected.
   Closing the popover keeps voice connected. The Smith launcher shows its state.
-  Starting voice uses the microphone and GPT-Live. Do not start it without permission.
+  Starting voice uses the microphone and Gemini. Do not start it without permission.
 - `smith-permission-mode` controls YOLO mode for the current chat. Enabling it
   requires the confirmation dialog and an idle Smith turn. App actions and entity
   saves then execute without approval cards. Key entry and Companion pairing still

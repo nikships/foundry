@@ -28,22 +28,22 @@ export const SMITH_PROVIDER_OPERATIONS = [
   'tavily_remove',
   'tavily_set_api_key',
   'tavily_clear_api_key',
-  'gpt_live_state',
-  'gpt_live_set_api_key',
-  'gpt_live_clear_api_key',
+  'gemini_live_state',
+  'gemini_live_set_api_key',
+  'gemini_live_clear_api_key',
 ] as const;
 
 type ProviderOperation = (typeof SMITH_PROVIDER_OPERATIONS)[number];
 type LinearProviderOperation = Extract<ProviderOperation, `linear_${string}`>;
 type TavilyProviderOperation = Extract<ProviderOperation, `tavily_${string}`>;
-type GptLiveProviderOperation = Extract<ProviderOperation, `gpt_live_${string}`>;
+type GeminiLiveProviderOperation = Extract<ProviderOperation, `gemini_live_${string}`>;
 type ProviderActionOperation = Exclude<
   ProviderOperation,
   | 'state'
   | 'stored_keys'
   | LinearProviderOperation
   | TavilyProviderOperation
-  | GptLiveProviderOperation
+  | GeminiLiveProviderOperation
 >;
 
 const ACTION_CHANNELS: Record<ProviderActionOperation, string> = {
@@ -70,7 +70,7 @@ export function smithProvidersTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_providers',
     label: 'Smith providers',
     description:
-      'Read connection state without approval: state, stored_keys (presence only), linear_state, tavily_state, gpt_live_state. Approval: connect/disconnect/cancel_login(provider), set_api_key/clear_api_key(providerId), linear_test/linear_set_api_key/linear_clear_api_key, tavily_install/tavily_remove/tavily_set_api_key/tavily_clear_api_key, gpt_live_set_api_key/gpt_live_clear_api_key. Read state before changes. OAuth uses provider; key operations use providerId. API key values are entered only in the masked approval card, never in arguments, chat, or spoken aloud over voice. A started login is not a completed connection; inspect state to confirm.',
+      'Read connection state without approval: state, stored_keys (presence only), linear_state, tavily_state, gemini_live_state. Approval: connect/disconnect/cancel_login(provider), set_api_key/clear_api_key(providerId), linear_test/linear_set_api_key/linear_clear_api_key, tavily_install/tavily_remove/tavily_set_api_key/tavily_clear_api_key, gemini_live_set_api_key/gemini_live_clear_api_key. Read state before changes. OAuth uses provider; key operations use providerId. API key values are entered only in the masked approval card, never in arguments, chat, or spoken aloud over voice. A started login is not a completed connection; inspect state to confirm.',
     parameters: {
       type: 'object',
       properties: {
@@ -96,7 +96,7 @@ export function smithProvidersTool(deps: SmithActionToolDeps): ToolDefinition {
       if (op === 'stored_keys') return immediate(deps, IPC.bridgeStoredKeys);
       if (isLinearProviderOperation(op)) return linearProviderOperation(deps, op);
       if (isTavilyProviderOperation(op)) return tavilyProviderOperation(deps, op);
-      if (isGptLiveProviderOperation(op)) return gptLiveProviderOperation(deps, op);
+      if (isGeminiLiveProviderOperation(op)) return geminiLiveProviderOperation(deps, op);
 
       const nameField = isKeyOperation(op) ? 'providerId' : 'provider';
       const name = stringField(params, nameField);
@@ -162,22 +162,23 @@ function linearProviderOperation(
   });
 }
 
-function isGptLiveProviderOperation(op: ProviderOperation): op is GptLiveProviderOperation {
-  return op.startsWith('gpt_live_');
+function isGeminiLiveProviderOperation(op: ProviderOperation): op is GeminiLiveProviderOperation {
+  return op.startsWith('gemini_live_');
 }
 
 /**
  * The voice layer's own credential seam. State reads immediately; setting or
  * clearing the key is a credential approval whose value arrives only via the
  * masked card — voice can approve the card but never speaks the secret.
- * Session create stays renderer-only and is deliberately not exposed here.
+ * Token minting stays renderer-only and is deliberately not exposed here.
  */
-function gptLiveProviderOperation(
+function geminiLiveProviderOperation(
   deps: SmithActionToolDeps,
-  op: GptLiveProviderOperation,
+  op: GeminiLiveProviderOperation,
 ): ReturnType<typeof immediate> {
-  if (op === 'gpt_live_state') return immediate(deps, IPC.gptLiveState);
-  const channel = op === 'gpt_live_set_api_key' ? IPC.gptLiveSetApiKey : IPC.gptLiveClearApiKey;
+  if (op === 'gemini_live_state') return immediate(deps, IPC.geminiLiveState);
+  const channel =
+    op === 'gemini_live_set_api_key' ? IPC.geminiLiveSetApiKey : IPC.geminiLiveClearApiKey;
   const label = op.replaceAll('_', ' ');
   return proposeAction(deps, {
     operation: op,
@@ -185,17 +186,17 @@ function gptLiveProviderOperation(
     summary: `${label}.`,
     args: {},
     risk: 'credential',
-    ...(op === 'gpt_live_set_api_key'
+    ...(op === 'gemini_live_set_api_key'
       ? {
           secretRequest: {
             kind: 'api-key' as const,
-            label: 'OpenAI API key for Live Voice',
-            placeholder: 'Enter OpenAI API key',
+            label: 'Gemini API key for Live Voice',
+            placeholder: 'Enter Gemini API key',
           },
         }
       : {}),
     execute: (secret) =>
-      op === 'gpt_live_set_api_key' ? deps.invoke(channel, secret) : deps.invoke(channel),
+      op === 'gemini_live_set_api_key' ? deps.invoke(channel, secret) : deps.invoke(channel),
   });
 }
 

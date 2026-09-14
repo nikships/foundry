@@ -5,12 +5,12 @@
     <!--
       The renderer loads nothing from the network and evaluates no inline
       script: everything it needs arrives over the preload bridge. The one
-      exception is Smith's voice layer, whose WebRTC media tracks connect to
-      OpenAI GPT-Live after main creates the session.
+      exception is Smith's voice layer, whose live audio socket connects to
+      the Gemini Live API with an ephemeral token minted in main.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://api.openai.com wss://*.openai.com; media-src 'self' blob:"
+      content="default-src 'self'; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' wss://*.googleapis.com; media-src 'self' blob:"
     />
     <meta name="color-scheme" content="dark light" />
     <!--

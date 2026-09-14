@@ -213,11 +213,11 @@ const api: FoundryApi = {
     proposalsList: () => call(IPC.smithProposalsList),
     answerProposal: (id, answer) => call(IPC.smithAnswerProposal, id, answer),
   },
-  gptLive: {
-    state: () => call(IPC.gptLiveState),
-    setApiKey: (apiKey) => call(IPC.gptLiveSetApiKey, apiKey),
-    clearApiKey: () => call(IPC.gptLiveClearApiKey),
-    createSession: (sdp) => call(IPC.gptLiveCreateSession, sdp),
+  geminiLive: {
+    state: () => call(IPC.geminiLiveState),
+    setApiKey: (apiKey) => call(IPC.geminiLiveSetApiKey, apiKey),
+    clearApiKey: () => call(IPC.geminiLiveClearApiKey),
+    mintToken: () => call(IPC.geminiLiveMintToken),
   },
   companion: {
     state: () => call(IPC.companionState),

@@ -53,6 +53,8 @@ interface CompanionRepository {
     suspend fun getPrDraft(projectId: String, runId: String): Result<CompanionPrDraft>
     suspend fun createPr(projectId: String, runId: String, request: CompanionPrCreateRequest): Result<PrAction>
     suspend fun getSmithState(projectId: String?): Result<SmithChatState>
+    suspend fun getSmithVoiceToken(projectId: String?): Result<SmithVoiceToken> =
+        Result.failure(UnsupportedOperationException("Voice is unavailable on this host"))
     suspend fun sendSmith(projectId: String?, text: String, screen: SmithScreenContext): Result<SmithChatState>
     suspend fun cancelSmith(projectId: String?): Result<SmithChatState>
     suspend fun newSmithChat(projectId: String?): Result<SmithChatState>

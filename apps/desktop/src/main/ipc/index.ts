@@ -25,7 +25,7 @@ import * as runs from './runs.js';
 import * as compose from './smith-compose.js';
 import * as prs from './prs.js';
 import * as smith from './smith.js';
-import * as gptLive from './gpt-live.js';
+import * as geminiLive from './gemini-live.js';
 import * as companion from './companion.js';
 import * as maintenance from './maintenance.js';
 import * as appRouter from './app.js';
@@ -48,7 +48,7 @@ export function registerIpc(ctx: AppContext): MainInvoker {
   compose.register(ctx, registry.handle);
   prs.register(ctx, registry.handle);
   smith.register(ctx, registry.handle);
-  gptLive.register(ctx, registry.handle);
+  geminiLive.register(ctx, registry.handle);
   companion.register(ctx, registry.handle);
   maintenance.register(ctx, registry.handle);
   appRouter.register(ctx, registry.handle);

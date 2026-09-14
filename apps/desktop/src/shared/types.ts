@@ -331,11 +331,6 @@ export interface AppSettings {
    */
   smithReasoningEffort: ReasoningEffort;
   /**
-   * GPT-Live output voice for Smith voice mode. Fixed at session start;
-   * changing it applies to the next connection. See `gpt-live.ts`.
-   */
-  smithVoice: string;
-  /**
    * How full an agent's context may get before the engine compacts it between
    * phases, as a fraction of the model's window.
    */

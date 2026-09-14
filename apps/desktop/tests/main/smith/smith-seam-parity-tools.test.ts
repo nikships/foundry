@@ -98,9 +98,13 @@ describe('smith_projects refresh_context', () => {
 describe('smith_providers Live Voice seam', () => {
   it('declares the voice credential operations but never token minting', () => {
     expect(SMITH_PROVIDER_OPERATIONS).toEqual(
-      expect.arrayContaining(['gpt_live_state', 'gpt_live_set_api_key', 'gpt_live_clear_api_key']),
+      expect.arrayContaining([
+        'gemini_live_state',
+        'gemini_live_set_api_key',
+        'gemini_live_clear_api_key',
+      ]),
     );
-    expect(SMITH_PROVIDER_OPERATIONS).not.toContain('gpt_live_create_session');
+    expect(SMITH_PROVIDER_OPERATIONS).not.toContain('gemini_live_mint_token');
     const h = providerHarness();
     expect(
       (h.tool.parameters as { properties: { operation: { enum: string[] } } }).properties.operation
@@ -110,48 +114,48 @@ describe('smith_providers Live Voice seam', () => {
 
   it('reads voice key state immediately', async () => {
     const h = providerHarness();
-    expect(json(await h.execute({ operation: 'gpt_live_state' }))).toEqual({
+    expect(json(await h.execute({ operation: 'gemini_live_state' }))).toEqual({
       ok: true,
       result: 'normalized',
     });
-    expect(h.invoke).toHaveBeenCalledWith(IPC.gptLiveState);
+    expect(h.invoke).toHaveBeenCalledWith(IPC.geminiLiveState);
     expect(h.queue.list()).toHaveLength(0);
   });
 
   it('keeps the voice key in the masked approval path', async () => {
     const h = providerHarness();
-    const promise = h.execute({ operation: 'gpt_live_set_api_key' });
+    const promise = h.execute({ operation: 'gemini_live_set_api_key' });
     await vi.waitFor(() => expect(h.queue.list()).toHaveLength(1));
     const proposal = h.queue.list()[0]!;
     expect(proposal).toMatchObject({
-      operation: 'gpt_live_set_api_key',
+      operation: 'gemini_live_set_api_key',
       args: {},
       risk: 'credential',
-      secretRequest: { kind: 'api-key', label: 'OpenAI API key for Live Voice' },
+      secretRequest: { kind: 'api-key', label: 'Gemini API key for Live Voice' },
     });
     expect(JSON.stringify(proposal)).not.toContain('VOICE-SECRET');
     await h.queue.answer(proposal.id, { approved: true, secret: 'VOICE-SECRET' });
-    expect(h.invoke).toHaveBeenCalledWith(IPC.gptLiveSetApiKey, 'VOICE-SECRET');
+    expect(h.invoke).toHaveBeenCalledWith(IPC.geminiLiveSetApiKey, 'VOICE-SECRET');
     expect(JSON.stringify(json(await promise))).not.toContain('VOICE-SECRET');
   });
 
   it('gates clearing the voice key as a credential action', async () => {
     const h = providerHarness();
-    const promise = h.execute({ operation: 'gpt_live_clear_api_key' });
+    const promise = h.execute({ operation: 'gemini_live_clear_api_key' });
     await vi.waitFor(() => expect(h.queue.list()).toHaveLength(1));
     expect(h.queue.list()[0]).toMatchObject({
-      operation: 'gpt_live_clear_api_key',
+      operation: 'gemini_live_clear_api_key',
       risk: 'credential',
     });
     await h.queue.answer(h.queue.list()[0]!.id, { approved: true });
-    expect(h.invoke).toHaveBeenCalledWith(IPC.gptLiveClearApiKey);
+    expect(h.invoke).toHaveBeenCalledWith(IPC.geminiLiveClearApiKey);
     expect(json(await promise)).toEqual({ ok: true, result: 'normalized' });
   });
 
   it('rejects an inline voice key like every other secret field', async () => {
     const h = providerHarness();
     expect(
-      json(await h.execute({ operation: 'gpt_live_set_api_key', apiKey: 'VOICE-SECRET' })),
+      json(await h.execute({ operation: 'gemini_live_set_api_key', apiKey: 'VOICE-SECRET' })),
     ).toMatchObject({ ok: false, error: expect.stringContaining('masked approval card') });
     expect(h.queue.list()).toHaveLength(0);
     expect(h.invoke).not.toHaveBeenCalled();

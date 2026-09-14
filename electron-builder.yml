@@ -53,8 +53,8 @@ mac:
   entitlements: assets/entitlements.mac.plist
   extendInfo:
     NSMicrophoneUsageDescription: >-
-      Smith voice mode uses the microphone to talk with you. Audio goes to
-      OpenAI GPT-Live; nothing is stored.
+      Smith voice mode uses the microphone to talk with you. Audio goes to the
+      Gemini Live API with a short-lived token; nothing is stored.
   target:
     - target: dmg
       arch:

@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { seedOnboardedFixture } from './seed.js';
 import { launchFoundry } from './harness.js';
 
-/** Drive WebRTC and the data channel without credentials, network, or the physical mic. */
+/** Drive the real SDK and audio worklet without credentials, network, or the physical mic. */
 async function controlledMicrophone(window: Page): Promise<void> {
   await window.evaluate(() => {
     const context = new AudioContext();
@@ -26,59 +26,42 @@ async function tracks(window: Page): Promise<{ enabled: boolean; state: string }
   );
 }
 
-async function controlledPeer(window: Page): Promise<void> {
+async function controlledSocket(window: Page): Promise<void> {
   await window.evaluate(() => {
     const target = globalThis as unknown as {
-      voiceChannel: { receive: (data: object) => void; close: () => void };
+      voiceSocket: { receive: (data: object) => void; close: () => void };
       voiceMessages: string[];
     };
     target.voiceMessages = [];
-    class TestChannel {
-      readyState = 'open';
-      onmessage: ((event: MessageEvent) => void) | null = null;
+    class TestSocket {
+      onopen?: () => void;
+      onclose?: () => void;
+      onmessage?: (event: MessageEvent) => void;
       constructor() {
-        target.voiceChannel = this;
-      }
-      addEventListener(type: string, handler: (event: MessageEvent) => void): void {
-        if (type === 'message') this.onmessage = handler;
+        target.voiceSocket = this;
+        queueMicrotask(() => this.onopen?.());
       }
       receive(data: object): void {
         this.onmessage?.(new MessageEvent('message', { data: JSON.stringify(data) }));
       }
       send(data: string): void {
         target.voiceMessages.push(data);
+        if (data.includes('"setup"')) queueMicrotask(() => this.receive({ setupComplete: {} }));
       }
       close(): void {
-        this.readyState = 'closed';
+        this.onclose?.();
       }
     }
-    class TestPeer {
-      localDescription: { type: string; sdp: string } | null = null;
-      iceGatheringState = 'complete';
-      addTrack(): void {}
-      addEventListener(): void {}
-      createDataChannel(): TestChannel {
-        return new TestChannel();
-      }
-      async createOffer(): Promise<{ type: string; sdp: string }> {
-        return { type: 'offer', sdp: 'test-offer' };
-      }
-      async setLocalDescription(desc: { type: string; sdp: string }): Promise<void> {
-        this.localDescription = desc;
-      }
-      async setRemoteDescription(): Promise<void> {}
-      close(): void {}
-    }
-    Object.defineProperty(globalThis, 'RTCPeerConnection', { configurable: true, value: TestPeer });
+    Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: TestSocket });
   });
 }
 
-async function emit(window: Page, event: object): Promise<void> {
-  await window.evaluate((payload) => {
+async function emit(window: Page, serverContent: object): Promise<void> {
+  await window.evaluate((content) => {
     (
-      globalThis as unknown as { voiceChannel: { receive: (data: object) => void } }
-    ).voiceChannel.receive(payload);
-  }, event);
+      globalThis as unknown as { voiceSocket: { receive: (data: object) => void } }
+    ).voiceSocket.receive({ serverContent: content });
+  }, serverContent);
 }
 
 async function openVoice(window: Page): Promise<void> {
@@ -94,28 +77,47 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
   try {
     await expect(window.getByTestId('run-composer')).toBeVisible();
     await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('gpt-live:createSession');
-      ipcMain.handle('gpt-live:createSession', () => ({
-        sessionId: 'live_test',
-        sdp: 'test-answer',
+      ipcMain.removeHandler('gemini-live:mintToken');
+      ipcMain.handle('gemini-live:mintToken', () => ({
+        token: 'test-token',
+        model: 'gemini-3.1-flash-live-preview',
+        systemInstruction: 'Test voice.',
       }));
     });
     await controlledMicrophone(window);
-    await controlledPeer(window);
+    await controlledSocket(window);
     await openVoice(window);
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
     expect(await tracks(window)).toEqual([]);
     await window.getByTestId('smith-voice-start').click();
-    await emit(window, { type: 'session.started', session: { id: 'live_test' } });
     await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
-    await emit(window, { type: 'session.input_transcript.delta', delta: 'Help me ' });
-    await emit(window, { type: 'session.input_transcript.delta', delta: 'think.' });
-    await emit(window, { type: 'session.output_transcript.delta', delta: 'Let’s explore ' });
-    await emit(window, { type: 'session.output_transcript.delta', delta: 'your idea.' });
+    await emit(window, { inputTranscription: { text: 'Help me ' } });
+    await emit(window, {
+      inputTranscription: { text: 'think.' },
+      outputTranscription: { text: 'Let’s explore ' },
+    });
+    await emit(window, {
+      outputTranscription: { text: 'your idea.' },
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: Buffer.alloc(24000 * 2 * 10).toString('base64'),
+              mimeType: 'audio/pcm;rate=24000',
+            },
+          },
+        ],
+      },
+    });
     const panel = window.getByTestId('smith-voice-panel');
     await expect(panel).toContainText('Help me think.');
     await expect(panel).toContainText('Let’s explore your idea.');
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Smith is speaking');
+    await emit(window, { turnComplete: true });
+    // Server completion must not end the speaking state before queued playback finishes.
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('Smith is speaking');
+    await emit(window, { interrupted: true });
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
     await window.getByTestId('smith-voice-mute').click();
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Microphone muted');
     expect(await tracks(window)).toEqual([{ enabled: false, state: 'live' }]);
@@ -123,7 +125,7 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
       .poll(() =>
         window.evaluate(() =>
           (globalThis as unknown as { voiceMessages: string[] }).voiceMessages.some((message) =>
-            message.includes('session.input_audio.mute'),
+            message.includes('audioStreamEnd'),
           ),
         ),
       )
@@ -135,6 +137,13 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Microphone muted');
     await window.getByTestId('smith-voice-mute').click();
     expect(await tracks(window)).toEqual([{ enabled: true, state: 'live' }]);
+    await window.evaluate(() =>
+      (globalThis as unknown as { voiceSocket: { close: () => void } }).voiceSocket.close(),
+    );
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('Let’s reconnect');
+    expect(await tracks(window)).toEqual([{ enabled: true, state: 'ended' }]);
+    await window.getByTestId('smith-voice-start').click();
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
     await window.getByTestId('smith-voice-stop').click();
     expect((await tracks(window)).every((track) => track.state === 'ended')).toBe(true);
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
@@ -143,67 +152,19 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
   }
 });
 
-test('voice: delegation sends the model output statement through smith send, not raw input', async () => {
-  const { app, window } = await launchFoundry(seedOnboardedFixture().userDataDir);
-  try {
-    await expect(window.getByTestId('run-composer')).toBeVisible();
-    await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('gpt-live:createSession');
-      ipcMain.handle('gpt-live:createSession', () => ({
-        sessionId: 'live_test',
-        sdp: 'test-answer',
-      }));
-      // Capture the delegation payload: the voice layer must send the model's
-      // optimized work statement through the ordinary send path.
-      const target = globalThis as unknown as { voiceSendText: string | null };
-      target.voiceSendText = null;
-      ipcMain.removeHandler('smith:send');
-      ipcMain.handle('smith:send', (_event, _projectId: string, text: string, _screen: unknown) => {
-        target.voiceSendText = text;
-        return null;
-      });
-    });
-    await controlledMicrophone(window);
-    await controlledPeer(window);
-    await openVoice(window);
-    await window.getByTestId('smith-voice-start').click();
-    await emit(window, { type: 'session.started', session: { id: 'live_test' } });
-    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
-    const rawInput =
-      'Hey, um, I’m wondering if there are any runs going on right now. Can you tell me more info?';
-    const optimizedOutput =
-      'Describe all currently running runs with their current phase, elapsed time, and blockers.';
-    await emit(window, { type: 'session.input_transcript.delta', delta: rawInput });
-    await emit(window, { type: 'session.output_transcript.delta', delta: optimizedOutput });
-    await emit(window, { type: 'session.delegation.created', delegation: { id: 'dlg_1' } });
-    await expect
-      .poll(() =>
-        app.evaluate(
-          () => (globalThis as unknown as { voiceSendText: string | null }).voiceSendText,
-        ),
-      )
-      .toBe(optimizedOutput);
-    // The overlay still shows the raw speech for the operator to read back.
-    await expect(window.getByTestId('smith-voice-panel')).toContainText(rawInput);
-  } finally {
-    await app.close();
-  }
-});
-
-test('voice: cancelling a pending session cannot revive an old connection', async () => {
+test('voice: cancelling a pending token cannot revive an old connection', async () => {
   const { app, window } = await launchFoundry(seedOnboardedFixture().userDataDir);
   try {
     await expect(window.getByTestId('run-composer')).toBeVisible();
     await controlledMicrophone(window);
-    await controlledPeer(window);
     await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('gpt-live:createSession');
-      const target = globalThis as unknown as { finishVoiceSession: () => void };
+      ipcMain.removeHandler('gemini-live:mintToken');
+      const target = globalThis as unknown as { finishVoiceMint: () => void };
       ipcMain.handle(
-        'gpt-live:createSession',
+        'gemini-live:mintToken',
         () =>
           new Promise((resolve) => {
-            target.finishVoiceSession = () => resolve({ sessionId: 'obsolete', sdp: 'obsolete' });
+            target.finishVoiceMint = () => resolve({ token: 'obsolete-token', model: 'test' });
           }),
       );
     });
@@ -213,29 +174,22 @@ test('voice: cancelling a pending session cannot revive an old connection', asyn
     await expect
       .poll(() =>
         app.evaluate(
-          () =>
-            typeof (globalThis as unknown as { finishVoiceSession?: () => void })
-              .finishVoiceSession,
+          () => typeof (globalThis as unknown as { finishVoiceMint?: () => void }).finishVoiceMint,
         ),
       )
       .toBe('function');
     await window.getByTestId('smith-voice-stop').click();
     await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('gpt-live:createSession');
-      ipcMain.handle('gpt-live:createSession', () => ({ error: 'New attempt failed safely.' }));
+      ipcMain.removeHandler('gemini-live:mintToken');
+      ipcMain.handle('gemini-live:mintToken', () => ({ error: 'New attempt failed safely.' }));
     });
     await window.getByTestId('smith-voice-start').click();
     await expect(window.getByRole('alert')).toHaveText('New attempt failed safely.');
     await app.evaluate(() =>
-      (globalThis as unknown as { finishVoiceSession: () => void }).finishVoiceSession(),
+      (globalThis as unknown as { finishVoiceMint: () => void }).finishVoiceMint(),
     );
     await expect(window.getByRole('alert')).toHaveText('New attempt failed safely.');
-    // WebRTC needs the mic before the offer, so both the cancelled attempt and
-    // the failed retry leave stopped tracks behind. No live track may survive
-    // and the stale session must not revive the error state.
-    const finalTracks = await tracks(window);
-    expect(finalTracks.length).toBeGreaterThan(0);
-    expect(finalTracks.every((track) => track.state === 'ended')).toBe(true);
+    expect(await tracks(window)).toEqual([]);
   } finally {
     await app.close();
   }
@@ -246,14 +200,15 @@ test('voice: stays inside Smith chat across modes and navigation', async () => {
   try {
     await expect(window.getByTestId('run-composer')).toBeVisible();
     await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('gpt-live:createSession');
-      ipcMain.handle('gpt-live:createSession', () => ({
-        sessionId: 'live_test',
-        sdp: 'test-answer',
+      ipcMain.removeHandler('gemini-live:mintToken');
+      ipcMain.handle('gemini-live:mintToken', () => ({
+        token: 'test-token',
+        model: 'gemini-3.1-flash-live-preview',
+        systemInstruction: 'Test voice.',
       }));
     });
     await controlledMicrophone(window);
-    await controlledPeer(window);
+    await controlledSocket(window);
     await window.getByTestId('smith-bubble').click();
     await window.getByTestId('smith-bubble-input').fill('Keep this draft');
     await window.getByTestId('smith-mode-voice').click();
@@ -263,7 +218,6 @@ test('voice: stays inside Smith chat across modes and navigation', async () => {
     await expect(window.getByTestId('smith-voice-fullscreen')).toHaveCount(0);
     expect(app.windows()).toHaveLength(1);
     await window.getByTestId('smith-voice-start').click();
-    await emit(window, { type: 'session.started', session: { id: 'live_test' } });
     await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
     await window.getByTestId('smith-voice-mute').click();
     await window.getByTestId('smith-mode-text').click();
@@ -303,7 +257,6 @@ test('voice: stays inside Smith chat across modes and navigation', async () => {
     await window.getByTestId('smith-mode-voice').click();
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
     await window.getByTestId('smith-voice-start').click();
-    await emit(window, { type: 'session.started', session: { id: 'live_test' } });
     await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
     await window.getByTestId('smith-bubble-close').click();
     await window.getByTestId('nav-settings').click();

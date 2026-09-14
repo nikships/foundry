@@ -194,9 +194,9 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   },
   {
     pane: 'integrations',
-    label: 'GPT Live',
+    label: 'Gemini Live',
     note: 'Speak with the same Smith you use in chat.',
-    keywords: 'gpt live openai voice smith speak microphone api key marin vesper',
+    keywords: 'gemini live voice smith speak microphone api key google ai studio',
   },
   // Project
   {
