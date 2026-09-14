@@ -183,7 +183,12 @@ test('voice: cancelling a pending session cannot revive an old connection', asyn
       (globalThis as unknown as { finishVoiceSession: () => void }).finishVoiceSession(),
     );
     await expect(window.getByRole('alert')).toHaveText('New attempt failed safely.');
-    expect(await tracks(window)).toEqual([]);
+    // WebRTC needs the mic before the offer, so both the cancelled attempt and
+    // the failed retry leave stopped tracks behind. No live track may survive
+    // and the stale session must not revive the error state.
+    const finalTracks = await tracks(window);
+    expect(finalTracks.length).toBeGreaterThan(0);
+    expect(finalTracks.every((track) => track.state === 'ended')).toBe(true);
   } finally {
     await app.close();
   }

@@ -49,8 +49,10 @@ class SmithVoiceController(
         scope = session
         mutableState.value = SmithVoiceState(phase = VoicePhase.Connecting)
         val pairing = repository.activeSession.value
-        session.launch {
-            repository.activeSession.collect { if (it == null || it != pairing) end() }
+        if (pairing != null) {
+            session.launch {
+                repository.activeSession.collect { if (it == null || it != pairing) end() }
+            }
         }
         if (id != generation) return
         tools = SmithVoiceTools(repository, projectId, session) { result ->
