@@ -11,7 +11,7 @@ import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import {
   BRIDGE_UNAVAILABLE_COPY,
   type BridgeState,
-  type GeminiLiveConnectionState,
+  type GptLiveConnectionState,
   type LinearConnectionState,
   type StoredProviderKey,
   type TavilyConnectionState,
@@ -55,6 +55,7 @@ import {
   type SettingsPaneId,
   type SettingsToggleDef,
 } from '../view-models/settings-search.js';
+import { GPT_LIVE_VOICES, isGptLiveVoiceId } from '@shared/gpt-live.js';
 import { SMITH_MODEL_UNSET_LABEL } from '../view-models/smith-chat-view.js';
 import { SMITH_NO_PROVIDER_COPY } from '../view-models/smith-copy.js';
 import styles from './SettingsScreen.module.css';
@@ -228,18 +229,18 @@ function PairingQr({
  * its own confirm for the destructive remove, so the integrations pane's render
  * stays small and the section reads exactly like Linear's and Tavily's.
  */
-function GeminiLiveSection({
-  onError,
-}: {
-  onError: (errors: string[]) => void;
-}): React.JSX.Element {
-  const [connection, setConnection] = useState<GeminiLiveConnectionState | null>(null);
+function GptLiveSection({ onError }: { onError: (errors: string[]) => void }): React.JSX.Element {
+  const { settings, patchSettings } = useApp();
+  const [connection, setConnection] = useState<GptLiveConnectionState | null>(null);
   const [keyDraft, setKeyDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  const selectedVoice = isGptLiveVoiceId(settings?.smithVoice)
+    ? settings.smithVoice
+    : GPT_LIVE_VOICES[0].id;
 
   useEffect(() => {
-    void api.geminiLive.state().then(setConnection);
+    void api.gptLive.state().then(setConnection);
   }, []);
 
   const runAction = async (
@@ -257,21 +258,21 @@ function GeminiLiveSection({
       setNote(message);
       onError([message]);
     } finally {
-      setConnection(await api.geminiLive.state());
+      setConnection(await api.gptLive.state());
       setBusy(false);
     }
   };
 
   const clearKey = useConfirmAction(
-    'Remove the stored Gemini API key? Smith voice mode will not connect until a new one is saved.',
+    'Remove the stored OpenAI API key? Smith voice mode will not connect until a new one is saved.',
     async (): Promise<void> => {
-      await runAction(() => api.geminiLive.clearApiKey());
+      await runAction(() => api.gptLive.clearApiKey());
     },
   );
 
   return (
-    <Section label="Gemini Live" note="Speak with the same Smith you use in chat.">
-      <div className={styles.providerCard} data-testid="gemini-live-integration">
+    <Section label="GPT Live" note="Speak with the same Smith you use in chat.">
+      <div className={styles.providerCard} data-testid="gpt-live-integration">
         <div className={styles.providerHead}>
           <h3>Smith voice mode</h3>
           <span
@@ -281,28 +282,47 @@ function GeminiLiveSection({
           </span>
         </div>
         <p className={styles.settingsLead}>
-          Voice mode speaks with Gemini&rsquo;s live model while your chosen Smith model handles the
-          same continuous conversation and work. The encrypted key uses this Mac&rsquo;s credential
-          storage and never enters settings.json or a transcript; the live session connects with a
-          short-lived token minted from it.
+          Voice mode speaks with GPT-live-1 while your chosen Smith model handles the same
+          continuous conversation and work. The encrypted key uses this Mac&rsquo;s credential
+          storage and never enters settings.json or a transcript. Main creates each live session
+          with that key; the renderer never sees it.
         </p>
         <Field
+          label="Voice"
+          htmlFor="gpt-live-voice"
+          hint="Applies the next time you start a voice session. Custom voices are not available."
+        >
+          <Dropdown
+            id="gpt-live-voice"
+            data-testid="gpt-live-voice"
+            value={selectedVoice}
+            options={GPT_LIVE_VOICES.map((voice) => ({
+              value: voice.id,
+              label: voice.label,
+              description: voice.description,
+            }))}
+            onChange={(next) => {
+              if (isGptLiveVoiceId(next)) void patchSettings({ smithVoice: next });
+            }}
+          />
+        </Field>
+        <Field
           label="API key"
-          htmlFor="gemini-live-api-key"
+          htmlFor="gpt-live-api-key"
           hint={
             connection?.keySet
               ? 'A key is stored. Saving a new key replaces it.'
-              : 'Create an API key in Google AI Studio. Only the live voice uses it.'
+              : 'Create an API key in the OpenAI dashboard. Only the live voice uses it.'
           }
         >
           <TextInput
-            id="gemini-live-api-key"
+            id="gpt-live-api-key"
             type="password"
             autoComplete="off"
             spellCheck={false}
             mono
             value={keyDraft}
-            placeholder={connection?.keySet ? '••••••••' : 'AIza…'}
+            placeholder={connection?.keySet ? '••••••••' : 'sk-…'}
             onChange={(event) => setKeyDraft(event.target.value)}
           />
         </Field>
@@ -311,7 +331,7 @@ function GeminiLiveSection({
             size="sm"
             variant="primary"
             disabled={busy || !keyDraft.trim()}
-            onClick={() => void runAction(() => api.geminiLive.setApiKey(keyDraft))}
+            onClick={() => void runAction(() => api.gptLive.setApiKey(keyDraft))}
           >
             {busy ? 'Saving…' : connection?.keySet ? 'Replace key' : 'Save key'}
           </Button>
@@ -2253,7 +2273,7 @@ export default function SettingsScreen({
                           </p>
                         </div>
                       </Section>
-                      <GeminiLiveSection onError={setErrors} />
+                      <GptLiveSection onError={setErrors} />
                     </>
                   )}
                 </PaneBody>

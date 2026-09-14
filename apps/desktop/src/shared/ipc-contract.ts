@@ -307,32 +307,26 @@ export type SmithTranscriptEntry = SmithChatEntry | SmithArtifactEntry;
  * Connection state for Smith's live voice layer, the same shape as Linear's:
  * a `keySet` pill plus a human sentence. The key itself never crosses.
  */
-export interface GeminiLiveConnectionState {
+export interface GptLiveConnectionState {
   keySet: boolean;
   detail: string;
 }
 
-export interface GeminiLiveActionResult {
+export interface GptLiveActionResult {
   ok: boolean;
   detail: string;
 }
 
 /**
- * What the voice layer needs to open the live session: a short-lived
- * ephemeral token minted from the stored key, the model id, and the persona
- * system instruction main composed. The stored API key never appears here.
+ * What the renderer needs to finish a GPT-Live WebRTC handshake. Main posts
+ * the SDP offer with the stored OpenAI key; only the session id and SDP
+ * answer cross this seam.
  */
-export interface GeminiLiveToken {
-  /** Opaque single-use token; the renderer presents it as the Live API key. */
-  token: string;
-  /** The Live API model the session must connect to. */
-  model: string;
-  /**
-   * The persona text installed as the session's system instruction, including
-   * the delegation-tool descriptions. Pinned here so the renderer and the
-   * token's own config cannot drift.
-   */
-  systemInstruction: string;
+export interface GptLiveSession {
+  /** Opaque Live session id, including its prefix. */
+  sessionId: string;
+  /** SDP answer to apply as the remote description. */
+  sdp: string;
 }
 
 export type SmithPermissionMode = 'ask' | 'bypass';
@@ -910,20 +904,20 @@ export interface FoundryApi {
     answerProposal(id: string, answer: SmithProposalAnswer): Promise<SmithProposalAnswerResult>;
   };
   /**
-   * Smith's live voice layer. The stored Gemini key never crosses this seam:
-   * the renderer connects to the Live API with a short-lived ephemeral token
-   * minted here, and real work goes back through `smithVoice.delegate` into
-   * the same chat session the Smith UI drives.
+   * Smith's live voice layer. The stored OpenAI key never crosses this seam:
+   * the renderer sends a WebRTC SDP offer, main creates the GPT-Live session,
+   * and real work goes back through client delegation into the same chat
+   * session the Smith UI drives.
    */
-  geminiLive: {
-    state(): Promise<GeminiLiveConnectionState>;
-    setApiKey(apiKey: string): Promise<GeminiLiveActionResult>;
-    clearApiKey(): Promise<GeminiLiveActionResult>;
+  gptLive: {
+    state(): Promise<GptLiveConnectionState>;
+    setApiKey(apiKey: string): Promise<GptLiveActionResult>;
+    clearApiKey(): Promise<GptLiveActionResult>;
     /**
-     * Mints a fresh ephemeral Live API token; one call per live session
-     * connection. The stored key never crosses this seam.
+     * Creates a GPT-Live WebRTC session from the renderer's SDP offer. One
+     * call per live connection. The stored key never crosses this seam.
      */
-    mintToken(): Promise<GeminiLiveToken | { error: string }>;
+    createSession(sdp: string): Promise<GptLiveSession | { error: string }>;
   };
   companion: {
     /** Host status plus the paired devices. Starts nothing. */
@@ -1132,10 +1126,10 @@ export const IPC = {
   smithSetPermissionMode: 'smith:setPermissionMode',
   smithProposalsList: 'smith:proposalsList',
   smithAnswerProposal: 'smith:answerProposal',
-  geminiLiveState: 'gemini-live:state',
-  geminiLiveSetApiKey: 'gemini-live:setApiKey',
-  geminiLiveClearApiKey: 'gemini-live:clearApiKey',
-  geminiLiveMintToken: 'gemini-live:mintToken',
+  gptLiveState: 'gpt-live:state',
+  gptLiveSetApiKey: 'gpt-live:setApiKey',
+  gptLiveClearApiKey: 'gpt-live:clearApiKey',
+  gptLiveCreateSession: 'gpt-live:createSession',
   companionState: 'companion:state',
   companionStart: 'companion:start',
   companionStop: 'companion:stop',
