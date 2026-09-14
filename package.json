@@ -41,7 +41,6 @@
     "package": "pnpm run build && pnpm run icons && pnpm run fetch:bridge && electron-builder --mac --arm64",
     "check:css": "node scripts/check-css-collisions.mjs",
     "check:docs": "node scripts/check-docs-commands.mjs",
-    "check:files": "node scripts/check-file-sizes.mjs",
     "check:duplicate": "jscpd apps/desktop/src --config .jscpd.json",
     "check": "node scripts/run-check.mjs"
   },

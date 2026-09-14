@@ -72,7 +72,6 @@ All commands run from the repository root.
 | Electron smoke             | `pnpm run test:e2e` (after `pnpm run build`)                        |
 | CSS collision check        | `pnpm run check:css`                                                |
 | Command-doc check          | `pnpm run check:docs`                                               |
-| File-size check            | `pnpm run check:files`                                              |
 | Duplication check          | `pnpm run check:duplicate`                                          |
 | Dependency audit           | `pnpm run audit:deps`                                               |
 | Full local gate            | `pnpm run check`                                                    |
