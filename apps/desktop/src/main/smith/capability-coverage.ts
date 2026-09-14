@@ -35,6 +35,7 @@ const secure = (tool: string, operation: string): SmithCapabilityCoverage => ({
 export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityCoverage>> = {
   [IPC.settingsGet]: read('smith_settings', 'get'),
   [IPC.settingsPatch]: approve('smith_settings', 'patch'),
+  [IPC.fontsList]: read('smith_settings', 'fonts'),
   [IPC.projectsList]: read('smith_projects', 'list'),
   [IPC.projectsAdd]: approve('smith_projects', 'add'),
   [IPC.projectsGithubAccount]: read('smith_projects', 'github_account'),

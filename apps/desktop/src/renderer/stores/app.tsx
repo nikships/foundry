@@ -12,6 +12,7 @@ import React, {
   useState,
 } from 'react';
 import type { AgentDef, AppSettings, EnvelopeDef, PipelineDef, ProjectDef } from '@shared/types.js';
+import { fontStack } from '@shared/types.js';
 import { themeAppearance } from '@shared/themes.js';
 import { api } from '../api.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
@@ -87,6 +88,14 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     root.dataset.theme = settings.theme;
     root.style.colorScheme = themeAppearance(settings.theme);
     root.dataset.themeReady = 'true';
+    // Installed-font preference: inline custom properties override the `:root`
+    // defaults immediately (no relaunch) and re-apply from settings.json on
+    // every launch. `fontStack` is total — hostile or missing values fall
+    // through the CSS stack to the shipped defaults — and theme application
+    // above is untouched, so either preference can change without clearing
+    // the other.
+    root.style.setProperty('--font', fontStack(settings.interfaceFont, 'ui'));
+    root.style.setProperty('--font-mono', fontStack(settings.monoFont, 'mono'));
   }, [settings]);
 
   const selectedProjectIdRef = useRef(selectedProjectId);

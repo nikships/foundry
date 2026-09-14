@@ -1,0 +1,18 @@
+/* Installed-font rows: dropdown left, reset right. Inherits Field/Dropdown chrome. */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+}

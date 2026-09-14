@@ -49,8 +49,16 @@ function guard<T extends object>(target: T): T {
 
 const guarded = guard(window.foundry);
 
+// The web preview mock predates the fonts namespace, and an older preload
+// can too: treat a missing namespace as an empty install rather than a crash.
+const fonts =
+  guarded.fonts && typeof guarded.fonts.list === 'function'
+    ? guarded.fonts
+    : { list: async (): Promise<string[]> => [] };
+
 export const api: FoundryApi = {
   ...guarded,
+  fonts,
   smith: {
     ...guarded.smith,
     setPermissionMode: (projectId, mode) =>

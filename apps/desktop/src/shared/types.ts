@@ -355,6 +355,99 @@ export interface AppSettings {
    * The selected issue's team states are re-fetched before a run starts.
    */
   linearStatusMapping: LinearStatusMapping;
+  /**
+   * Family name of an installed Mac font for UI text. Null (or absent on a
+   * file predating the setting) means the shipped default (Geist).
+   * Free-form because the installed-font universe cannot be an enum;
+   * sanitized on read and write, never stored as "".
+   */
+  interfaceFont?: string | null;
+  /**
+   * Family name of an installed Mac font for monospace surfaces. Null (or
+   * absent) means the shipped default (Geist Mono). Same nullable
+   * free-form contract as `interfaceFont`.
+   */
+  monoFont?: string | null;
+}
+
+// ── Fonts (installed-font preference + bundled symbol coverage) ────────────
+
+/** Shipped interface face, vendored in renderer/design/fonts (SIL OFL 1.1). */
+export const DEFAULT_INTERFACE_FONT = 'Geist';
+/** Shipped monospace face, vendored in renderer/design/fonts (SIL OFL 1.1). */
+export const DEFAULT_MONO_FONT = 'Geist Mono';
+/**
+ * Bounded Nerd coverage: the single SymbolsOnly face carries the full PUA
+ * symbol range with no Latin glyphs, so one small file preserves every glyph
+ * the app can reference. Must match the `font-family` in the bundled
+ * `@font-face` (renderer/design) and the stacks below.
+ */
+export const NERD_SYMBOLS_FAMILY = 'Symbols Nerd Font Mono';
+/** Longest family name kept; anything longer repairs to null (default). */
+export const MAX_FONT_FAMILY_LENGTH = 128;
+
+const FONT_FAMILY_PATTERN = /^[\p{L}\p{N} .\-_()+]+$/u;
+
+/**
+ * Normalizes a stored or hand-edited font value. Trims, rejects non-strings,
+ * empties, overlong values, and anything outside the CSS-safe allowlist, so
+ * both the settings-write path and the renderer-apply path share one repair
+ * rule. Never throws: hostile input becomes null (shipped default).
+ */
+export function sanitizeFontFamily(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > MAX_FONT_FAMILY_LENGTH) return null;
+  if (!FONT_FAMILY_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+/** Null (or undefined from a legacy file) means the shipped default. */
+export function isDefaultFont(value: unknown): value is null {
+  return value === null || value === undefined;
+}
+
+function quoteFamily(name: string): string {
+  return `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Full `font-family` value: the sanitized choice (or shipped default) first,
+ * then the bundled Nerd symbols face for PUA/symbol codepoints, then the
+ * shipped default and system fallbacks. Missing fonts fall through the stack
+ * in CSS with no JS detection. Keep these lists identical to the `:root`
+ * fallbacks in renderer/design/nerd-fonts.css (tokens-base.css is Geist-only).
+ */
+export function fontStack(family: string | null | undefined, kind: 'ui' | 'mono'): string {
+  try {
+    const choice =
+      sanitizeFontFamily(family) ?? (kind === 'ui' ? DEFAULT_INTERFACE_FONT : DEFAULT_MONO_FONT);
+    const nerd = quoteFamily(NERD_SYMBOLS_FAMILY);
+    if (kind === 'ui') {
+      const head = quoteFamily(choice);
+      const shipped = quoteFamily(DEFAULT_INTERFACE_FONT);
+      // When the choice is the default, avoid naming it twice.
+      const first = choice === DEFAULT_INTERFACE_FONT ? shipped : `${head}, ${nerd}, ${shipped}`;
+      const tail =
+        choice === DEFAULT_INTERFACE_FONT
+          ? `${nerd}, -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif`
+          : `-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif`;
+      return `${first}, ${tail}`;
+    }
+    const head = quoteFamily(choice);
+    const shipped = quoteFamily(DEFAULT_MONO_FONT);
+    const first = choice === DEFAULT_MONO_FONT ? shipped : `${head}, ${nerd}, ${shipped}`;
+    const tail =
+      choice === DEFAULT_MONO_FONT
+        ? `${nerd}, ui-monospace, 'SF Mono', Menlo, monospace`
+        : `ui-monospace, 'SF Mono', Menlo, monospace`;
+    return `${first}, ${tail}`;
+  } catch {
+    return kind === 'ui'
+      ? `"${DEFAULT_INTERFACE_FONT}", "${NERD_SYMBOLS_FAMILY}", -apple-system, system-ui, sans-serif`
+      : `"${DEFAULT_MONO_FONT}", "${NERD_SYMBOLS_FAMILY}", ui-monospace, monospace`;
+  }
 }
 
 export interface LinearStatusMapping {

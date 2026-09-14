@@ -3,6 +3,7 @@ import { IPC, type SaveResult } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
+import { listInstalledFonts } from '../system/font-list.js';
 
 type Ctx = Pick<AppContext, 'settings' | 'projects' | 'roster' | 'broadcast' | 'applyTheme'>;
 
@@ -34,5 +35,15 @@ export function register(ctx: Ctx, handle: Handle): void {
     ctx.applyTheme(result.settings.theme);
     notifySettings(ctx);
     return { ok: true, issues: noIssues, value: result.settings };
+  });
+  // Installed-font enumeration for Settings → Appearance. Best-effort by
+  // contract: a profiler timeout, parse failure, or directory-scan failure
+  // answers `[]` rather than rejecting, so the picker degrades to defaults.
+  handle(IPC.fontsList, async (): Promise<string[]> => {
+    try {
+      return await listInstalledFonts();
+    } catch {
+      return [];
+    }
   });
 }

@@ -45,6 +45,9 @@ const api: FoundryApi = {
     get: () => call(IPC.settingsGet),
     patch: (patch) => call(IPC.settingsPatch, patch),
   },
+  fonts: {
+    list: () => call(IPC.fontsList),
+  },
   projects: {
     list: () => call(IPC.projectsList),
     add: () => call(IPC.projectsAdd),
