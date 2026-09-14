@@ -706,25 +706,55 @@ export function createMockFoundryApi(): FoundryApi {
         };
       },
       events: async (_projectId, _runId, _after): Promise<EventPage> => {
+        const phaseId = MOCK_PHASES[_runId]?.[0]?.phaseId ?? null;
         const events: EventRow[] = [
           {
             rowid: 1,
             changeId: 1,
             eventId: 'evt_web_1',
             runId: _runId,
-            phaseId: MOCK_PHASES[_runId]?.[0]?.phaseId ?? null,
+            phaseId,
             parentId: null,
-            type: 'log',
-            name: 'web preview',
+            type: 'assistant_text',
+            name: 'builder',
             payload: {
-              line: 'This is a fixture event. Live traces stream from the Electron backend.',
+              text: 'Updating the retry helper so failed fetches wait before trying again.',
             },
             tokens: 0,
-            startedAt: nowIso(-60_000),
-            endedAt: nowIso(-60_000),
+            startedAt: nowIso(-90_000),
+            endedAt: nowIso(-88_000),
+          },
+          {
+            rowid: 2,
+            changeId: 2,
+            eventId: 'evt_web_edit',
+            runId: _runId,
+            phaseId,
+            parentId: null,
+            type: 'tool_call',
+            name: 'edit: src/retry.ts',
+            payload: {
+              tool: 'edit',
+              kind: 'edit',
+              args: {
+                path: 'src/retry.ts',
+                edits: [
+                  {
+                    oldText:
+                      'export async function fetchWithRetry(url: string): Promise<Response> {\n  const response = await fetch(url);\n  if (!response.ok) throw new Error(`HTTP ${response.status}`);\n  return response;\n}\n',
+                    newText:
+                      'export async function fetchWithRetry(url: string, attempts = 3): Promise<Response> {\n  let lastError: Error | undefined;\n  for (let i = 0; i < attempts; i++) {\n    try {\n      const response = await fetch(url);\n      if (!response.ok) throw new Error(`HTTP ${response.status}`);\n      return response;\n    } catch (error) {\n      lastError = error instanceof Error ? error : new Error(String(error));\n      await new Promise((resolve) => setTimeout(resolve, 250 * (i + 1)));\n    }\n  }\n  throw lastError ?? new Error(`Failed to fetch ${url}`);\n}\n',
+                  },
+                ],
+              },
+              result: 'ok',
+            },
+            tokens: 0,
+            startedAt: nowIso(-80_000),
+            endedAt: nowIso(-70_000),
           },
         ];
-        return { events: _after < 1 ? events : [], cursor: 1 };
+        return { events: _after < 2 ? events : [], cursor: 2 };
       },
       liveTail: async () => '(web preview — no live process)',
       contextBreakdown: async () => ({ breakdown: null, reason: 'not_live' as const }),

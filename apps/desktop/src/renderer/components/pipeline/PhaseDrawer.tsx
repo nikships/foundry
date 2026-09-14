@@ -17,6 +17,8 @@ import AgentAvatar from '../media/AgentAvatar.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
 import JsonView from '../common/JsonView.js';
 import { EventIcon } from '../common/EventIcon.js';
+import EditDiffView from '../inspector/EditDiffView.js';
+import { isEditToolEvent } from '../inspector/edit-diff.js';
 import PhaseDocument from './PhaseDocument.js';
 import styles from './PhaseDrawer.module.css';
 
@@ -67,6 +69,13 @@ function proseOf(event: EventRow): string | null {
 }
 
 function EventPayload({ event }: { event: EventRow }): React.JSX.Element | null {
+  if (isEditToolEvent(event)) {
+    return (
+      <div className={styles.editDiff}>
+        <EditDiffView event={event} />
+      </div>
+    );
+  }
   if (!Object.keys(event.payload).length) return null;
   const prose = proseOf(event);
   if (prose === null) return <JsonView value={event.payload} />;
