@@ -64,7 +64,7 @@ function toolCallKind(event: IconEvent): string {
   if (Array.isArray(event.payload.argv)) return 'command';
   if (head === 'bash') return 'command';
   if (head === 'read') return 'read';
-  if (head === 'edit' || head === 'write') return 'edit';
+  if (head === 'edit' || head === 'write' || head === 'write_file') return 'edit';
   if (head === 'grep' || head === 'find' || head === 'ls') return 'search';
   if (head === 'submit_envelope' || head === 'read_phase_context') return 'envelope';
   return 'other';

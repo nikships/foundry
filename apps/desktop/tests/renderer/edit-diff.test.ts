@@ -67,6 +67,28 @@ describe('editDiffFromEvent', () => {
     expect(model).toEqual({ kind: 'patch', path: 'src/a.ts', patch });
   });
 
+  it('treats write_file with content as a create', () => {
+    const model = editDiffFromEvent(
+      event({
+        name: 'write_file: src/brand-new.ts',
+        payload: {
+          args: { path: 'src/brand-new.ts', content: 'export const n = 1;\n' },
+        },
+      }),
+    );
+    expect(model.kind).toBe('pair');
+    if (model.kind !== 'pair') return;
+    expect(model.oldFile).toBeNull();
+    expect(model.newFile?.contents).toContain('export const n');
+  });
+
+  it('recognizes write_file tool calls as edit events', () => {
+    expect(isEditToolEvent(event({ name: 'write_file: src/a.ts', payload: {} }))).toBe(true);
+    expect(isEditToolEvent(event({ name: 'write: src/a.ts', payload: { kind: 'write' } }))).toBe(
+      true,
+    );
+  });
+
   it('recognizes edit tool calls from kind or name', () => {
     expect(isEditToolEvent(event({ payload: { kind: 'edit' } }))).toBe(true);
     expect(isEditToolEvent(event({ name: 'write: src/a.ts', payload: {} }))).toBe(true);

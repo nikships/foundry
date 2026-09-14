@@ -155,6 +155,29 @@ describe('a pi tool call in the timeline', () => {
     expect(html).not.toContain('te-diff-line');
   });
 
+  it('renders a write call through the same Pierre diff host as a create', () => {
+    const html = toolCall('write', {
+      kind: 'edit',
+      args: { path: 'src/new.ts', content: 'export const ok = true;\n' },
+    });
+    expect(html).toContain('te edit');
+    expect(html).toContain('create');
+    expect(html).toContain('edit-diff');
+  });
+
+  it('shows labeled fields for unclassified tools instead of a bare result dump', () => {
+    const html = toolCall('some_future_tool', {
+      args: { query: 'retry helper', path: 'src' },
+      result: 'hit\n',
+    });
+    // Collapsed by default — expand markup still includes the field chrome classes
+    // once opened; static render keeps initial collapsed state, so assert the
+    // header summary stays readable and the row is not a JSON blob.
+    expect(html).toContain('some_future_tool');
+    expect(html).toContain('te tool');
+    expect(html).not.toContain('"query": "retry helper"');
+  });
+
   it('renders a tool nobody classified rather than dropping the row', () => {
     // A tool added to pi, or one an MCP server contributes, reaches the timeline
     // before this file learns its name. The fallback is what keeps it visible.

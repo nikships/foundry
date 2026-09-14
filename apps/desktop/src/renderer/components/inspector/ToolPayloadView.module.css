@@ -1,0 +1,134 @@
+.wrap {
+  padding: 0 0 var(--s2);
+  margin: 0 0 var(--s2);
+  min-width: 0;
+}
+
+.wrap.failed .result {
+  border-color: color-mix(in srgb, var(--red) 22%, transparent);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 var(--s2);
+  padding: var(--s2) var(--s3);
+  background: var(--bg-input);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--r-sm);
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(72px, 96px) minmax(0, 1fr);
+  gap: var(--s2);
+  align-items: baseline;
+}
+
+.label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.value {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.summary {
+  margin: 0 0 var(--s2);
+  padding: var(--s2) var(--s3);
+  background: var(--bg-input);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+
+.resultWrap {
+  margin: 0 0 var(--s2);
+}
+
+.result {
+  border: 1px solid var(--line-faint);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.more {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 4px 0;
+  border: none;
+  background: var(--bg-raised);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: default;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  text-align: center;
+  transition:
+    color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.more:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.empty {
+  margin: 0 0 var(--s2);
+  font-size: var(--text-xs);
+}
+
+.truncated {
+  margin: 0 0 var(--s2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.rawToggle {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: default;
+}
+
+.rawToggle:hover {
+  color: var(--text);
+}
+
+.raw {
+  margin-top: var(--s2);
+}
