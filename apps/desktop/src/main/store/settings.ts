@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { REASONING_EFFORTS, isReasoningEffort } from '@shared/reasoning-effort.js';
 import { APP_THEME_IDS, isAppTheme } from '@shared/themes.js';
 import type { AppSettings, LinearStatusMapping } from '@shared/types.js';
+import { sanitizeFontFamily } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 
 /**
@@ -44,6 +45,8 @@ export const appSettingsSchema = z.object({
     completed: z.string().min(1).max(128).nullable(),
     failed: z.string().min(1).max(128).nullable(),
   }),
+  interfaceFont: z.string().trim().max(128).nullable(),
+  monoFont: z.string().trim().max(128).nullable(),
 });
 
 export function defaultSettings(): AppSettings {
@@ -66,6 +69,8 @@ export function defaultSettings(): AppSettings {
     onboarded: false,
     hiddenModelIds: [],
     linearStatusMapping: { started: null, completed: null, failed: null },
+    interfaceFont: null,
+    monoFont: null,
   };
 }
 
@@ -124,6 +129,12 @@ export function migrate(raw: unknown): AppSettings {
     ? [...new Set(merged.hiddenModelIds.filter(isNonEmptyString))]
     : [];
   merged.linearStatusMapping = linearStatusMapping(merged.linearStatusMapping);
+  // Installed-font preference: a hand-edited hostile, empty, or overlong value
+  // repairs to null (shipped default) rather than blocking startup. The stored
+  // value is preserved when it sanitizes cleanly, so reinstalling a missing
+  // font restores it silently.
+  merged.interfaceFont = sanitizeFontFamily(merged.interfaceFont);
+  merged.monoFont = sanitizeFontFamily(merged.monoFont);
   return withoutHiddenPins(merged);
 }
 
@@ -199,7 +210,16 @@ export class SettingsStore {
   patch(
     patch: Partial<AppSettings>,
   ): { ok: true; settings: AppSettings } | { ok: false; issues: string[] } {
-    const merged = withoutHiddenPins({ ...this.get(), ...patch });
+    // Font writes normalize through the shared sanitizer first, so empty or
+    // hostile values repair to null (default) instead of failing the patch.
+    const normalized = { ...patch };
+    if (normalized.interfaceFont !== undefined) {
+      normalized.interfaceFont = sanitizeFontFamily(normalized.interfaceFont);
+    }
+    if (normalized.monoFont !== undefined) {
+      normalized.monoFont = sanitizeFontFamily(normalized.monoFont);
+    }
+    const merged = withoutHiddenPins({ ...this.get(), ...normalized });
     const parsed = appSettingsSchema.safeParse(merged);
     if (!parsed.success) {
       return {

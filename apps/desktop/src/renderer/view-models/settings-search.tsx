@@ -57,7 +57,7 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
     label: 'Appearance & notifications',
     hint: 'Themes, alerts, dock badge, and sounds',
     keywords:
-      'theme appearance dark light midnight forest ember contrast sand mist palette color notification notify alert dock badge sound audio',
+      'theme appearance dark light midnight forest ember contrast sand mist palette color notification notify alert dock badge sound audio font typeface typography interface monospace',
   },
   {
     id: 'system',
@@ -90,7 +90,7 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     label: 'Appearance',
     note: 'Choose the palette Foundry uses across the desktop.',
     keywords:
-      'theme appearance dark light midnight forest ember contrast high contrast sand mist light theme dark mode palette color mode',
+      'theme appearance dark light midnight forest ember contrast high contrast sand mist light theme dark mode palette color mode font typeface typography interface monospace',
   },
   {
     pane: 'preferences',

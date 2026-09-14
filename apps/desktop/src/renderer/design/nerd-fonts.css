@@ -1,0 +1,30 @@
+/*
+ * Bounded Nerd Font coverage. One SymbolsOnly face (no Latin glyphs) so PUA
+ * symbols render on a fresh install without shipping the full Nerd collection.
+ *
+ * Stacks must stay identical to fontStack() in apps/desktop/src/shared/types.ts.
+ * This file is imported after tokens-base.css so these --font / --font-mono
+ * values override the Geist-only defaults before settings hydrate, and the
+ * AppProvider effect then re-applies the same stacks (with any user choice).
+ */
+
+@font-face {
+  font-family: 'Symbols Nerd Font Mono';
+  src: url('./fonts/SymbolsNerdFontMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  /* Cmap-verified against Nerd Fonts v3.4.0 SymbolsOnly (no basic Latin).
+   * IEC power, misc symbols, BMP PUA (Pomicons / Powerline / FA Ext /
+   * Weather / Seti / Devicons / Codicons), Font Awesome / Octicons, and
+   * Material Design Icons in SIP. Unused holes are harmless; Latin is
+   * excluded so this face never participates in normal text shaping. */
+  unicode-range: U+23FB-23FE, U+2600-27BF, U+2B58, U+E000-EFFF, U+F000-F8FF, U+F0000-F1AFF;
+}
+
+:root {
+  --font:
+    'Geist', 'Symbols Nerd Font Mono', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui,
+    sans-serif;
+  --font-mono: 'Geist Mono', 'Symbols Nerd Font Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}

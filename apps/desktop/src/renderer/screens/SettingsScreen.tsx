@@ -39,6 +39,7 @@ import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
 import { ThemePicker } from '../components/ui/ThemePicker.js';
+import { FontPicker } from '../components/ui/FontPicker.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
@@ -1180,6 +1181,16 @@ export default function SettingsScreen({
                           <ThemePicker
                             value={settings.theme}
                             onChange={(next) => void set({ theme: next })}
+                          />
+                        </Field>
+                        <Field
+                          label="Fonts"
+                          hint="Installed Mac fonts, applied immediately. Missing fonts fall back to the defaults."
+                        >
+                          <FontPicker
+                            interfaceFont={settings.interfaceFont ?? null}
+                            monoFont={settings.monoFont ?? null}
+                            onChange={(patch) => void set(patch)}
                           />
                         </Field>
                       </Section>

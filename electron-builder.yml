@@ -31,6 +31,29 @@ extraResources:
     to: pi-packages
     filter:
       - '**/*'
+  # Bounded Nerd Fonts SymbolsOnly face. The woff2 is also a Vite renderer
+  # asset packed via `files: out/**/*`; this extraResource is the same file
+  # plus licenses outside the asar so packaged-app inspection and any future
+  # native fallback can read them. Do not add the full Nerd Fonts collection.
+  #
+  # Two `to: fonts` entries share one destination; later files overwrite.
+  # Keep README.md only on the design/fonts copy so Contents/Resources/fonts
+  # retains the full CC BY 4.0 table and SHA pins instead of the short pointer
+  # in resources/fonts/README.md.
+  - from: apps/desktop/src/renderer/design/fonts
+    to: fonts
+    filter:
+      - 'SymbolsNerdFontMono-Regular.woff2'
+      - 'LICENSE'
+      - 'OFL.txt'
+      - 'APACHE'
+      - 'README.md'
+  - from: resources/fonts
+    to: fonts
+    filter:
+      - 'LICENSE'
+      - 'OFL.txt'
+      - 'APACHE'
 
 asar: true
 asarUnpack:

@@ -531,6 +531,15 @@ export interface FoundryApi {
     get(): Promise<AppSettings>;
     patch(patch: Partial<AppSettings>): Promise<SaveResult<AppSettings>>;
   };
+  /**
+   * Installed-font enumeration for the Appearance font pickers. Optional so
+   * older preloads and the web preview (which has no main process) keep
+   * compiling; the renderer treats an absent namespace as an empty list.
+   */
+  fonts?: {
+    /** Best-effort family names, sorted; never rejects — failures yield `[]`. */
+    list(): Promise<string[]>;
+  };
   projects: {
     list(): Promise<ProjectDef[]>;
     add(): Promise<ProjectDef | null>;
@@ -997,6 +1006,7 @@ export interface FoundryApi {
 export const IPC = {
   settingsGet: 'settings:get',
   settingsPatch: 'settings:patch',
+  fontsList: 'fonts:list',
   projectsList: 'projects:list',
   projectsAdd: 'projects:add',
   projectsGithubAccount: 'projects:githubAccount',
