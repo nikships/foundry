@@ -7,6 +7,7 @@ import type { EvidenceDisclosureDef, EvidenceItemDef } from '@shared/types.js';
 import { evidenceSummary, occupancyStatus } from '../../view-models/smith-artifact-view.js';
 import MarkdownText from '../common/MarkdownText.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithEvidenceDisclosureDesign.module.css';
 
 function EvidenceItemRow({ item }: { item: EvidenceItemDef }): React.JSX.Element {
@@ -51,10 +52,10 @@ export function EvidenceDisclosureDesign({
       className={cx(styles.evidenceDisclosure, compact && styles.compact)}
       data-testid="smith-evidence-disclosure-design"
     >
-      <div className={styles.summaryBar}>
-        <span className={styles.summaryText}>{summary}</span>
+      <SmithCardBar compact={compact}>
+        <SmithCardSummary compact={compact}>{summary}</SmithCardSummary>
         {evidence.phaseName && <span className={styles.phaseTag}>Phase: {evidence.phaseName}</span>}
-      </div>
+      </SmithCardBar>
 
       {evidence.occupancy && occPercent !== undefined && (
         <div className={styles.occupancyBox} data-testid="evidence-occupancy">

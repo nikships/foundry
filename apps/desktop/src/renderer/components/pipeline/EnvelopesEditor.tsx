@@ -25,6 +25,7 @@ import { commitCustomEnvelopeName } from '../../view-models/envelope-name.js';
 import CustomFieldsEditor from '../project/CustomFieldsEditor.js';
 import { Field, TextInput } from '../ui/Field.js';
 import { Button } from '../ui/Button.js';
+import { ValidationBar } from '../ui/ValidationBar.js';
 import { confirmManager } from '../../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../../hooks/useDebouncedSave.js';
 import styles from './EnvelopesEditor.module.css';
@@ -840,38 +841,11 @@ export default function EnvelopesEditor({
                   <pre className={`mono ${styles.envelopePreviewCode}`}>{example || '…'}</pre>
                 </div>
 
-                <div className={styles.envelopeStatusbar}>
-                  {issues.length > 0 ? (
-                    <ul className={styles.envelopeIssues}>
-                      {issues.map((issue, i) => (
-                        <li key={i} className={issue.level}>
-                          <strong>{issue.where}</strong> {issue.message}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className={styles.envelopeStatusOk}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 14 14"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden
-                      >
-                        <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
-                      </svg>
-                      No validation issues
-                    </span>
-                  )}
-                  {actionError && <p className={styles.envelopeActionErr}>{actionError}</p>}
-                  <span className={styles.envelopeAutosave}>
-                    {isNew ? 'Saves when valid' : 'Changes save automatically'}
-                  </span>
-                </div>
+                <ValidationBar
+                  issues={issues}
+                  actionError={actionError}
+                  autosave={isNew ? 'Saves when valid' : 'Changes save automatically'}
+                />
               </>
             )}
           </div>

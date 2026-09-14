@@ -459,31 +459,6 @@
   border-color: color-mix(in srgb, var(--red) 50%, transparent);
 }
 
-.roster-section {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: var(--s4) var(--s12, 48px);
-  border-top: 1px solid var(--line);
-  padding: var(--s8) 0;
-}
-.roster-section-label :global(.eyebrow) {
-  color: var(--text-dim);
-}
-.roster-section-label h2 {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-  color: var(--text-dim);
-}
-.roster-section-label p {
-  margin-top: var(--s2);
-  font-size: var(--text-xs);
-  line-height: var(--leading);
-  color: var(--text-faint);
-  max-width: 24ch;
-}
 .roster-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -494,10 +469,6 @@
 }
 
 @media (max-width: 1120px) {
-  .roster-section {
-    grid-template-columns: 1fr;
-    gap: var(--s4);
-  }
   .roster-fields {
     grid-template-columns: 1fr;
   }
@@ -593,33 +564,6 @@
   accent-color: var(--accent);
 }
 
-.roster-statusbar {
-  display: flex;
-  align-items: center;
-  gap: var(--s4);
-  border-top: 1px solid var(--line);
-  padding-top: var(--s5);
-}
-.roster-status-ok {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-xs);
-  color: var(--green);
-}
-.roster-statusbar .issues {
-  margin: 0;
-}
-.roster-autosave {
-  margin-left: auto;
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--text-faint);
-}
-
 .hint {
   font-size: var(--text-xs);
   color: var(--text-faint);
@@ -686,28 +630,4 @@
   border-radius: var(--r-sm);
   background: var(--bg-raised);
   color: var(--accent);
-}
-.issues {
-  list-style: none;
-  padding: var(--s3);
-  border-radius: var(--r-sm);
-  background: var(--red-dim);
-  font-size: var(--text-sm);
-  display: flex;
-  flex-direction: column;
-  gap: var(--s2);
-}
-.issues :global(.warning) {
-  color: var(--amber);
-}
-.issues :global(.error) {
-  color: var(--red);
-}
-.action-err {
-  margin: 0;
-  padding: var(--s2) var(--s3);
-  border-radius: var(--r-sm);
-  background: var(--red-dim);
-  color: var(--red);
-  font-size: var(--text-xs);
 }

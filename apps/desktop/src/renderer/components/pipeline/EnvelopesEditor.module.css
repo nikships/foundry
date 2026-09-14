@@ -421,49 +421,6 @@ button.envelopeItem:hover {
   white-space: pre;
 }
 
-/* status */
-.envelopeStatusbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s3) var(--s5);
-  padding-top: var(--s3);
-  border-top: 1px solid var(--line);
-}
-.envelopeIssues {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  flex: 1 1 100%;
-  font-size: var(--text-sm);
-}
-.envelopeIssues li {
-  color: var(--amber);
-}
-.envelopeIssues li:global(.error) {
-  color: var(--red);
-}
-.envelopeStatusOk {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s2);
-  font-size: var(--text-sm);
-  color: var(--green);
-}
-.envelopeActionErr {
-  margin: 0;
-  flex: 1 1 100%;
-  font-size: var(--text-sm);
-  color: var(--red);
-}
-.envelopeAutosave {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--text-faint);
-}
 @media (max-width: 980px) {
   .envelopeLayout {
     grid-template-columns: 1fr;

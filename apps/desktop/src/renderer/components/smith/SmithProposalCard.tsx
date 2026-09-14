@@ -12,6 +12,7 @@ import { compareEntities } from '../../view-models/smith-artifact-view.js';
 import QrCode from '../media/QrCode.js';
 import { Button } from '../ui/Button.js';
 import { EntitySpecDesign, ViewJson } from './SmithEntityDesign.js';
+import { SmithProposalHeader } from './SmithProposalHeader.js';
 import styles from './SmithProposalCard.module.css';
 
 export interface SmithNavTarget {
@@ -175,10 +176,7 @@ function PrivateDisplayCard({
 
   return (
     <section className={styles.card} data-testid="smith-private-display">
-      <header className={styles.header}>
-        <span className={styles.kind}>private</span>
-        <h2 className={styles.title}>Companion pairing</h2>
-      </header>
+      <SmithProposalHeader kind="private" title="Companion pairing" />
       <p className={styles.summary}>Scan this QR on the device you want to pair.</p>
       <div className={styles.qr}>
         <QrCode value={encoded} size={200} title="Companion pairing QR code" />
@@ -222,13 +220,13 @@ function ActionCard({
       aria-labelledby="smith-proposal-title"
       data-testid="smith-proposal-card"
     >
-      <header className={styles.header}>
-        <span className={styles.kind}>action</span>
-        <span className={`${styles.mode} ${styles.risk}`}>{proposal.risk}</span>
-        <h2 className={styles.title} id="smith-proposal-title">
-          {proposal.title}
-        </h2>
-      </header>
+      <SmithProposalHeader
+        kind="action"
+        mode={proposal.risk}
+        modeClassName={styles.risk}
+        title={proposal.title}
+        titleId="smith-proposal-title"
+      />
       <p className={styles.summary}>{proposal.summary}</p>
       <p className={styles.scopeNote}>
         Scope: {proposal.projectId ? `project ${proposal.projectId}` : 'All projects'} · Operation:{' '}
@@ -281,16 +279,17 @@ function EntityCard({
     : [];
   return (
     <section className={styles.card} data-testid="smith-proposal-card">
-      <header className={styles.header}>
-        <span className={styles.kind}>{KIND_LABEL[proposal.kind]}</span>
-        <span className={`${styles.mode} ${proposal.overwrites ? styles.modeOverwrite : ''}`}>
-          {proposal.overwrites ? 'overwrite' : 'create'}
-        </span>
-        <h2 className={styles.title}>
-          Smith wants to {proposal.overwrites ? 'overwrite' : 'create'}{' '}
-          <span className={styles.name}>{proposal.name}</span>
-        </h2>
-      </header>
+      <SmithProposalHeader
+        kind={KIND_LABEL[proposal.kind]}
+        mode={proposal.overwrites ? 'overwrite' : 'create'}
+        modeClassName={proposal.overwrites ? styles.modeOverwrite : undefined}
+        title={
+          <>
+            Smith wants to {proposal.overwrites ? 'overwrite' : 'create'}{' '}
+            <span className={styles.name}>{proposal.name}</span>
+          </>
+        }
+      />
       <p className={styles.scopeNote}>
         Scope:{' '}
         {(proposal.targetProjectId ?? proposal.projectId)

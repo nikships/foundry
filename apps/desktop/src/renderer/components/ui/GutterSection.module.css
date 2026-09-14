@@ -1,0 +1,51 @@
+/* Numbered gutter sections. Apply `.page` to the parent of the sections
+   so the CSS counter runs across them. A section that is the first child
+   of that parent drops its top hairline (Settings); a section that follows
+   a title row keeps it (Agents). */
+
+.page {
+  counter-reset: gutter-section;
+}
+
+.section {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--s4) var(--s12);
+  border-top: 1px solid var(--line);
+  padding: var(--s8) 0;
+  counter-increment: gutter-section;
+}
+
+.section:first-child {
+  border-top: none;
+}
+
+.label :global(.eyebrow) :global(.index)::before {
+  content: counter(gutter-section, decimal-leading-zero);
+}
+
+.label p {
+  margin: var(--s2) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-faint);
+  max-width: 24ch;
+}
+
+.body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.body p {
+  margin: 0;
+}
+
+@media (max-width: 1120px) {
+  .section {
+    grid-template-columns: 1fr;
+    gap: var(--s4);
+  }
+}

@@ -26,6 +26,8 @@ import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js
 import BoundaryEditor from '../components/pipeline/BoundaryEditor.js';
 import CustomFieldsEditor from '../components/project/CustomFieldsEditor.js';
 import { Button } from '../components/ui/Button.js';
+import { GutterSection, gutterPageClass } from '../components/ui/GutterSection.js';
+import { ValidationBar } from '../components/ui/ValidationBar.js';
 import PromptPreview from '../components/common/PromptPreview.js';
 import { Dropdown, type DropdownOption } from '../components/ui/Dropdown.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
@@ -543,7 +545,7 @@ export default function RosterScreen({
 
       {draft && (
         <div className={styles.rosterScroll}>
-          <div className={styles.rosterPage}>
+          <div className={`${styles.rosterPage} ${gutterPageClass}`}>
             {/* ── title row ── */}
             <div className={styles.rosterHead}>
               <div className={styles.rosterHeadLead}>
@@ -613,13 +615,10 @@ export default function RosterScreen({
             </div>
 
             {/* ── identity ── */}
-            <section className={styles.rosterSection}>
-              <div className={styles.rosterSectionLabel}>
-                <p className="eyebrow">
-                  <span className="index">01</span>Identity
-                </p>
-                <p>How this agent is referenced in pipelines and run logs.</p>
-              </div>
+            <GutterSection
+              label="Identity"
+              note="How this agent is referenced in pipelines and run logs."
+            >
               <div className={styles.rosterFields}>
                 <Field label="Mark" className={styles.span2}>
                   <div className={styles.identityMarkRow}>
@@ -725,16 +724,13 @@ export default function RosterScreen({
                   <span className={styles.hint}>Used for this agent's lane in the waterfall.</span>
                 </Field>
               </div>
-            </section>
+            </GutterSection>
 
             {/* ── execution ── */}
-            <section className={styles.rosterSection}>
-              <div className={styles.rosterSectionLabel}>
-                <p className="eyebrow">
-                  <span className="index">02</span>Execution
-                </p>
-                <p>Model selection and reasoning effort for this agent.</p>
-              </div>
+            <GutterSection
+              label="Execution"
+              note="Model selection and reasoning effort for this agent."
+            >
               <div className={styles.rosterFields}>
                 <Field label="Defaults" className={styles.span2}>
                   <label className={styles.rosterCheck}>
@@ -810,16 +806,13 @@ export default function RosterScreen({
                   </span>
                 </Field>
               </div>
-            </section>
+            </GutterSection>
 
             {/* ── prompts ── */}
-            <section className={styles.rosterSection}>
-              <div className={styles.rosterSectionLabel}>
-                <p className="eyebrow">
-                  <span className="index">03</span>Prompts
-                </p>
-                <p>The system prompt is fixed per agent; the template is filled per phase.</p>
-              </div>
+            <GutterSection
+              label="Prompts"
+              note="The system prompt is fixed per agent; the template is filled per phase."
+            >
               <div className={styles.rosterStack}>
                 <Field label="System prompt">
                   <Textarea
@@ -848,20 +841,19 @@ export default function RosterScreen({
                   </span>
                 </Field>
               </div>
-            </section>
+            </GutterSection>
 
             {/* ── extra envelope fields ── */}
-            <section className={styles.rosterSection}>
-              <div className={styles.rosterSectionLabel}>
-                <p className="eyebrow">
-                  <span className="index">04</span>Extra fields
-                </p>
-                <p>
+            <GutterSection
+              label="Extra fields"
+              note={
+                <>
                   Added to the <code>{draft.envelope}</code> report for this agent only. Use these
                   when one agent must report something the shared report does not carry; change the
                   report itself when every agent using it should.
-                </p>
-              </div>
+                </>
+              }
+            >
               <div className={styles.rosterStack}>
                 <CustomFieldsEditor
                   idPrefix={`agent-${draft.name}`}
@@ -901,19 +893,13 @@ export default function RosterScreen({
                   </span>
                 </div>
               </div>
-            </section>
+            </GutterSection>
 
             {/* ── tools and write boundary ── */}
-            <section className={styles.rosterSection}>
-              <div className={styles.rosterSectionLabel}>
-                <p className="eyebrow">
-                  <span className="index">05</span>Tools and write boundary
-                </p>
-                <p>
-                  What this agent can call, and the paths it may modify. Everything else is refused
-                  at the tool layer.
-                </p>
-              </div>
+            <GutterSection
+              label="Tools and write boundary"
+              note="What this agent can call, and the paths it may modify. Everything else is refused at the tool layer."
+            >
               <div className={styles.rosterStack}>
                 <Field label="Tool surface">
                   <Dropdown
@@ -933,39 +919,14 @@ export default function RosterScreen({
                   onChange={(value) => setDraft({ ...draft, writes: value })}
                 />
               </div>
-            </section>
+            </GutterSection>
 
             {/* ── validation + autosave ── */}
-            <div className={styles.rosterStatusbar}>
-              {allIssues.length > 0 ? (
-                <ul className={styles.issues}>
-                  {allIssues.map((issue, i) => (
-                    <li key={i} className={issue.level}>
-                      <strong>{issue.where}</strong> {issue.message}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <span className={styles.rosterStatusOk}>
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 14 14"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
-                  </svg>
-                  No validation issues
-                </span>
-              )}
-              {actionError && <p className={styles.actionErr}>{actionError}</p>}
-              <span className={styles.rosterAutosave}>Changes save automatically</span>
-            </div>
+            <ValidationBar
+              issues={allIssues}
+              actionError={actionError}
+              autosave="Changes save automatically"
+            />
           </div>
         </div>
       )}
