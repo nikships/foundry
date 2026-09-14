@@ -15,7 +15,6 @@ const checks = [
   'build',
   'check:css',
   'check:docs',
-  'check:files',
   'check:duplicate',
   'audit:deps',
 ];

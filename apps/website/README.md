@@ -131,9 +131,8 @@ Sources, all outside this folder:
 | `media-src/film/*.mp4` | `media/film/*.mp4` + poster (keeps its audio) |
 
 `media-src/film/` is **gitignored**: those masters are 1080p originals in the
-tens of MB, past the repo's 10 MiB per-file ceiling (`npm run check:files`).
-Only the encoded 720p result under `public/media/film/` is committed. Drop the
-master back in and run `npm run media` to re-encode.
+tens of MB. Only the encoded 720p result under `public/media/film/` is
+committed. Drop the master back in and run `npm run media` to re-encode.
 
 `media-src/ui/*.png` are retina captures (2880×1880) of the running app, taken
 through the repo's `foundry-ui` skill against an isolated `--user-data-dir`

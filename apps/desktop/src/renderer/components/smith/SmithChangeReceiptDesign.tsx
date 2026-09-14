@@ -13,6 +13,7 @@ import {
   changeReceiptTargetLabel,
 } from '../../view-models/smith-artifact-view.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithChangeReceiptDesign.module.css';
 
 export function ReceiptStatusIcon({
@@ -96,10 +97,10 @@ export function ChangeReceiptDesign({
       className={cx(styles.receipt, compact && styles.compact)}
       data-testid="change-receipt-design"
     >
-      <div className={styles.headerBar}>
-        <span className={styles.summaryText} data-testid="change-receipt-summary">
+      <SmithCardBar compact={compact}>
+        <SmithCardSummary compact={compact} testId="change-receipt-summary">
           {summary}
-        </span>
+        </SmithCardSummary>
         <div className={styles.badges}>
           <span
             className={cx(styles.targetBadge, styles[`targetBadge_${receipt.target}`])}
@@ -118,7 +119,7 @@ export function ChangeReceiptDesign({
             {statusLabel}
           </span>
         </div>
-      </div>
+      </SmithCardBar>
 
       {receipt.command && (
         <div className={styles.commandBox} data-testid="change-receipt-command">

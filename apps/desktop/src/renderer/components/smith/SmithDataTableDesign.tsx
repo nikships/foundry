@@ -7,6 +7,7 @@
 import type { DataTableDef, TableColumnDef, TableRowDef } from '@shared/types.js';
 import { dataTableSummary, formatCellValue } from '../../view-models/smith-artifact-view.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithDataTableDesign.module.css';
 
 function columnAlign(align: TableColumnDef['align']): string {
@@ -63,10 +64,10 @@ export function DataTableDesign({
       className={cx(styles.dataTable, compact && styles.compact)}
       data-testid="smith-data-table-design"
     >
-      <div className={styles.summaryBar}>
-        <span className={styles.summaryText}>{summary}</span>
+      <SmithCardBar compact={compact}>
+        <SmithCardSummary compact={compact}>{summary}</SmithCardSummary>
         {table.catalogKind && <span className={styles.catalogKindTag}>{table.catalogKind}</span>}
-      </div>
+      </SmithCardBar>
 
       <div className={styles.tableContainer}>
         {isEmpty ? (

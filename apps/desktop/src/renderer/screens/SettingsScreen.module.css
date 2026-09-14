@@ -336,37 +336,6 @@
   max-width: 860px;
   margin: 0 auto;
   padding: 0 var(--s6) var(--s16);
-  counter-reset: section;
-}
-.settingsSection {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: var(--s4) var(--s12);
-  border-top: 1px solid var(--line);
-  padding: var(--s8) 0;
-  counter-increment: section;
-}
-.settingsSection:first-child {
-  border-top: none;
-}
-.settingsSectionLabel :global(.eyebrow) :global(.index)::before {
-  content: counter(section, decimal-leading-zero);
-}
-.settingsSectionLabel p {
-  margin: var(--s2) 0 0;
-  font-size: var(--text-xs);
-  line-height: var(--leading);
-  color: var(--text-faint);
-  max-width: 24ch;
-}
-.settingsBody {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s5);
-}
-.settingsBody p {
-  margin: 0;
 }
 .settingsFields {
   display: grid;
@@ -389,10 +358,6 @@
 }
 
 @media (max-width: 1120px) {
-  .settingsSection {
-    grid-template-columns: 1fr;
-    gap: var(--s4);
-  }
   .settingsFields,
   .two {
     grid-template-columns: 1fr;
@@ -450,12 +415,7 @@
   flex-direction: column;
   gap: var(--s4);
 }
-.settingsToggle {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s3);
-  cursor: default;
-}
+/* Compact switch used only in the search palette option row. */
 .settingsSwitch {
   appearance: none;
   -webkit-appearance: none;
@@ -493,19 +453,6 @@
 .settingsSwitch:checked::after {
   left: 14px;
   background: var(--bg-void);
-}
-.settingsToggleText {
-  min-width: 0;
-  font-size: var(--text-sm);
-  color: var(--text);
-}
-.settingsToggleText em {
-  display: block;
-  font-style: normal;
-  margin-top: 1px;
-  font-size: var(--text-xs);
-  color: var(--text-faint);
-  line-height: var(--leading);
 }
 
 /* status pill */

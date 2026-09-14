@@ -15,6 +15,7 @@ import {
   groupChecklistItems,
 } from '../../view-models/smith-artifact-view.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithChecklistDesign.module.css';
 
 export function ChecklistStatusIcon({
@@ -167,8 +168,8 @@ export function ChecklistDesign({
 
   return (
     <div className={cx(styles.checklist, compact && styles.compact)} data-testid="checklist-design">
-      <div className={styles.summaryBar} data-testid="checklist-summary">
-        <span className={styles.summaryText}>{summary}</span>
+      <SmithCardBar compact={compact} testId="checklist-summary">
+        <SmithCardSummary compact={compact}>{summary}</SmithCardSummary>
         <div className={styles.summaryBadges} aria-label="Status counts">
           {groups.fail.length > 0 && (
             <span
@@ -207,7 +208,7 @@ export function ChecklistDesign({
             </span>
           )}
         </div>
-      </div>
+      </SmithCardBar>
 
       <div className={styles.groups}>
         <ChecklistGroupSection status="fail" title="Failed" items={groups.fail} />

@@ -19,6 +19,7 @@ import {
   providerStatusSummary,
 } from '../../view-models/smith-artifact-view.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithProviderStatusDesign.module.css';
 
 function ProviderRow({ provider }: { provider: ProviderStatusEntry }): React.JSX.Element {
@@ -87,9 +88,9 @@ export function ProviderStatusDesign({
       className={cx(styles.status, compact && styles.compact)}
       data-testid="provider-status-design"
     >
-      <div className={styles.summaryBar} data-testid="provider-status-summary">
-        <span className={styles.summaryText}>{summary}</span>
-      </div>
+      <SmithCardBar compact={compact} testId="provider-status-summary">
+        <SmithCardSummary compact={compact}>{summary}</SmithCardSummary>
+      </SmithCardBar>
 
       {status.bridge && (
         <div className={styles.section} data-testid="provider-status-bridge">

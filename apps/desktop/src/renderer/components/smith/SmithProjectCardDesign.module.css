@@ -15,25 +15,6 @@
   font-size: var(--text-xs);
 }
 
-/* ── Header Bar ── */
-
-.headerBar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
-  padding: var(--s2) var(--s3);
-  border-radius: var(--r-sm);
-  background: var(--bg-input);
-  border: 1px solid var(--line);
-}
-
-.compact .headerBar {
-  padding: var(--s1) var(--s2);
-  gap: var(--s1);
-}
-
 .pathRow {
   display: flex;
   align-items: center;
@@ -49,17 +30,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.summaryText {
-  font-size: var(--text-sm);
-  color: var(--text);
-  line-height: var(--leading);
-  font-weight: 500;
-}
-
-.compact .summaryText {
-  font-size: var(--text-xs);
 }
 
 .badges {
