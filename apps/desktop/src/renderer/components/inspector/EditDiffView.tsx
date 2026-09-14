@@ -36,7 +36,7 @@ const FOUNDRY_DIFF_CSS = `
   }
 `;
 
-const OPTIONS: FileDiffOptions<undefined> = {
+const OPTIONS: FileDiffOptions<undefined, undefined> = {
   theme: { dark: 'pierre-dark', light: 'pierre-light' },
   diffStyle: 'unified',
   diffIndicators: 'classic',
