@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, afterEach, expect, it, vi } from 'vitest';
 import { tempDir } from '../../helpers/tmp.js';
 import { GPT_LIVE_MODEL } from '../../../src/shared/gpt-live.js';
 
@@ -177,5 +177,108 @@ describe('GptLiveService', () => {
       'Your OpenAI API key was rejected. Replace it in Settings → Integrations.',
     );
     expect(refused.error).not.toContain('sk-');
+  });
+});
+
+describe('defaultCreateWebRtcSession (POST /v1/realtime/calls)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubFetch(
+    body: string,
+    init: { status?: number; location?: string } = {},
+  ): { url: unknown; init: RequestInit }[] {
+    const seen: { url: unknown; init: RequestInit }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, request?: RequestInit) => {
+        seen.push({ url, init: request ?? {} });
+        const headers: Record<string, string> = {};
+        if (init.location !== undefined) headers.location = init.location;
+        return new Response(body, { status: init.status ?? 200, headers });
+      }),
+    );
+    return seen;
+  }
+
+  it('posts multipart SDP + session to the realtime calls endpoint and keeps SDP bytes intact', async () => {
+    const offer = 'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n';
+    expect(offer.trim()).not.toBe(offer);
+    const answer = 'v=0\r\no=- 2 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n';
+    const seen = stubFetch(answer, { location: '/v1/realtime/calls/rtc_abc123' });
+    const { service } = store();
+    await service.setApiKey('sk-test-key');
+    const created = await service.createSession(offer);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.url).toBe('https://api.openai.com/v1/realtime/calls');
+    const request = seen[0]!.init;
+    expect(request.method).toBe('POST');
+    expect((request.headers as Record<string, string>).Authorization).toBe('Bearer sk-test-key');
+    expect(JSON.stringify(request.headers)).not.toContain('application/json');
+    expect(request.body).toBeInstanceOf(FormData);
+    const form = request.body as FormData;
+    expect([...form.keys()].sort()).toEqual(['sdp', 'session']);
+
+    const sdpPart = form.get('sdp');
+    expect(sdpPart).toBeInstanceOf(Blob);
+    expect((sdpPart as Blob).type).toBe('application/sdp');
+    expect(await (sdpPart as Blob).text()).toBe(offer);
+
+    const sessionPart = form.get('session');
+    expect(sessionPart).toBeInstanceOf(Blob);
+    expect((sessionPart as Blob).type).toBe('application/json');
+    expect(JSON.parse(await (sessionPart as Blob).text())).toEqual(liveSessionConfig('marin'));
+
+    expect('error' in created).toBe(false);
+    if ('error' in created) return;
+    expect(created.sessionId).toBe('rtc_abc123');
+    expect(created.sdp).toBe(answer);
+    expect(JSON.stringify(created)).not.toContain('sk-test-key');
+  });
+
+  it('extracts the call id from an absolute Location URL', async () => {
+    const seen = stubFetch('v=0\r\n', {
+      location: 'https://api.openai.com/v1/realtime/calls/rtc_xyz789',
+    });
+    const { service } = store();
+    await service.setApiKey('sk-test-key');
+    const created = await service.createSession('v=0\r\n');
+    expect(seen).toHaveLength(1);
+    expect('error' in created).toBe(false);
+    if ('error' in created) return;
+    expect(created.sessionId).toBe('rtc_xyz789');
+  });
+
+  it('fails when the answer body is empty', async () => {
+    stubFetch('   \n', { location: '/v1/realtime/calls/rtc_abc123' });
+    const { service } = store();
+    await service.setApiKey('sk-test-key');
+    const failed = await service.createSession('v=0\r\n');
+    expect('error' in failed).toBe(true);
+    if (!('error' in failed)) return;
+    expect(failed.error).toContain('no SDP answer');
+  });
+
+  it('fails when the Location header is missing', async () => {
+    stubFetch('v=0\r\n');
+    const { service } = store();
+    await service.setApiKey('sk-test-key');
+    const failed = await service.createSession('v=0\r\n');
+    expect('error' in failed).toBe(true);
+    if (!('error' in failed)) return;
+    expect(failed.error).toContain('no call id');
+  });
+
+  it('surfaces server failures without leaking the key', async () => {
+    stubFetch('invalid_offer: unexpected EOF', { status: 400 });
+    const { service } = store();
+    await service.setApiKey('sk-test-key');
+    const failed = await service.createSession('v=0\r\n');
+    expect('error' in failed).toBe(true);
+    if (!('error' in failed)) return;
+    expect(failed.error).toContain('invalid_offer');
+    expect(failed.error).not.toContain('sk-test-key');
   });
 });

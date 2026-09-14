@@ -10,7 +10,7 @@
  * the renderer or a paired phone.
  *
  * GPT-Live has no Gemini-style ephemeral token. Desktop WebRTC posts the
- * browser SDP offer here (`POST /v1/live/sessions`); the companion host
+ * browser SDP offer here (`POST /v1/realtime/calls`); the companion host
  * relays a WebSocket so Android never sees the key either.
  */
 
@@ -27,7 +27,7 @@ import type {
 } from '@shared/ipc-contract.js';
 import type { SecretStore } from '../system/secret-file.js';
 
-const LIVE_SESSIONS_URL = 'https://api.openai.com/v1/live/sessions';
+const REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
 
 /**
  * Maps a session-create failure to the one line the voice overlay shows.
@@ -137,8 +137,7 @@ export class GptLiveService {
    * SDP answer. Voice is read from Settings at create time.
    */
   async createSession(sdp: string): Promise<GptLiveSession | { error: string }> {
-    const offer = sdp.trim();
-    if (!offer) return { error: 'A WebRTC offer is required to start voice.' };
+    if (!sdp.trim()) return { error: 'A WebRTC offer is required to start voice.' };
     const apiKey = this.deps.credentials.get();
     if (!apiKey)
       return { error: 'No OpenAI API key is stored. Save one in Settings → Integrations.' };
@@ -146,7 +145,7 @@ export class GptLiveService {
     try {
       return await (this.deps.createWebRtcSession ?? defaultCreateWebRtcSession)(
         apiKey,
-        offer,
+        sdp,
         voice,
       );
     } catch (error) {
@@ -160,31 +159,41 @@ async function defaultCreateWebRtcSession(
   sdp: string,
   voice: GptLiveVoiceId,
 ): Promise<GptLiveSession> {
-  const response = await fetch(LIVE_SESSIONS_URL, {
+  const form = new FormData();
+  form.append('sdp', new Blob([sdp], { type: 'application/sdp' }));
+  form.append(
+    'session',
+    new Blob([JSON.stringify(liveSessionConfig(voice))], { type: 'application/json' }),
+  );
+  const response = await fetch(REALTIME_CALLS_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      session: liveSessionConfig(voice),
-      transport: { type: 'webrtc', sdp },
-    }),
+    body: form,
   });
   const raw = await response.text();
   if (!response.ok) {
     throw new Error(raw || `GPT-Live returned ${response.status}`);
   }
-  let parsed: { session?: { id?: string }; transport?: { sdp?: string } };
-  try {
-    parsed = JSON.parse(raw) as { session?: { id?: string }; transport?: { sdp?: string } };
-  } catch {
-    throw new Error('the session response was not JSON');
-  }
-  const sessionId = parsed.session?.id?.trim();
-  const answer = parsed.transport?.sdp?.trim();
-  if (!sessionId || !answer) throw new Error('the session response carried no SDP answer');
-  return { sessionId, sdp: answer };
+  if (!raw.trim()) throw new Error('the session response carried no SDP answer');
+  const sessionId = extractCallId(response.headers.get('location'));
+  if (!sessionId) throw new Error('the session response carried no call id');
+  return { sessionId, sdp: raw };
 }
 
-export { LIVE_SESSIONS_URL };
+/**
+ * Reads the call id from the create-call `Location` response header, which
+ * points at the new call resource (for example `/v1/realtime/calls/rtc_...`).
+ */
+function extractCallId(location: string | null): string | null {
+  if (!location) return null;
+  const trimmed = location.trim();
+  if (!trimmed) return null;
+  const withoutSuffix = trimmed.split('?')[0]?.split('#')[0] ?? '';
+  const segments = withoutSuffix.split('/').filter((segment) => segment.length > 0);
+  const last = segments[segments.length - 1]?.trim() ?? '';
+  return last || null;
+}
+
+export { REALTIME_CALLS_URL };
