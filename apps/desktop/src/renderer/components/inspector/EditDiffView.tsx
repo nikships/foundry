@@ -4,7 +4,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import type { FileContents, FileDiffOptions } from '@pierre/diffs/react';
+import type { FileDiffOptions } from '@pierre/diffs';
+import type { FileContents } from '@pierre/diffs/react';
 import { MultiFileDiff, PatchDiff } from '@pierre/diffs/react';
 import { isAppTheme, themeAppearance } from '@shared/themes.js';
 import type { EventRow } from '@shared/types.js';
@@ -35,7 +36,7 @@ const FOUNDRY_DIFF_CSS = `
   }
 `;
 
-const OPTIONS: FileDiffOptions<undefined, undefined> = {
+const OPTIONS: FileDiffOptions<undefined> = {
   theme: { dark: 'pierre-dark', light: 'pierre-light' },
   diffStyle: 'unified',
   diffIndicators: 'classic',
@@ -82,14 +83,29 @@ function PairDiff({
   themeType: 'dark' | 'light';
 }): React.JSX.Element {
   const options = useMemo(() => ({ ...OPTIONS, themeType }), [themeType]);
+  // @pierre/diffs MultiFileDiff crashes when either side is null (reads .name
+  // off the missing FileContents). An empty opposite side still yields a pure
+  // addition/deletion hunk for create and delete writes.
   if (oldFile && newFile) {
     return <MultiFileDiff oldFile={oldFile} newFile={newFile} options={options} />;
   }
   if (newFile && !oldFile) {
-    return <MultiFileDiff oldFile={null} newFile={newFile} options={options} />;
+    return (
+      <MultiFileDiff
+        oldFile={{ name: newFile.name, contents: '' }}
+        newFile={newFile}
+        options={options}
+      />
+    );
   }
   if (oldFile && !newFile) {
-    return <MultiFileDiff oldFile={oldFile} newFile={null} options={options} />;
+    return (
+      <MultiFileDiff
+        oldFile={oldFile}
+        newFile={{ name: oldFile.name, contents: '' }}
+        options={options}
+      />
+    );
   }
   return <EmptyDiff />;
 }

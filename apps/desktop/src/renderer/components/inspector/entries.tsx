@@ -15,6 +15,7 @@ import { isAutoAllowPolicy } from '../../utils/derive.js';
 import { EventIcon } from '../common/EventIcon.js';
 import { useCollapseSignal } from './collapse.js';
 import EditDiffView from './EditDiffView.js';
+import { toolPayloadFromEvent } from './tool-payload.js';
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -43,7 +44,7 @@ function inferKind(event: EventRow): string {
   if (Array.isArray(event.payload.argv)) return 'command';
   if (head === 'bash') return 'command';
   if (head === 'read') return 'read';
-  if (head === 'edit' || head === 'write') return 'edit';
+  if (head === 'edit' || head === 'write' || head === 'write_file') return 'edit';
   if (head === 'grep' || head === 'find' || head === 'ls') return 'search';
   if (head === 'report_progress') return 'progress';
   if (head === 'submit_envelope' || head === 'read_phase_context') return 'envelope';
@@ -505,12 +506,13 @@ function formatArgsSummary(a: Record<string, unknown>): string {
 
 function GenericToolBlock({ event }: { event: EventRow }): React.JSX.Element {
   const [expanded, setExpanded] = useCollapsible(false);
+  const [showRaw, setShowRaw] = useState(false);
   const open = event.endedAt == null;
-  const result = str(event.payload.result);
+  const model = useMemo(() => toolPayloadFromEvent(event), [event]);
   const a = args(event);
   const colon = event.name.indexOf(': ');
   const toolName = colon > 0 ? event.name.slice(0, colon) : event.name;
-  const summary = colon > 0 ? event.name.slice(colon + 2) : formatArgsSummary(a);
+  const summary = colon > 0 ? event.name.slice(colon + 2) : formatArgsSummary(a) || model.summary;
 
   return (
     <div className={`te tool ${open ? 'open' : ''}`}>
@@ -525,7 +527,26 @@ function GenericToolBlock({ event }: { event: EventRow }): React.JSX.Element {
         )}
         <Time iso={event.startedAt} />
       </button>
-      {expanded && result && <TruncatedOutput text={result} maxLines={12} />}
+      {expanded && (
+        <div className="te-tool-body">
+          {model.fields.length > 0 && (
+            <div className="te-tool-fields">
+              {model.fields.map((field) => (
+                <div key={field.label} className="te-tool-field">
+                  <span className="te-tool-label">{field.label}</span>
+                  <span className="te-tool-value mono">{field.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {model.result && <TruncatedOutput text={model.result} maxLines={12} />}
+          {event.payload.truncated === true && <TruncatedNote />}
+          <button type="button" className="te-raw-toggle" onClick={() => setShowRaw((v) => !v)}>
+            {showRaw ? 'Hide raw JSON' : 'Show raw JSON'}
+          </button>
+          {showRaw && <TruncatedOutput text={JSON.stringify(model.raw, null, 2)} maxLines={16} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -748,7 +769,7 @@ export function transcriptStyles(): string {
   return `
     /* Agent output is for reading and copying. Keep its content explicitly
      * selectable even when embedded beside interactive transcript chrome. */
-    .te-text-body, .te-thinking-body, .te-output, .te-todo-list, .te-task-body, .te-ask-body, .te-envelope-summary, .te-envelope-notes, .te-envelope-files, .te-ask-q, .te-ask-a, .te-banner-detail, .te-log-detail { user-select: text; -webkit-user-select: text; cursor: text; }
+    .te-text-body, .te-thinking-body, .te-output, .te-todo-list, .te-task-body, .te-ask-body, .te-tool-body, .te-envelope-summary, .te-envelope-notes, .te-envelope-files, .te-ask-q, .te-ask-a, .te-banner-detail, .te-log-detail { user-select: text; -webkit-user-select: text; cursor: text; }
     .te { margin: 4px 0; }
     .te-head, .te-row-head, .te-cmd-head { display: flex; align-items: center; gap: var(--s2); width: 100%; border: none; background: none; padding: 4px 6px; font: inherit; color: inherit; text-align: left; cursor: default; border-radius: var(--r-sm); transition: background var(--fast) var(--ease); }
     button.te-row-head:hover, button.te-cmd-head:hover { background: var(--bg-hover); }
@@ -810,6 +831,15 @@ export function transcriptStyles(): string {
     .te-task-body, .te-ask-body { margin: 4px 0 6px; padding: 8px 10px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); font-size: var(--text-xs); line-height: var(--leading); }
     .te-task-prompt, .te-ask-q { color: var(--text-dim); margin-bottom: 6px; line-height: 1.5; white-space: pre-wrap; }
     .te-ask-a { color: var(--green); font-weight: 500; }
+
+    /* ── Generic tool fields ── */
+    .te-tool-body { margin: 4px 0 6px; display: flex; flex-direction: column; gap: 4px; }
+    .te-tool-fields { padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); display: flex; flex-direction: column; gap: 4px; }
+    .te-tool-field { display: grid; grid-template-columns: minmax(72px, 96px) minmax(0, 1fr); gap: var(--s2); align-items: baseline; font-size: var(--text-xs); }
+    .te-tool-label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+    .te-tool-value { color: var(--text-dim); word-break: break-word; white-space: pre-wrap; }
+    .te-raw-toggle { align-self: flex-start; border: none; background: none; color: var(--text-faint); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; text-decoration: underline; text-underline-offset: 2px; cursor: default; padding: 2px 0; }
+    .te-raw-toggle:hover { color: var(--text); }
 
     /* ── Envelope & JSON styling ── */
     .te.envelope { margin: 4px 0 6px; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); }

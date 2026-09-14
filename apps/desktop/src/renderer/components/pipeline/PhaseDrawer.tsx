@@ -19,6 +19,7 @@ import JsonView from '../common/JsonView.js';
 import { EventIcon } from '../common/EventIcon.js';
 import EditDiffView from '../inspector/EditDiffView.js';
 import { isEditToolEvent } from '../inspector/edit-diff.js';
+import ToolPayloadView from '../inspector/ToolPayloadView.js';
 import PhaseDocument from './PhaseDocument.js';
 import styles from './PhaseDrawer.module.css';
 
@@ -75,6 +76,9 @@ function EventPayload({ event }: { event: EventRow }): React.JSX.Element | null 
         <EditDiffView event={event} />
       </div>
     );
+  }
+  if (event.type === 'tool_call') {
+    return <ToolPayloadView event={event} />;
   }
   if (!Object.keys(event.payload).length) return null;
   const prose = proseOf(event);

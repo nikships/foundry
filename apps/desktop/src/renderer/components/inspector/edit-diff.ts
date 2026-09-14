@@ -40,9 +40,10 @@ function nameHead(event: EventRow): string {
 export function isEditToolEvent(event: EventRow): boolean {
   if (event.type !== 'tool_call') return false;
   const kind = str(event.payload.kind);
-  if (kind === 'edit') return true;
+  // Main's toolKind maps write → edit; accept either, plus write_file aliases.
+  if (kind === 'edit' || kind === 'write') return true;
   const head = nameHead(event);
-  return head === 'edit' || head === 'write';
+  return head === 'edit' || head === 'write' || head === 'write_file';
 }
 
 function pathOf(event: EventRow, a: Record<string, unknown>): string {
