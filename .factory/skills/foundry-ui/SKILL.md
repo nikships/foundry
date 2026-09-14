@@ -17,11 +17,15 @@ agent-browser over CDP is the only workable driver.
 
 ## Launch
 
-Build output must exist (`npm run build` emits `out/`; `electron .` loads
-`out/main/main.js`, so rebuild after source changes). The app enforces a
-single-instance lock per user-data dir.
+Default launch is `pnpm run dogfood`. That seeds `.dogfood-state` (Muse Spark
+1.3 Contributor on every model slot, other models hidden, onboarding skipped),
+rebuilds `out/`, and starts Electron with CDP on **9251** and
+`--user-data-dir=./.dogfood-state`. `electron .` loads `out/main/main.js`.
+Saved keys persist in that dir; seed never writes secrets. The app enforces a
+single-instance lock per user-data dir, so the packaged `/Applications/Foundry.app`
+can stay open.
 
-The automated counterpart of this skill is `npm run test:e2e` (Playwright
+The automated counterpart of this skill is `pnpm run test:e2e` (Playwright
 `_electron.launch()` against isolated fixtures in `tests/e2e/`). Use that for
 regression; use this skill for interactive exploration. Do not open a web
 browser either way.
@@ -37,56 +41,43 @@ the traps listed there.
 ```bash
 cd /path/to/foundry
 
-# 0. Check nothing already holds the lock. Match BOTH the packaged app and
-#    a leftover `electron .` — either one will make the next launch exit.
+# 0. Reuse a live dogfood window. If this prints JSON, skip launch.
+curl -s http://127.0.0.1:9251/json/version
 pgrep -fl "electron \." || true
 pgrep -fli "/Applications/Foundry.app" || true
 
-# 1. Build if out/ is missing or stale
-[ -d out/main ] || npm run build
+# 1. Otherwise launch. Seeds, rebuilds, then starts Electron with CDP.
+#    Plain `&` is correct. Redirect so DevTools-on-stderr does not look like a crash.
+#    Kill a leftover dogfood `electron .` first if you just changed source and
+#    need a rebuild; a second dogfood launch loses the .dogfood-state lock.
+pnpm run dogfood > /tmp/electron-dogfood.log 2>&1 &
 
-# 2. Launch with CDP. Plain `&` is correct. Redirect output so the DevTools
-#    listener line on stderr does not look like a crash.
-./node_modules/.bin/electron . --remote-debugging-port=9250 \
-  > /tmp/electron.log 2>&1 &
-
-# 3. Connect (wait for the window). Safe to run in a later shell call.
-sleep 4
-curl -s http://127.0.0.1:9250/json/version   # liveness proof, not $?
-# If that is empty, the packaged app almost certainly won the lock. See below.
-agent-browser connect 9250
+# 2. Connect once Chromium is listening (safe in a later shell call).
+#    Build can take ~30–90s — poll 9251; do not sleep 4 and give up.
+for _ in $(seq 1 30); do
+  curl -sf http://127.0.0.1:9251/json/version && break
+  sleep 3
+done
+curl -s http://127.0.0.1:9251/json/version   # liveness proof, not $?
+# If that is empty, read /tmp/electron-dogfood.log rather than relaunching.
+agent-browser connect 9251
 agent-browser tab   # expect: [t1] Foundry - file://.../out/renderer/index.html
 ```
 
 **Backgrounding works, including across separate tool calls.** A plain `&`
-launch keeps running after the shell call that started it returns; step 3 above
+launch keeps running after the shell call that started it returns; step 2 above
 connects fine from a later call. Before concluding the app was killed, prove it
-with `pgrep -fl "electron \."` and a `curl` of the CDP port. Four things
-routinely masquerade as an environment blocker:
+with `pgrep -fl "electron \."` and a `curl` of `http://127.0.0.1:9251/json/version`.
+Four things routinely masquerade as an environment blocker:
 
-- **Packaged `/Applications/Foundry.app` holds the lock.** `electron .` then
-  prints `DevTools listening on ws://127.0.0.1:9250/...` and exits 0. `curl`
-  of `/json/version` is empty, `pgrep -fl "electron \."` is empty, and
-  `pgrep -fli Foundry` shows the packaged PID. **Do not kill the packaged
-  app** — it is the user's live install. Relaunch isolated instead:
-
-  ```bash
-  ./node_modules/.bin/electron . --remote-debugging-port=9251 \
-    --user-data-dir=/tmp/foundry-ui-state \
-    > /tmp/electron-ui.log 2>&1 &
-  sleep 4
-  curl -s http://127.0.0.1:9251/json/version
-  agent-browser --session foundry-ui connect 9251
-  ```
-
-  A fresh `--user-data-dir` starts Onboarding. To skip it, seed
-  `<dir>/foundry/settings.json` with `"onboarded": true` (and a project if
-  you need the main shell), or use the user's real state only when Foundry.app
-  is not running.
-
-- **`setsid` does not exist on macOS.** `nohup setsid electron . &` fails with
-  `nohup: setsid: No such file or directory` — nothing ever launched. Do not
-  reach for `setsid`; plain `&` is what works here.
+- **A second dogfood launch loses the `.dogfood-state` lock.** If 9251 is
+  already live, connect — do not start another `pnpm run dogfood`. The second
+  process prints `DevTools listening on ws://127.0.0.1:9251/...` and exits 0.
+  **Do not kill `/Applications/Foundry.app`** — it is the user's live install
+  and does not share dogfood's user-data dir.
+- **`setsid` does not exist on macOS.** `nohup setsid pnpm run dogfood &` fails
+  with `nohup: setsid: No such file or directory` — nothing ever launched. Do
+  not reach for `setsid`; plain `&` is what works here.
 - **`$!` is often the wrong PID.** `nohup` and `setsid` fork, and `open -n -a`
   hands off to launchd and exits immediately. In all three the app may be
   running while the PID you captured is gone. Match on `pgrep -fl` instead.
@@ -97,29 +88,28 @@ routinely masquerade as an environment blocker:
 Variants:
 
 ```bash
-# Dogfood instance with inference preconfigured (Meta Muse Spark 1.3
-# Contributor as the only model; seed prints any keys still missing their
-# one-time entry in Settings — Meta under Providers, OpenAI under
-# Integrations → Smith voice mode; saved keys persist in the state dir):
-npm run dogfood
-agent-browser --session dogfood connect 9251   # named session = second app
+# Narrow window (min width 600, default 1440x940):
+FOUNDRY_WIDTH=700 pnpm run dogfood > /tmp/electron-dogfood.log 2>&1 &
 
-# Isolated instance with fresh state (triggers Onboarding, bypasses the
-# single-instance lock, leaves real state untouched):
-./node_modules/.bin/electron . --remote-debugging-port=9251 \
-  --user-data-dir=/tmp/foundry-test-state &
-agent-browser --session onboard connect 9251   # named session = second app
-
-# Narrow window for responsive testing (min width 600, default 1440x940):
-FOUNDRY_WIDTH=700 ./node_modules/.bin/electron . --remote-debugging-port=9250 &
+# Onboarding only — fresh state, not dogfood. Triggers Onboarding, leaves
+# .dogfood-state and the packaged app untouched. Pick a free CDP port if 9251
+# is already the dogfood window.
+./node_modules/.bin/electron . --remote-debugging-port=9252 \
+  --user-data-dir=/tmp/foundry-test-state \
+  > /tmp/electron-onboard.log 2>&1 &
+agent-browser --session onboard connect 9252
 ```
 
-Real state lives at `~/Library/Application Support/foundry/foundry/`
-(`settings.json`, `pipelines.json`, `roster.json`, `projects.json`,
-per-project trace DBs under `projects/`). Don't edit while the app runs.
+Dogfood state lives at `.dogfood-state/foundry/` (`settings.json`,
+`pipelines.json`, `roster.json`, `projects.json`, pi auth, credentials,
+per-project trace DBs). The packaged app's state is
+`~/Library/Application Support/foundry/foundry/`. Don't edit either while
+that instance runs.
 
-Cleanup when done: `kill` the `electron .` PID from `pgrep` (and `rm -rf` any
-temp `--user-data-dir` you created). Never kill `/Applications/Foundry.app`.
+Cleanup when done: `kill` the dogfood `electron .` PID from `pgrep`. Never
+kill `/Applications/Foundry.app`. Never `rm -rf .dogfood-state` — that dir
+holds saved keys. Only delete a temp `--user-data-dir` you created for
+onboarding.
 
 ## Driving it
 
@@ -663,25 +653,26 @@ footer buttons are `onboarding-back` / `onboarding-next` on every step.
 
 ## Troubleshooting
 
-- **`connect` refused**: app not up yet (`sleep 4`), or launched without the
-  flag, or another instance held the single-instance lock so your process
-  exited immediately. Check `pgrep -fl "electron \."` **and**
-  `pgrep -fli "/Applications/Foundry.app"`. If only the packaged app is
-  running, use `--user-data-dir` (see Launch). Do not kill Foundry.app.
+- **`connect` refused**: dogfood is still building (`pnpm run dogfood` rebuilds
+  before Electron starts), or a leftover dogfood instance holds
+  `.dogfood-state` so the new process exited. Check
+  `curl -s http://127.0.0.1:9251/json/version` and `pgrep -fl "electron \."`.
+  If 9251 is empty, read `/tmp/electron-dogfood.log`. Do not kill Foundry.app.
 - **"the launch keeps getting killed"**: check this before believing it. Run
-  `pgrep -fl "electron \."` and `curl -s http://127.0.0.1:9250/json/version`.
+  `pgrep -fl "electron \."` and `curl -s http://127.0.0.1:9251/json/version`.
   Plain `&` backgrounding survives across tool calls, so a vanished `$!` is
   usually `setsid` (absent on macOS), a fork, or `open -n -a` handing off to
-  launchd — not the app dying. The most common real death is the packaged
-  app winning the lock: DevTools printed, then the process is gone. See the
-  traps under **Launch**. If the app is genuinely not running, the log you
-  redirected to `/tmp/electron.log` says why; read it rather than switching
-  to another harness.
+  launchd — not the app dying. The most common real death is a second dogfood
+  launch losing the `.dogfood-state` lock: DevTools printed, then the process
+  is gone. Connect to 9251 instead of relaunching. See the traps under
+  **Launch**. If the app is genuinely not running, `/tmp/electron-dogfood.log`
+  says why; read it rather than switching to another harness.
 - **`agent-browser` command SIGKILL'd**: the Electron app is usually still
   up. `connect` again and continue. Do not treat this as a launch failure.
-- **Blank/stale UI after code changes**: `electron .` serves the last build;
-  run `npm run build` and relaunch. For live HMR use `npm run dev` (but flag
-  passthrough for the debug port is unreliable; prefer built launches).
+- **Blank/stale UI after code changes**: dogfood serves the build it just
+  made. If you are attached to an old window, kill that `electron .` and run
+  `pnpm run dogfood` again. For live HMR use `pnpm run dev` (but flag
+  passthrough for the debug port is unreliable; prefer dogfood).
 - **Buttons do nothing**: an overlay (⌘K palette, Dry run, Prompt preview,
   confirm modal) may be capturing input — `agent-browser press Escape`.
   A native dialog (PR-merge confirm, folder picker) is open? CDP can neither
