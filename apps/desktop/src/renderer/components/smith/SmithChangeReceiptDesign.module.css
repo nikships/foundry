@@ -15,25 +15,6 @@
   font-size: var(--text-xs);
 }
 
-/* ── Status and Target Header ── */
-
-.headerBar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
-  padding: var(--s2) var(--s3);
-  border-radius: var(--r-sm);
-  background: var(--bg-input);
-  border: 1px solid var(--line);
-}
-
-.compact .headerBar {
-  padding: var(--s1) var(--s2);
-  gap: var(--s1);
-}
-
 .badges {
   display: flex;
   flex-wrap: wrap;
@@ -96,17 +77,6 @@
   background: color-mix(in srgb, var(--red-dim) 40%, var(--bg-raised));
   border-color: color-mix(in srgb, var(--red) 40%, var(--line-strong));
   color: var(--red);
-}
-
-.summaryText {
-  font-size: var(--text-sm);
-  color: var(--text);
-  line-height: var(--leading);
-  font-weight: 500;
-}
-
-.compact .summaryText {
-  font-size: var(--text-xs);
 }
 
 /* ── Command section ── */

@@ -111,35 +111,6 @@
   overflow-wrap: break-word;
 }
 
-/* ── Summary ── */
-
-.summaryBar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--s2);
-  padding: var(--s2) var(--s3);
-  border-radius: var(--r-sm);
-  background: var(--bg-input);
-  border: 1px solid var(--line);
-}
-
-.compact .summaryBar {
-  padding: var(--s1) var(--s2);
-  gap: var(--s1);
-}
-
-.summaryText {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text);
-  line-height: var(--leading);
-}
-
-.compact .summaryText {
-  font-size: var(--text-xs);
-}
-
 .checklistNote {
   font-size: var(--text-xs);
   color: var(--text-dim);

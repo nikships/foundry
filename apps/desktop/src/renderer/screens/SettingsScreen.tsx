@@ -38,7 +38,9 @@ import QrCode from '../components/media/QrCode.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
+import { GutterSection, gutterPageClass } from '../components/ui/GutterSection.js';
 import { ThemePicker } from '../components/ui/ThemePicker.js';
+import { Toggle } from '../components/ui/Toggle.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
@@ -149,7 +151,6 @@ function readBoundedInt(
   return Math.min(opts.max, Math.max(opts.min, Math.round(n)));
 }
 
-/** Gutter-labelled section: mono micro-label left, fields right, hairlines between. */
 function Section({
   label,
   note,
@@ -160,16 +161,9 @@ function Section({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section className={styles.settingsSection} data-sec={sectionId(label)}>
-      <div className={styles.settingsSectionLabel}>
-        <p className="eyebrow">
-          <span className="index" aria-hidden />
-          {label}
-        </p>
-        {note && <p>{note}</p>}
-      </div>
-      <div className={styles.settingsBody}>{children}</div>
-    </section>
+    <GutterSection label={label} note={note} dataSec={sectionId(label)}>
+      {children}
+    </GutterSection>
   );
 }
 
@@ -325,34 +319,6 @@ function GeminiLiveSection({
         )}
       </div>
     </Section>
-  );
-}
-
-/** Checkbox styled as a switch, so the whole row stays click-to-toggle. */
-function Toggle({
-  checked,
-  onChange,
-  label,
-  hint,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  label: string;
-  hint?: string;
-}): React.JSX.Element {
-  return (
-    <label className={styles.settingsToggle}>
-      <input
-        type="checkbox"
-        className={styles.settingsSwitch}
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span className={styles.settingsToggleText}>
-        {label}
-        {hint && <em>{hint}</em>}
-      </span>
-    </label>
   );
 }
 
@@ -1151,7 +1117,7 @@ export default function SettingsScreen({
           </aside>
 
           <div className={styles.settingsScroll}>
-            <div className={styles.settingsPage}>
+            <div className={`${styles.settingsPage} ${gutterPageClass}`}>
               {pane === 'system' && (
                 <PaneBody>
                   {() => (

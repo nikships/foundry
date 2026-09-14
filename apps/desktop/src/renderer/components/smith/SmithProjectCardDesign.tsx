@@ -13,6 +13,7 @@ import {
   projectCardSummary,
 } from '../../view-models/smith-artifact-view.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithProjectCardDesign.module.css';
 
 export function GitBranchIcon(): React.JSX.Element {
@@ -71,7 +72,7 @@ export function ProjectCardDesign({
       className={cx(styles.projectCard, compact && styles.compact)}
       data-testid="project-card-design"
     >
-      <div className={styles.headerBar}>
+      <SmithCardBar compact={compact}>
         <div className={styles.pathRow} data-testid="project-card-path">
           <span className={styles.pathText}>{project.path}</span>
         </div>
@@ -98,12 +99,12 @@ export function ProjectCardDesign({
             </span>
           )}
         </div>
-      </div>
+      </SmithCardBar>
 
       {!compact && (
-        <span className={styles.summaryText} data-testid="project-card-summary">
+        <SmithCardSummary compact={compact} testId="project-card-summary">
           {summary}
-        </span>
+        </SmithCardSummary>
       )}
 
       <div className={styles.grid}>

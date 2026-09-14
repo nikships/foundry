@@ -7,6 +7,7 @@
 import type { SettingsDiffChange, SettingsDiffDef, SettingsDiffSection } from '@shared/types.js';
 import { formatSettingValue, settingsDiffSummary } from '../../view-models/smith-artifact-view.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithSettingsDiffDesign.module.css';
 
 function ChangeItemRow({
@@ -77,10 +78,10 @@ export function SettingsDiffDesign({
       className={cx(styles.settingsDiff, compact && styles.compact)}
       data-testid="smith-settings-diff-design"
     >
-      <div className={styles.summaryBar}>
-        <span className={styles.summaryText}>{summary}</span>
+      <SmithCardBar compact={compact}>
+        <SmithCardSummary compact={compact}>{summary}</SmithCardSummary>
         {diff.scope && <span className={styles.scopeBadge}>Scope: {diff.scope}</span>}
-      </div>
+      </SmithCardBar>
 
       <div className={styles.sections}>
         {diff.sections.map((section, index) => (

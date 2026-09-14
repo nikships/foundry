@@ -15,36 +15,6 @@
   font-size: var(--text-xs);
 }
 
-/* ── Summary bar ── */
-
-.summaryBar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
-  padding: var(--s2) var(--s3);
-  border-radius: var(--r-sm);
-  background: var(--bg-input);
-  border: 1px solid var(--line);
-}
-
-.compact .summaryBar {
-  padding: var(--s1) var(--s2);
-  gap: var(--s1);
-}
-
-.summaryText {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text);
-  line-height: var(--leading);
-}
-
-.compact .summaryText {
-  font-size: var(--text-xs);
-}
-
 .categoryTag {
   display: inline-flex;
   align-items: center;

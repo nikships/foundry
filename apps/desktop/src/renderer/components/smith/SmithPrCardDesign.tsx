@@ -12,6 +12,7 @@ import {
   prMergeableLabel,
 } from '../../view-models/smith-artifact-view.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar } from './SmithCardBar.js';
 import styles from './SmithPrCardDesign.module.css';
 
 export function PrExternalLinkIcon(): React.JSX.Element {
@@ -119,7 +120,7 @@ export function PrCardDesign({
 
   return (
     <div className={cx(styles.prCard, compact && styles.compact)} data-testid="pr-card-design">
-      <div className={styles.headerBar} data-testid="pr-card-header">
+      <SmithCardBar compact={compact} testId="pr-card-header">
         <div className={styles.titleGroup}>
           <span className={styles.prNumber} data-testid="pr-card-number">
             #{pr.number}
@@ -139,7 +140,7 @@ export function PrCardDesign({
           <span>GitHub</span>
           <PrExternalLinkIcon />
         </a>
-      </div>
+      </SmithCardBar>
 
       <div className={styles.metaRow}>
         <span

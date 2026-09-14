@@ -8,6 +8,7 @@ import type { DiagnosticsDef } from '@shared/types.js';
 import { diagnosticsSummary, formatBytes } from '../../view-models/smith-artifact-view.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithDiagnosticsDesign.module.css';
 
 export function DiagnosticsDesign({
@@ -24,10 +25,10 @@ export function DiagnosticsDesign({
       className={cx(styles.diagnostics, compact && styles.compact)}
       data-testid="smith-diagnostics-design"
     >
-      <div className={styles.summaryBar}>
-        <span className={styles.summaryText}>{summary}</span>
+      <SmithCardBar compact={compact}>
+        <SmithCardSummary compact={compact}>{summary}</SmithCardSummary>
         {diagnostics.category && <span className={styles.categoryTag}>{diagnostics.category}</span>}
-      </div>
+      </SmithCardBar>
 
       {diagnostics.lifecycleWarning && (
         <div className={styles.lifecycleWarning} data-testid="diagnostics-lifecycle-warning">

@@ -30,6 +30,7 @@ import {
   readinessPhaseLabel,
 } from '../../view-models/smith-artifact-view.js';
 import { cx } from '../ui/cx.js';
+import { SmithCardBar, SmithCardSummary } from './SmithCardBar.js';
 import styles from './SmithReadinessJourneyDesign.module.css';
 
 const STATUS_GROUPS: ReadonlyArray<{
@@ -141,12 +142,12 @@ export function ReadinessJourneyDesign({
         </span>
       </div>
 
-      <div className={styles.summaryBar} data-testid="journey-summary">
-        <span className={styles.summaryText}>{summary}</span>
+      <SmithCardBar compact={compact} testId="journey-summary">
+        <SmithCardSummary compact={compact}>{summary}</SmithCardSummary>
         {journey.checklistSummary && (
           <span className={styles.checklistNote}>{journey.checklistSummary}</span>
         )}
-      </div>
+      </SmithCardBar>
 
       {journey.stack && (
         <div className={styles.stackRow} data-testid="journey-stack">
