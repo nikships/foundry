@@ -21,22 +21,23 @@ export default function AgentAvatar({
   const { agentByName, agentColor } = useApp();
   const saved = name ? agentByName(name) : null;
   const mark = resolveAgentMark(emblem ?? saved?.emblem);
-  const src = useBrandedAsset(mark.imagePath ?? null);
+  // Uploads still arrive as images, but library marks are theme-aware SVG
+  // linework drawn in the agent's accent — no baked pixels to clash with a
+  // light theme.
+  const src = useBrandedAsset(mark.kind === 'image' ? (mark.imagePath ?? null) : null);
   const color = colorOverride ?? agentColor(name);
   const initial = (name ?? '?').slice(0, 1).toUpperCase();
-  const showImage = Boolean(src);
+  const showImage = mark.kind === 'image' && Boolean(src);
   const showGlyph = !showImage && mark.kind === 'emblem' && Boolean(mark.emblemId);
 
   return (
     <span
-      className={cx(styles.avatar, showImage && styles.portrait, showGlyph && styles.glyph)}
+      className={cx(styles.avatar, showGlyph && styles.glyph)}
       style={{
         width: `${size}px`,
         height: `${size}px`,
-        borderColor: `color-mix(in srgb, ${color} ${showImage ? 72 : 45}%, transparent)`,
-        background: showImage
-          ? 'var(--bg-void)'
-          : `color-mix(in srgb, ${color} 14%, var(--bg-raised))`,
+        borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
+        background: `color-mix(in srgb, ${color} 14%, var(--bg-raised))`,
         color,
         fontSize: `${Math.round(size * 0.42)}px`,
       }}

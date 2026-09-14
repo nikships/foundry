@@ -57,15 +57,16 @@ export const agentSchema = z.object({
   // profile an operator meant is how least privilege gets wider.
   toolProfile: z.enum(['full', 'read-only']).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'a hex colour like #5ad2dd'),
-  // Absent / `monogram` = initial; a library id or shipped portrait token;
-  // `image:<file>` = a user upload. Empty string is treated as absent.
+  // Absent / `monogram` = initial; a library id; `image:<file>` = a user
+  // upload. A stale portrait token from the pre-SVG roster falls back to the
+  // initial rather than blocking save.
   emblem: z.preprocess(
     (val) => (val === '' ? undefined : val),
     z
       .string()
       .regex(
         /^(monogram|[a-z][a-z0-9_-]*|image:[a-z0-9]+\.(png|jpg|webp|gif|svg))$/,
-        'monogram, a library or portrait id, or image:<file>',
+        'monogram, a library emblem id, or image:<file>',
       )
       .optional(),
   ),
@@ -102,7 +103,9 @@ function refreshLegacyPrWriter(agent: AgentDef): AgentDef {
  * lists nothing ever read, or a `toolProfile` from the wider enum that used to
  * exist. Dropping them keeps the file loading, and an unrecognised profile
  * falls back to `full` rather than to a narrower surface the agent's prompt
- * does not expect.
+ * does not expect. A portrait token from the pre-SVG roster (e.g.
+ * `emblem: 'refiner'`) resolves through the emblem library's legacy map, so
+ * it needs no rewrite here.
  */
 function normalizeAgent(agent: AgentDef): AgentDef {
   const record = agent as AgentDef & Record<string, unknown>;

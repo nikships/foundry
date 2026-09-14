@@ -1,6 +1,6 @@
 /**
  * User-uploaded agent marks. Stored under the app support dir so a packaged
- * app can write them (the bundled `assets/agents/` tree is read-only).
+ * app can write them.
  *
  * The roster only keeps a pointer (`image:<file>`); the bytes live here.
  */

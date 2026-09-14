@@ -352,6 +352,19 @@ export const EMBLEM_BY_ID: Record<string, EmblemDef> = Object.fromEntries(
   EMBLEMS.map((e) => [e.id, e]),
 );
 
+/** The library emblem each shipped agent carries, mirrored from the seed roster. */
+export const BUILTIN_EMBLEM_BY_AGENT: Record<string, string> = {
+  refiner: 'compass',
+  planner: 'stations',
+  builder: 'anvil',
+  scout: 'loupe',
+  reviewer: 'shield-check',
+  finisher: 'flag',
+  documenter: 'quill',
+  pr_writer: 'merge',
+  issue_writer: 'flag',
+};
+
 /**
  * A first guess from the agent's own name, so the common case is one click
  * instead of a scan through forty marks.
@@ -378,13 +391,28 @@ export function suggestedEmblemIds(agentName: string): string[] {
   return KEYWORD_HINTS.find((h) => h.match.test(agentName))?.ids ?? DEFAULT_EMBLEM_SUGGESTIONS;
 }
 
-/** Forces the initial-letter avatar, even when a painted portrait exists. */
+/** Forces the initial-letter avatar instead of the agent's library mark. */
 export const MONOGRAM_EMBLEM = 'monogram';
 
 /** `emblem` values that point at a user upload stored under the support dir. */
 export const IMAGE_EMBLEM_PREFIX = 'image:';
 
-export type AgentMarkKind = 'monogram' | 'emblem' | 'image' | 'portrait';
+/**
+ * Portrait tokens from the old robot-image roster (`emblem: 'refiner'`,
+ * stored in existing installs). They resolve to the replacement emblem so a
+ * user who never touches the mark keeps a picture instead of losing it.
+ */
+const LEGACY_PORTRAIT_EMBLEMS: Record<string, string> = {
+  refiner: 'compass',
+  planner: 'stations',
+  builder: 'anvil',
+  scout: 'loupe',
+  reviewer: 'shield-check',
+  finisher: 'flag',
+  documenter: 'quill',
+};
+
+export type AgentMarkKind = 'monogram' | 'emblem' | 'image';
 
 export interface ResolvedAgentMark {
   kind: AgentMarkKind;
@@ -394,9 +422,9 @@ export interface ResolvedAgentMark {
 
 /**
  * How `AgentDef.emblem` is drawn. Absent or `monogram` is the initial letter.
- * A library id is stroke linework. `image:<file>` is a user upload.
- * Any other safe token is the painted portrait at `agents/<token>.png`
- * (what the shipped roster already stored as `emblem: 'refiner'`).
+ * A library id is stroke linework. `image:<file>` is a user upload. A legacy
+ * portrait token (what the shipped roster stored before the robot images were
+ * removed) resolves to its replacement emblem.
  */
 export function resolveAgentMark(emblem: string | undefined): ResolvedAgentMark {
   if (!emblem || emblem === MONOGRAM_EMBLEM) return { kind: 'monogram' };
@@ -408,9 +436,8 @@ export function resolveAgentMark(emblem: string | undefined): ResolvedAgentMark 
     return { kind: 'image', imagePath: `agent-marks/${file}` };
   }
   if (EMBLEM_BY_ID[emblem]) return { kind: 'emblem', emblemId: emblem };
-  if (/^[a-z][a-z0-9_-]*$/.test(emblem)) {
-    return { kind: 'portrait', imagePath: `agents/${emblem}.png` };
-  }
+  const legacy = LEGACY_PORTRAIT_EMBLEMS[emblem];
+  if (legacy && EMBLEM_BY_ID[legacy]) return { kind: 'emblem', emblemId: legacy };
   return { kind: 'monogram' };
 }
 
@@ -420,13 +447,15 @@ export function markLabel(emblem: string | undefined): string {
   if (mark.kind === 'emblem' && mark.emblemId) {
     return `Emblem · ${EMBLEM_BY_ID[mark.emblemId]?.name ?? mark.emblemId}`;
   }
-  if (mark.kind === 'portrait') return 'Portrait';
   return 'Initial';
 }
 
-/** The mark a Reset returns to: painted portrait for shipped agents, else initial. */
+/** The mark a Reset returns to: the shipped library emblem, else initial. */
 export function defaultEmblemFor(agent: { name: string; builtin?: boolean }): string | undefined {
-  return agent.builtin ? agent.name : undefined;
+  if (!agent.builtin) return undefined;
+  const shipped = BUILTIN_EMBLEM_BY_AGENT[agent.name];
+  if (shipped) return shipped;
+  return undefined;
 }
 
 export function isDefaultMark(agent: {
@@ -434,6 +463,6 @@ export function isDefaultMark(agent: {
   emblem?: string;
   builtin?: boolean;
 }): boolean {
-  const expected: AgentMarkKind = agent.builtin ? 'portrait' : 'monogram';
-  return resolveAgentMark(agent.emblem).kind === expected;
+  if (!agent.builtin) return resolveAgentMark(agent.emblem).kind === 'monogram';
+  return agent.emblem === defaultEmblemFor(agent);
 }

@@ -27,7 +27,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     writes: [],
     toolProfile: 'read-only',
     color: '#e879b9',
-    emblem: 'refiner',
+    emblem: 'compass',
     builtin: true,
     systemPrompt: [
       '# Refiner',
@@ -72,7 +72,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     envelope: 'plan',
     writes: ['specs/'],
     color: '#c89bff',
-    emblem: 'planner',
+    emblem: 'stations',
     builtin: true,
     systemPrompt: [
       '# Planner',
@@ -121,7 +121,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     envelope: 'build',
     writes: null,
     color: '#5ad2dd',
-    emblem: 'builder',
+    emblem: 'anvil',
     builtin: true,
     systemPrompt: [
       '# Builder',
@@ -168,7 +168,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     writes: [],
     toolProfile: 'read-only',
     color: '#e8b64a',
-    emblem: 'scout',
+    emblem: 'loupe',
     builtin: true,
     systemPrompt: [
       '# Scout',
@@ -206,7 +206,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     writes: [],
     toolProfile: 'read-only',
     color: '#ff6f67',
-    emblem: 'reviewer',
+    emblem: 'shield-check',
     builtin: true,
     systemPrompt: [
       '# Reviewer',
@@ -247,7 +247,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     envelope: 'review',
     writes: null,
     color: '#6aa9ff',
-    emblem: 'finisher',
+    emblem: 'flag',
     builtin: true,
     customFields: [
       {
@@ -307,7 +307,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     envelope: 'document',
     writes: ['docs/', 'README.md'],
     color: '#4ade80',
-    emblem: 'documenter',
+    emblem: 'quill',
     builtin: true,
     systemPrompt: [
       '# Documenter',
@@ -348,7 +348,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     envelope: 'pr',
     writes: null,
     color: '#f59e0b',
-    emblem: 'pr',
+    emblem: 'merge',
     builtin: true,
     systemPrompt: [
       '# PR writer',

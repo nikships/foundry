@@ -14,11 +14,6 @@
     background-color var(--fast) var(--ease),
     color var(--fast) var(--ease);
 }
-.avatar.portrait {
-  box-shadow:
-    0 0 0 1px var(--bg-void),
-    var(--shadow-sm);
-}
 .avatar.glyph {
   overflow: visible;
 }

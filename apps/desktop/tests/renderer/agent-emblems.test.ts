@@ -70,18 +70,23 @@ describe('resolveAgentMark', () => {
     });
   });
 
-  it('resolves portrait tokens to kind: portrait with agents/ path', () => {
+  it('maps legacy portrait tokens to their replacement emblems', () => {
     expect(resolveAgentMark('refiner')).toEqual({
-      kind: 'portrait',
-      imagePath: 'agents/refiner.png',
+      kind: 'emblem',
+      emblemId: 'compass',
     });
-    expect(resolveAgentMark('agent_smith')).toEqual({
-      kind: 'portrait',
-      imagePath: 'agents/agent_smith.png',
+    expect(resolveAgentMark('builder')).toEqual({
+      kind: 'emblem',
+      emblemId: 'anvil',
+    });
+    expect(resolveAgentMark('documenter')).toEqual({
+      kind: 'emblem',
+      emblemId: 'quill',
     });
   });
 
   it('falls back to monogram for unknown or malformed strings', () => {
+    expect(resolveAgentMark('agent_smith')).toEqual({ kind: 'monogram' });
     expect(resolveAgentMark('123invalid')).toEqual({ kind: 'monogram' });
     expect(resolveAgentMark('Has Spaces')).toEqual({ kind: 'monogram' });
   });
@@ -97,8 +102,8 @@ describe('markLabel', () => {
     expect(markLabel('shield-check')).toBe('Emblem · Shield check');
   });
 
-  it('labels portraits', () => {
-    expect(markLabel('refiner')).toBe('Portrait');
+  it('labels legacy portrait tokens with their replacement emblem', () => {
+    expect(markLabel('refiner')).toBe('Emblem · Compass');
   });
 
   it('labels monograms/initials', () => {
@@ -108,10 +113,10 @@ describe('markLabel', () => {
 });
 
 describe('defaultEmblemFor and isDefaultMark', () => {
-  it('defaults builtin agents to their name as portrait token', () => {
-    expect(defaultEmblemFor({ name: 'builder', builtin: true })).toBe('builder');
-    expect(isDefaultMark({ name: 'builder', emblem: 'builder', builtin: true })).toBe(true);
-    expect(isDefaultMark({ name: 'builder', emblem: 'anvil', builtin: true })).toBe(false);
+  it('defaults builtin agents to their shipped library emblem', () => {
+    expect(defaultEmblemFor({ name: 'builder', builtin: true })).toBe('anvil');
+    expect(isDefaultMark({ name: 'builder', emblem: 'anvil', builtin: true })).toBe(true);
+    expect(isDefaultMark({ name: 'builder', emblem: 'hammer', builtin: true })).toBe(false);
     expect(isDefaultMark({ name: 'builder', emblem: undefined, builtin: true })).toBe(false);
   });
 
