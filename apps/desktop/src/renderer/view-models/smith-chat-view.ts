@@ -101,7 +101,7 @@ export function describeScreen(view: View, position: ScreenPosition): SmithScree
 //
 // The model-facing tools for these capabilities live in main
 // (`smith_compose`, `smith_runs` linear_*/start, `smith_projects`
-// refresh_context, `smith_providers` gemini_live_*). This file is the
+// refresh_context, `smith_providers` gpt_live_*). This file is the
 // renderer half: the exact operator phrasing that triggers each tool, the
 // confirmation note shown before a privileged step runs, and the plan-id
 // plumbing for the async composition round-trip. Voice reuses the same
@@ -182,7 +182,7 @@ export const SMITH_QUICK_PROMPTS: ReadonlyArray<SmithQuickPrompt> = [
     id: 'voice-key-state',
     label: 'Voice key',
     prompt: 'Check the Live Voice key state.',
-    hint: 'Whether a Gemini key is stored for voice',
+    hint: 'Whether an OpenAI key is stored for voice',
   },
 ];
 

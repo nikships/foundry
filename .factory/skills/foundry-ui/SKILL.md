@@ -99,7 +99,7 @@ Variants:
 ```bash
 # Dogfood instance with inference preconfigured (Meta Muse Spark 1.3
 # Contributor as the only model; seed prints any keys still missing their
-# one-time entry in Settings — Meta under Providers, Gemini under
+# one-time entry in Settings — Meta under Providers, OpenAI under
 # Integrations → Smith voice mode; saved keys persist in the state dir):
 npm run dogfood
 agent-browser --session dogfood connect 9251   # named session = second app
@@ -589,7 +589,7 @@ project.
   Changing modes keeps the draft and voice connection. The mode bar shows the
   microphone state and an End button while voice is connected.
   Closing the popover keeps voice connected. The Smith launcher shows its state.
-  Starting voice uses the microphone and Gemini. Do not start it without permission.
+  Starting voice uses the microphone and GPT-Live. Do not start it without permission.
 - `smith-permission-mode` controls YOLO mode for the current chat. Enabling it
   requires the confirmation dialog and an idle Smith turn. App actions and entity
   saves then execute without approval cards. Key entry and Companion pairing still

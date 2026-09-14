@@ -11,10 +11,7 @@
 import type { SmithChatState } from '@shared/ipc-contract.js';
 import type { SmithProposal } from '@shared/types.js';
 
-import { Type } from '@google/genai';
-import type { FunctionDeclaration } from '@google/genai';
-
-/** The tools the live session declares; names match main's `VOICE_TOOLS`. */
+/** Capability names the voice layer still reasons about; GPT-Live delegates without function calls. */
 export const VOICE_TOOL_NAMES = {
   work: 'smith_work',
   cancel: 'smith_cancel',
@@ -22,22 +19,32 @@ export const VOICE_TOOL_NAMES = {
   proposalAnswer: 'smith_proposal_answer',
 } as const;
 
+export interface VoiceToolDeclaration {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, { type: string; description?: string }>;
+    required?: string[];
+  };
+}
+
 /**
- * JSON-schema function declarations for the live session, in the shape
- * `@google/genai`'s `tools` config expects. The SDK import is type-only, so
- * this module still runs in Node tests without the SDK loaded.
+ * The voice layer's capability contract, kept here so tests can pin names and
+ * descriptions even though GPT-Live uses client delegation rather than
+ * function-calling tools.
  */
-export function voiceToolDeclarations(): FunctionDeclaration[] {
+export function voiceToolDeclarations(): VoiceToolDeclaration[] {
   return [
     {
       name: VOICE_TOOL_NAMES.work,
       description:
         'Continue your work as Smith using the operator-selected model. Use for anything that reads or changes Foundry: runs, pipelines, agents, projects, files, settings, run-plan composition prompts, assigned Linear tickets and their status, saved pipeline runs, project context refreshes, the Live Voice key state, or questions about app state. Begins the work and returns a working status; wait for the completion result before stating an outcome. When the result names a Smith run plan ID, narrate the ID and offer to check its status. Never speak a secret aloud: a proposal that needs a key is completed in the masked card in the app.',
       parameters: {
-        type: Type.OBJECT,
+        type: 'object',
         properties: {
           text: {
-            type: Type.STRING,
+            type: 'string',
             description:
               'A faithful, self-contained statement of what the operator wants, in their words.',
           },
@@ -49,7 +56,7 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
       name: VOICE_TOOL_NAMES.cancel,
       description: 'Stop the Smith turn that is currently running, if any.',
       parameters: {
-        type: Type.OBJECT,
+        type: 'object',
         properties: {},
       },
     },
@@ -58,7 +65,7 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
       description:
         'Read the one proposal card waiting for the operator, if any. Call when the operator asks what is pending or wants to decide by voice.',
       parameters: {
-        type: Type.OBJECT,
+        type: 'object',
         properties: {},
       },
     },
@@ -67,10 +74,10 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
       description:
         'Approve or reject the proposal you just read with smith_proposal_read. Read it aloud first, then wait for the operator to explicitly approve or reject that proposal. Never answer a different or unread proposal.',
       parameters: {
-        type: Type.OBJECT,
+        type: 'object',
         properties: {
           approved: {
-            type: Type.BOOLEAN,
+            type: 'boolean',
             description: 'True to approve, false to reject.',
           },
         },
@@ -81,12 +88,9 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
 }
 
 /**
- * Maps a voice-session failure to the one line the overlay shows. Mint
- * failures from main are already friendly, but the live socket can also hand
- * the hook a raw Google JSON-RPC blob (an invalid key carries
- * `API_KEY_INVALID` inside `{"error":{"code":400,...}}`); that must never
- * render verbatim, so an invalid key always resolves to the Settings →
- * Integrations pointer and anything else keeps its short detail.
+ * Maps a voice-session failure to the one line the overlay shows. Session
+ * create failures from main are already friendly; an invalid OpenAI key
+ * always resolves to the Settings → Integrations pointer.
  */
 export function friendlyVoiceError(raw: unknown): string {
   const message = raw instanceof Error ? raw.message : String(raw);
@@ -96,8 +100,8 @@ export function friendlyVoiceError(raw: unknown): string {
   if (raw instanceof Error && /NotFoundError|NotReadableError/.test(raw.name)) {
     return 'Your microphone is unavailable. Check that it is connected and not in use by another app, then try again.';
   }
-  if (/API_KEY_INVALID|API key not valid|invalid API key|API key expired/i.test(message)) {
-    return 'Your Gemini API key was rejected. Replace it in Settings → Integrations.';
+  if (/invalid.?api.?key|incorrect api key|unauthorized|401/i.test(message)) {
+    return 'Your OpenAI API key was rejected. Replace it in Settings → Integrations.';
   }
   const oneLine = message.replace(/\s+/g, ' ').trim();
   if (oneLine.length > 240) return `${oneLine.slice(0, 240)}…`;

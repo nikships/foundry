@@ -229,6 +229,22 @@ describe('the healing model pair', () => {
   });
 });
 
+describe('smithVoice', () => {
+  it('defaults to marin and repairs unknown ids', () => {
+    expect(defaultSettings().smithVoice).toBe('marin');
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.smithVoice;
+    expect(migrate(stored).smithVoice).toBe('marin');
+    expect(migrate({ ...defaultSettings(), smithVoice: 'not-a-voice' }).smithVoice).toBe('marin');
+  });
+
+  it('keeps a known voice through a patch', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ smithVoice: 'quartz' })).toMatchObject({ ok: true });
+    expect(store.get().smithVoice).toBe('quartz');
+  });
+});
+
 describe('smithModel', () => {
   it('defaults to inherit on a fresh install', () => {
     expect(defaultSettings().smithModel).toBe('inherit');

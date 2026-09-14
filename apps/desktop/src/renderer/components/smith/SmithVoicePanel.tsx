@@ -65,7 +65,7 @@ function VoicePanelContent({
           Smith <span>/ Voice</span>
         </h3>
         <span className={cx(styles.pill, live && styles.pillLive)}>
-          {live ? 'Live' : 'Gemini Live'}
+          {live ? 'Live' : 'GPT Live'}
         </span>
         <button
           ref={closeRef}
@@ -159,7 +159,7 @@ function VoicePanelContent({
           ? state.muted
             ? 'Mic muted. Text mode keeps voice connected.'
             : 'Mic on. Text mode keeps voice connected.'
-          : 'Audio is sent to Gemini only while voice is connected.'}
+          : 'Audio is sent to OpenAI only while voice is connected.'}
       </footer>
     </>
   );

@@ -16,6 +16,7 @@
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { isIPv4 } from 'node:net';
 import { networkInterfaces, hostname } from 'node:os';
 import type {
@@ -40,8 +41,7 @@ import type {
 } from '@shared/types.js';
 import { isReasoningEffort } from '@shared/reasoning-effort.js';
 import type {
-  GeminiLiveConnectionState,
-  GeminiLiveToken,
+  GptLiveConnectionState,
   LinearConnectionState,
   ComposeAcceptResult,
   ComposeState,
@@ -65,6 +65,8 @@ import type {
   CompanionSessionInfo,
 } from '@shared/companion.js';
 import { COMPANION_PROTOCOL_VERSION } from '@shared/companion.js';
+import { isGptLiveVoiceId, DEFAULT_GPT_LIVE_VOICE } from '@shared/gpt-live.js';
+import { acceptVoiceUpgrade, isVoiceUpgrade } from '../gpt-live/ws-relay.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import type { GhOptions } from '../system/gh.js';
@@ -128,10 +130,11 @@ export interface CompanionHostDeps {
    * answers 404 rather than inventing a second conversation.
    */
   smith?: CompanionSmithDeps;
-  /** Paired phones receive one-use tokens, never the stored Gemini key. */
+  /** Paired phones speak through this Mac; they never receive the OpenAI key. */
   voice?: {
-    state(): GeminiLiveConnectionState;
-    mintToken(): Promise<GeminiLiveToken | { error: string }>;
+    state(): GptLiveConnectionState;
+    apiKey(): string | null;
+    voice(): string;
   };
   /** Test seams. Production leaves these unset. Pinned binds disable discovery. */
   bindHost?: string;
@@ -372,6 +375,7 @@ export class CompanionHost {
   /** Listens, answering the server and its port, or the failure message. */
   private bind(host: string, port: number): Promise<BindOutcome> {
     const server = createServer((req, res) => void this.handle(req, res));
+    server.on('upgrade', (req, socket, head) => this.handleUpgrade(req, socket, head));
     return new Promise<BindOutcome>((resolve) => {
       const onError = (e: Error): void => resolve({ ok: false, detail: e.message });
       server.once('error', onError);
@@ -439,6 +443,36 @@ export class CompanionHost {
     const removed = this.devices.unpair(deviceId);
     if (removed) this.deps.onStateChanged();
     return removed;
+  }
+
+  private handleUpgrade(req: IncomingMessage, socket: Duplex, _head: Buffer): void {
+    try {
+      if (!isVoiceUpgrade(req.url)) {
+        socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      const device = this.devices.authenticate(bearerToken(req));
+      if (!device) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      const voice = this.deps.voice;
+      const apiKey = voice?.apiKey() ?? null;
+      if (!voice || !apiKey) {
+        socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      const selected = voice.voice();
+      acceptVoiceUpgrade(req, socket, {
+        apiKey,
+        voice: isGptLiveVoiceId(selected) ? selected : DEFAULT_GPT_LIVE_VOICE,
+      });
+    } catch {
+      socket.destroy();
+    }
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -829,15 +863,7 @@ export class CompanionHost {
       const voice = this.deps.voice;
       if (!voice) throw new RouteError(404, 'not_found', 'Voice is not available on this Mac');
       if (method === 'GET' && rest.length === 1) return voice.state();
-      if (method === 'POST' && rest[1] === 'token' && rest.length === 2) {
-        // Drain and parse the scoped request even though tokens are currently
-        // global. Leaving a POST body unread can strand the phone's keep-alive
-        // connection before its next companion request.
-        scopeFromBody(await readJson(req));
-        const result = await voice.mintToken();
-        if ('error' in result) throw new RouteError(400, 'bad_request', result.error);
-        return result;
-      }
+      throw new RouteError(404, 'not_found', 'no such route');
     }
 
     if (method === 'GET' && rest.length === 0) {

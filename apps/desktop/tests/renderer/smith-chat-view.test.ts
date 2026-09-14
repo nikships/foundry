@@ -266,10 +266,10 @@ describe('smith confirmations and receipts', () => {
   });
 
   it('sends key values only through the masked approval card', () => {
-    expect(needsMaskedSecret('gemini_live_set_api_key')).toBe(true);
+    expect(needsMaskedSecret('gpt_live_set_api_key')).toBe(true);
     expect(needsMaskedSecret('linear_set_api_key')).toBe(true);
     expect(needsMaskedSecret('set_api_key')).toBe(true);
     expect(needsMaskedSecret('compose')).toBe(false);
-    expect(smithConfirmationHint('gemini_live_set_api_key')).toMatch(/masked/i);
+    expect(smithConfirmationHint('gpt_live_set_api_key')).toMatch(/masked/i);
   });
 });

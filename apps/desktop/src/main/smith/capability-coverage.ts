@@ -121,12 +121,12 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.tavilySetApiKey]: secure('smith_providers', 'tavily_set_api_key'),
   [IPC.tavilyClearApiKey]: approve('smith_providers', 'tavily_clear_api_key'),
   // The voice layer's own credential seam. The key never reaches the model —
-  // not even Smith's — and the minted token is renderer-only, so state and
-  // mint are secure rather than Smith tool operations.
-  [IPC.geminiLiveState]: read('smith_providers', 'gemini_live_state'),
-  [IPC.geminiLiveSetApiKey]: secure('smith_providers', 'gemini_live_set_api_key'),
-  [IPC.geminiLiveClearApiKey]: approve('smith_providers', 'gemini_live_clear_api_key'),
-  [IPC.geminiLiveMintToken]: secure('smith_providers', 'gemini_live_mint_token'),
+  // not even Smith's — and session create is renderer-only, so state and
+  // create are not Smith tool operations.
+  [IPC.gptLiveState]: read('smith_providers', 'gpt_live_state'),
+  [IPC.gptLiveSetApiKey]: secure('smith_providers', 'gpt_live_set_api_key'),
+  [IPC.gptLiveClearApiKey]: approve('smith_providers', 'gpt_live_clear_api_key'),
+  [IPC.gptLiveCreateSession]: secure('smith_providers', 'gpt_live_create_session'),
   [IPC.runsStart]: approve('smith_runs', 'start'),
   [IPC.runsResume]: approve('smith_runs', 'resume'),
   [IPC.runsList]: read('smith_runs', 'list'),

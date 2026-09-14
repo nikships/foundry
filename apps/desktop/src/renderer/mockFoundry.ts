@@ -242,6 +242,7 @@ function defaultMockSettings(): AppSettings {
     healingReasoningEffort: 'medium',
     smithModel: 'inherit',
     smithReasoningEffort: 'medium',
+    smithVoice: 'marin',
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true },
     dockBadge: true,
@@ -1078,14 +1079,14 @@ export function createMockFoundryApi(): FoundryApi {
       proposalsList: async () => [],
       answerProposal: async () => ({ ok: false, error: 'proposal not found' }),
     },
-    geminiLive: {
+    gptLive: {
       state: async () => ({
         keySet: false,
-        detail: 'Web preview uses a fixture Gemini Live state; voice needs the Electron app.',
+        detail: 'Web preview uses a fixture GPT-Live state; voice needs the Electron app.',
       }),
       setApiKey: async () => unavailable(WEB_PREVIEW),
       clearApiKey: async () => unavailable(WEB_PREVIEW),
-      mintToken: async () => ({ error: 'Voice mode requires the Electron app.' }),
+      createSession: async () => ({ error: 'Voice mode requires the Electron app.' }),
     },
     companion: {
       // The web preview has no network host to bind; the pane renders "off".

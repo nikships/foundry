@@ -5,6 +5,7 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
+import { DEFAULT_GPT_LIVE_VOICE, isGptLiveVoiceId } from '@shared/gpt-live.js';
 import { REASONING_EFFORTS, isReasoningEffort } from '@shared/reasoning-effort.js';
 import { APP_THEME_IDS, isAppTheme } from '@shared/themes.js';
 import type { AppSettings, LinearStatusMapping } from '@shared/types.js';
@@ -28,6 +29,7 @@ export const appSettingsSchema = z.object({
   healingReasoningEffort: z.enum(REASONING_EFFORTS),
   smithModel: z.string().min(1),
   smithReasoningEffort: z.enum(REASONING_EFFORTS),
+  smithVoice: z.string().min(1).max(64),
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
   notifications: z.object({
     accepted: z.boolean(),
@@ -58,6 +60,7 @@ export function defaultSettings(): AppSettings {
     healingReasoningEffort: 'medium',
     smithModel: 'inherit',
     smithReasoningEffort: 'medium',
+    smithVoice: DEFAULT_GPT_LIVE_VOICE,
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true },
     dockBadge: true,
@@ -99,6 +102,7 @@ export function migrate(raw: unknown): AppSettings {
       legacy.readinessReasoningEffort as AppSettings['helperReasoningEffort'];
   }
   if (!isNonEmptyString(merged.smithModel)) merged.smithModel = base.smithModel;
+  if (!isGptLiveVoiceId(merged.smithVoice)) merged.smithVoice = base.smithVoice;
   if (!isNonEmptyString(merged.healingModel)) merged.healingModel = base.healingModel;
 
   // A stored effort outside the known set is repaired to the shipped default.

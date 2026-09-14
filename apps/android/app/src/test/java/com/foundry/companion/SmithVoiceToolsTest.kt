@@ -112,20 +112,17 @@ class SmithVoiceToolsTest {
         assertTrue(host.answers.isEmpty())
     }
 
-    @Test fun `setup declares audio high thinking all tools and no credential`() {
-        val payload = SmithVoiceProtocol.setup(SmithVoiceToken("never-serialize", "gemini-3.1-flash-live-preview", "Host instruction"))
-        val setup = payload.getValue("setup").jsonObject
-        assertFalse(payload.toString().contains("never-serialize"))
-        assertEquals("models/gemini-3.1-flash-live-preview", setup.getValue("model").jsonPrimitive.content)
-        val config = setup.getValue("generationConfig").jsonObject
-        assertEquals("HIGH", config.getValue("thinkingConfig").jsonObject.getValue("thinkingLevel").jsonPrimitive.content)
-        assertEquals(listOf("AUDIO"), config.getValue("responseModalities").jsonArray.map { it.jsonPrimitive.content })
-        val declarations = setup.getValue("tools").jsonArray.single().jsonObject.getValue("functionDeclarations").jsonArray
-        assertEquals(setOf("smith_delegate", "smith_cancel", "smith_proposal_read", "smith_proposal_answer"),
-            declarations.map { it.jsonObject.getValue("name").jsonPrimitive.content }.toSet())
-        val error = SmithVoiceProtocol.reply("call", "smith_cancel", voiceObject("error" to voiceText("failed")))
-        assertEquals("failed", error.getValue("toolResponse").jsonObject.getValue("functionResponses")
-            .jsonArray.single().jsonObject.getValue("response").jsonObject.getValue("error").jsonPrimitive.content)
+    @Test fun `protocol messages carry no credential and use the live session types`() {
+        val audio = SmithVoiceProtocol.inputAudio("pcm-bytes")
+        assertEquals("session.input_audio.append", audio.getValue("type").jsonPrimitive.content)
+        assertEquals("pcm-bytes", audio.getValue("audio").jsonPrimitive.content)
+        assertFalse(audio.toString().contains("sk-"))
+        assertEquals("session.input_audio.mute", SmithVoiceProtocol.mute(true).getValue("type").jsonPrimitive.content)
+        assertEquals("session.input_audio.unmute", SmithVoiceProtocol.mute(false).getValue("type").jsonPrimitive.content)
+        val commentary = SmithVoiceProtocol.commentary("del_1", "Smith finished")
+        assertEquals("session.commentary.append", commentary.getValue("type").jsonPrimitive.content)
+        assertEquals("del_1", commentary.getValue("delegation_id").jsonPrimitive.content)
+        assertEquals("Smith finished", commentary.getValue("content").jsonPrimitive.content)
     }
 
     @Test fun `captions accumulate fragments and bound history and entry length`() {

@@ -156,12 +156,10 @@ describe('friendlyVoiceError', () => {
 
   it('maps an invalid-key blob to the Settings pointer, never the raw JSON', () => {
     const raw = new Error(
-      'Could not mint a Live API token: {"error":{"code":400,"message":"API key not valid.",' +
-        '"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo",' +
-        '"reason":"API_KEY_INVALID"}]}}',
+      'Could not start a GPT-Live session: {"error":{"message":"Incorrect API key provided"}}',
     );
     expect(friendlyVoiceError(raw)).toBe(
-      'Your Gemini API key was rejected. Replace it in Settings → Integrations.',
+      'Your OpenAI API key was rejected. Replace it in Settings → Integrations.',
     );
   });
 
@@ -253,15 +251,15 @@ describe('voice secret handling', () => {
         projectId: 'proj_1',
         createdAt: new Date().toISOString(),
         type: 'action',
-        operation: 'gemini_live_set_api_key',
-        title: 'gemini live set api key',
-        summary: 'gemini live set api key.',
+        operation: 'gpt_live_set_api_key',
+        title: 'gpt live set api key',
+        summary: 'gpt live set api key.',
         args: {},
         risk: 'credential',
-        secretRequest: { kind: 'api-key', label: 'Gemini API key for Live Voice' },
+        secretRequest: { kind: 'api-key', label: 'OpenAI API key for Live Voice' },
       },
     ]);
-    expect(summary).toContain('gemini live set api key');
+    expect(summary).toContain('gpt live set api key');
     expect(summary).toContain(VOICE_SECRET_REDIRECT);
   });
 
