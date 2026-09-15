@@ -496,7 +496,7 @@ beforeEach(async () => {
             ? { error: voiceError }
             : {
                 token: `auth_tokens/one-use-${voiceMints}`,
-                model: 'gemini-3.1-flash-live-preview',
+                model: 'gemini-3.8-live-extended-thinking',
                 systemInstruction: 'Speak as Smith.',
               };
         },
@@ -573,7 +573,7 @@ describe('companion voice credentials', () => {
     expect(first.headers.get('cache-control')).toBe('no-store');
     expect(await first.json()).toEqual({
       token: 'auth_tokens/one-use-1',
-      model: 'gemini-3.1-flash-live-preview',
+      model: 'gemini-3.8-live-extended-thinking',
       systemInstruction: 'Speak as Smith.',
     });
     const second = await authed(paired.token, '/v1/smith/voice/token', { method: 'POST' });

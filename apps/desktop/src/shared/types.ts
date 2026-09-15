@@ -4,6 +4,7 @@
  */
 
 import type { AppTheme } from './themes.js';
+import type { SmithLiveVoiceSetting } from './gemini-live-voices.js';
 
 // ── Pipelines (data, not scripts) ────────────────────────────────────────────
 
@@ -296,6 +297,7 @@ export function resolveAgentExecution(
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export type { AppTheme };
+export type { SmithLiveVoiceSetting };
 
 export interface AppSettings {
   /** Application-wide desktop palette. Existing installs default to dark. */
@@ -367,6 +369,12 @@ export interface AppSettings {
    * free-form contract as `interfaceFont`.
    */
   monoFont?: string | null;
+  /**
+   * Speaker voice for Smith's Gemini Live session. `'random'` picks one of the
+   * supported Live/TTS voices uniformly once per session start; a named voice
+   * is used for every connection until the setting changes.
+   */
+  smithLiveVoice: SmithLiveVoiceSetting;
 }
 
 // ── Fonts (installed-font preference + bundled symbol coverage) ────────────

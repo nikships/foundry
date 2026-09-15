@@ -80,7 +80,7 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
       ipcMain.removeHandler('gemini-live:mintToken');
       ipcMain.handle('gemini-live:mintToken', () => ({
         token: 'test-token',
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'gemini-3.8-live-extended-thinking',
         systemInstruction: 'Test voice.',
       }));
     });
@@ -203,7 +203,7 @@ test('voice: stays inside Smith chat across modes and navigation', async () => {
       ipcMain.removeHandler('gemini-live:mintToken');
       ipcMain.handle('gemini-live:mintToken', () => ({
         token: 'test-token',
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'gemini-3.8-live-extended-thinking',
         systemInstruction: 'Test voice.',
       }));
     });

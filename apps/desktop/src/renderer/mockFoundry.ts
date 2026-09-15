@@ -254,6 +254,7 @@ function defaultMockSettings(): AppSettings {
       completed: 'linear-state-done',
       failed: 'linear-state-failed',
     },
+    smithLiveVoice: 'Puck',
   };
 }
 

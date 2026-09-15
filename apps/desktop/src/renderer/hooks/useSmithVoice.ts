@@ -3,20 +3,22 @@
  * mic and speaker plumbing, and the bounded tool dispatch that keeps one
  * spoken identity over the same Smith chat.
  *
- * The voice model (`gemini-3.1-flash-live-preview`, thinking level `high`)
- * speaks and listens. When the operator asks for real work it calls
- * `smith_work`, which routes the text into the same `SmithChatSession`
- * the Smith UI drives — the model chosen in the Smith header does the work,
- * and the transcript stays one conversation. The tool returns immediately
- * (Live API function calling is synchronous, a Smith turn is not); the
- * settled answer arrives later over `smith-progress`, gets folded into a
- * short text, and is injected back into the live session so the voice model
- * can narrate it. Full user-level access (compose prompts, assigned
- * Linear work + status, saved pipeline runs, context refresh, voice-key
- * state) needs no new voice tool: the operator asks aloud, the model calls
- * `smith_work` with the same capability phrasing as the text chips, and the
- * one proposal queue confirms every privileged step. A proposal that needs a
- * secret is never approved by voice — the masked desktop card owns the key.
+ * The voice model (`gemini-3.8-live-extended-thinking`, thinking level
+ * `high`) speaks and listens with background reasoning. When the operator
+ * asks for real work it calls `smith_work`, which routes the text into the
+ * same `SmithChatSession` the Smith UI drives — the model chosen in the Smith
+ * header does the work, and the transcript stays one conversation. Tools run
+ * async-only on this model (`NON_BLOCKING`); `smith_work` still returns a
+ * short working status immediately, and the settled answer arrives later over
+ * `smith-progress`, gets folded into a short text, and is injected back into
+ * the live session so the voice model can narrate it. Speaker voice comes from
+ * Settings (`smithLiveVoice`); Random is resolved once per session start. Full
+ * user-level access (compose prompts, assigned Linear work + status, saved
+ * pipeline runs, context refresh, voice-key state) needs no new voice tool:
+ * the operator asks aloud, the model calls `smith_work` with the same
+ * capability phrasing as the text chips, and the one proposal queue confirms
+ * every privileged step. A proposal that needs a secret is never approved by
+ * voice — the masked desktop card owns the key.
  *
  *
  * All state is refs inside one `useRef` bundle plus `useState` only for what
@@ -27,6 +29,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SmithChatState, SmithScreenContext } from '@shared/ipc-contract.js';
 import type { SmithProposalAnswer } from '@shared/types.js';
+import { DEFAULT_SMITH_LIVE_VOICE, resolveSmithLiveVoice } from '@shared/gemini-live-voices.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import {
@@ -406,6 +409,10 @@ export function useSmithVoice(): {
       speakerRef.current = new SpeakerQueue((speaking) => {
         if (current()) patch({ speaking });
       });
+      const settings = await api.settings.get().catch(() => null);
+      if (!current()) return;
+      // Resolve Random once per start so every utterance in this session shares a voice.
+      const voiceName = resolveSmithLiveVoice(settings?.smithLiveVoice ?? DEFAULT_SMITH_LIVE_VOICE);
       const { GoogleGenAI, Modality, ThinkingLevel } = await import('@google/genai');
       if (!current()) return;
       const ai = new GoogleGenAI({
@@ -439,7 +446,11 @@ export function useSmithVoice(): {
         },
         config: {
           responseModalities: [Modality.AUDIO],
+          // Extended Thinking: low | medium | high only (minimal unsupported).
           thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+          },
           systemInstruction: minted.systemInstruction,
           inputAudioTranscription: {},
           outputAudioTranscription: {},

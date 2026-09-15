@@ -19,6 +19,11 @@ import {
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
 import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
 import { MODEL_UNSET, MODEL_UNSET_MESSAGE } from '@shared/model-choice.js';
+import {
+  DEFAULT_SMITH_LIVE_VOICE,
+  GEMINI_LIVE_VOICES,
+  isSmithLiveVoiceSetting,
+} from '@shared/gemini-live-voices.js';
 import { modelLabel } from '@shared/model-label.js';
 import {
   modelForEffortPicker,
@@ -227,6 +232,7 @@ function GeminiLiveSection({
 }: {
   onError: (errors: string[]) => void;
 }): React.JSX.Element {
+  const { settings, patchSettings } = useApp();
   const [connection, setConnection] = useState<GeminiLiveConnectionState | null>(null);
   const [keyDraft, setKeyDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -235,6 +241,18 @@ function GeminiLiveSection({
   useEffect(() => {
     void api.geminiLive.state().then(setConnection);
   }, []);
+
+  const voiceOptions = useMemo(
+    () => [
+      {
+        value: 'random',
+        label: 'Random each session',
+        description: 'Picks one voice when you start listening; stays for that session.',
+      },
+      ...GEMINI_LIVE_VOICES.map((voice) => ({ value: voice, label: voice })),
+    ],
+    [],
+  );
 
   const runAction = async (
     action: () => Promise<{ ok: boolean; detail: string }>,
@@ -262,6 +280,12 @@ function GeminiLiveSection({
       await runAction(() => api.geminiLive.clearApiKey());
     },
   );
+
+  const setVoice = async (next: string): Promise<void> => {
+    if (!isSmithLiveVoiceSetting(next)) return;
+    const issues = await patchSettings({ smithLiveVoice: next });
+    onError(issues);
+  };
 
   return (
     <Section label="Gemini Live" note="Speak with the same Smith you use in chat.">
@@ -315,6 +339,21 @@ function GeminiLiveSection({
             </Button>
           )}
         </div>
+        <Field
+          label="Speaker voice"
+          htmlFor="gemini-live-speaker-voice"
+          hint="Applies the next time you start a live session. Random picks once per start, not per reply."
+        >
+          <Dropdown
+            id="gemini-live-speaker-voice"
+            data-testid="gemini-live-speaker-voice"
+            value={settings?.smithLiveVoice ?? DEFAULT_SMITH_LIVE_VOICE}
+            options={voiceOptions}
+            onChange={(next) => void setVoice(next)}
+            menuWidth="compact"
+            aria-label="Speaker voice"
+          />
+        </Field>
         {(note || connection?.detail) && (
           <p className={styles.hint}>{note || connection?.detail}</p>
         )}

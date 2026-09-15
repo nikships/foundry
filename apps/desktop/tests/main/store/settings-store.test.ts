@@ -486,3 +486,41 @@ describe('hiddenModelIds', () => {
     expect(store.get().defaultModel).toBe('inherit');
   });
 });
+
+describe('smithLiveVoice', () => {
+  it('defaults to Puck on a fresh install', () => {
+    expect(defaultSettings().smithLiveVoice).toBe('Puck');
+  });
+
+  it('reads Puck when the field is missing', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.smithLiveVoice;
+    expect(migrate(stored).smithLiveVoice).toBe('Puck');
+  });
+
+  it('keeps a named voice and random', () => {
+    expect(migrate({ ...defaultSettings(), smithLiveVoice: 'Kore' }).smithLiveVoice).toBe('Kore');
+    expect(migrate({ ...defaultSettings(), smithLiveVoice: 'random' }).smithLiveVoice).toBe(
+      'random',
+    );
+  });
+
+  it('repairs an unknown voice to Puck', () => {
+    expect(
+      migrate({ ...defaultSettings(), smithLiveVoice: 'NotAVoice' as never }).smithLiveVoice,
+    ).toBe('Puck');
+  });
+
+  it('rejects an unknown voice on patch', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    const result = store.patch({ smithLiveVoice: 'NotAVoice' as never });
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts random on patch', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    const result = store.patch({ smithLiveVoice: 'random' });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.settings.smithLiveVoice).toBe('random');
+  });
+});
