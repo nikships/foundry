@@ -255,6 +255,7 @@ function defaultMockSettings(): AppSettings {
       failed: 'linear-state-failed',
     },
     smithLiveVoice: 'Puck',
+    forgeProvider: 'auto',
   };
 }
 

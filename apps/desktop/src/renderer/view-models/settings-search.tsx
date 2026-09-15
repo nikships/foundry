@@ -43,7 +43,8 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
     id: 'integrations',
     label: 'Integrations',
     hint: 'Connect external issue trackers and agent tools',
-    keywords: 'linear issue ticket api key workflow status orchestration source tavily web search',
+    keywords:
+      'linear issue ticket api key workflow status orchestration source tavily web search gitlab github gh glab forge pull request merge request source control',
   },
   {
     id: 'project',
@@ -180,6 +181,13 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
       'report retries check retries envelope gate compaction context rewind corrections run resilience no deadline model retry failover',
   },
   // Integrations
+  {
+    pane: 'integrations',
+    label: 'Source control',
+    note: 'Which host Foundry talks to for pull and merge requests.',
+    keywords:
+      'forge github gitlab gh glab pull request merge request remote host scm source control',
+  },
   {
     pane: 'integrations',
     label: 'Linear',

@@ -24,6 +24,11 @@ import {
   GEMINI_LIVE_VOICES,
   isSmithLiveVoiceSetting,
 } from '@shared/gemini-live-voices.js';
+import {
+  DEFAULT_FORGE_PROVIDER,
+  isForgeProviderPreference,
+  type ForgeProviderPreference,
+} from '@shared/forge-cli.js';
 import { modelLabel } from '@shared/model-label.js';
 import {
   modelForEffortPicker,
@@ -219,6 +224,63 @@ function PairingQr({
         </div>
       </div>
     </div>
+  );
+}
+
+const FORGE_PROVIDER_OPTIONS: {
+  value: ForgeProviderPreference;
+  label: string;
+  description?: string;
+}[] = [
+  {
+    value: 'auto',
+    label: 'Auto (from git remote)',
+    description: 'Classifies GitHub vs GitLab from the project remote URL.',
+  },
+  { value: 'github', label: 'GitHub (gh)' },
+  { value: 'gitlab', label: 'GitLab (glab)' },
+];
+
+/**
+ * Which forge CLI the PRs tab, settle, and compose paths talk to. App-scoped
+ * so a GitLab-only machine does not depend on remote-hostname heuristics.
+ */
+function ForgeProviderSection(): React.JSX.Element {
+  const { settings, patchSettings } = useApp();
+
+  const setProvider = async (next: string): Promise<void> => {
+    if (!isForgeProviderPreference(next)) return;
+    await patchSettings({ forgeProvider: next });
+  };
+
+  return (
+    <Section label="Source control" note="Which host Foundry talks to for pull and merge requests.">
+      <div className={styles.providerCard}>
+        <div className={styles.providerHead}>
+          <h3>Pull requests host</h3>
+        </div>
+        <p className={styles.settingsLead}>
+          Auto classifies from the project git remote. Unknown hosts still count as GitHub, so a
+          GitLab-only machine or a self-hosted host Foundry does not recognize needs an explicit
+          choice.
+        </p>
+        <Field
+          label="Forge"
+          htmlFor="forge-provider"
+          hint="Auto uses the project remote. Pick GitLab if this machine only uses GitLab."
+        >
+          <Dropdown
+            id="forge-provider"
+            data-testid="forge-provider"
+            value={settings?.forgeProvider ?? DEFAULT_FORGE_PROVIDER}
+            options={FORGE_PROVIDER_OPTIONS}
+            onChange={(next) => void setProvider(next)}
+            menuWidth="compact"
+            aria-label="Forge"
+          />
+        </Field>
+      </div>
+    </Section>
   );
 }
 
@@ -2070,6 +2132,7 @@ export default function SettingsScreen({
                 <PaneBody>
                   {() => (
                     <>
+                      <ForgeProviderSection />
                       <Section
                         label="Linear"
                         note="Use an issue as the immutable source for a manual pipeline run."

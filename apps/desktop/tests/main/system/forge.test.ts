@@ -1,11 +1,16 @@
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../helpers/tmp.js';
 import { makeFakeGh } from '../../helpers/fake-gh.js';
 import { makeFakeGlab } from '../../helpers/fake-glab.js';
-import { classifyRemoteUrl, scmStatus } from '../../../src/main/system/forge.js';
+import {
+  classifyRemoteUrl,
+  resolveForge,
+  scmStatus,
+  setForgePreferenceProvider,
+} from '../../../src/main/system/forge.js';
 
 function sh(cwd: string, argv: string[]): string {
   return execFileSync(argv[0]!, argv.slice(1), { cwd, encoding: 'utf8' });
@@ -24,6 +29,10 @@ function scratchWithRemote(url: string): string {
   return repo;
 }
 
+afterEach(() => {
+  setForgePreferenceProvider(null);
+});
+
 describe('classifyRemoteUrl', () => {
   it('recognises GitHub hosts', () => {
     expect(classifyRemoteUrl('git@github.com:acme/widgets.git')).toBe('github');
@@ -36,6 +45,33 @@ describe('classifyRemoteUrl', () => {
     expect(classifyRemoteUrl('https://gitlab.com/acme/widgets.git')).toBe('gitlab');
     expect(classifyRemoteUrl('https://gitlab.example.com/acme/widgets')).toBe('gitlab');
     expect(classifyRemoteUrl('tom@salsa.debian.org:group/pkg.git')).toBe('gitlab');
+  });
+
+  it('defaults unknown hosts to GitHub', () => {
+    expect(classifyRemoteUrl('git@git.company.internal:acme/widgets.git')).toBe('github');
+    expect(classifyRemoteUrl('https://git.example.com/acme/widgets.git')).toBe('github');
+    expect(classifyRemoteUrl('')).toBe('github');
+  });
+});
+
+describe('resolveForge', () => {
+  it('honors an explicit GitLab preference over a GitHub remote', async () => {
+    const repo = scratchWithRemote('git@github.com:acme/widgets.git');
+    expect(await resolveForge(repo, 'gitlab')).toBe('gitlab');
+  });
+
+  it('honors an explicit GitHub preference over a GitLab remote', async () => {
+    const repo = scratchWithRemote('git@gitlab.com:acme/widgets.git');
+    expect(await resolveForge(repo, 'github')).toBe('github');
+  });
+
+  it('classifies from the remote when preference is auto', async () => {
+    const github = scratchWithRemote('git@github.com:acme/widgets.git');
+    const gitlab = scratchWithRemote('git@gitlab.com:acme/widgets.git');
+    const unknown = scratchWithRemote('git@git.company.internal:acme/widgets.git');
+    expect(await resolveForge(github, 'auto')).toBe('github');
+    expect(await resolveForge(gitlab, 'auto')).toBe('gitlab');
+    expect(await resolveForge(unknown, 'auto')).toBe('github');
   });
 });
 
@@ -62,5 +98,40 @@ describe('scmStatus', () => {
     expect(status.available).toBe(true);
     expect(status.cli).toBe('glab');
     expect(status.repo).toBe('acme/widgets');
+  });
+
+  it('forces glab when preference is gitlab, even on a GitHub remote', async () => {
+    const repo = scratchWithRemote('git@github.com:acme/widgets.git');
+    const glab = makeFakeGlab({ repoView: { path_with_namespace: 'acme/widgets' } });
+    const status = await scmStatus(repo, {
+      preference: 'gitlab',
+      gh: { bin: join(repo, 'no-gh') },
+      glab: { bin: glab.bin },
+    });
+    expect(status.available).toBe(true);
+    expect(status.cli).toBe('glab');
+  });
+
+  it('reports glab when preference is gitlab even if glab is missing', async () => {
+    const repo = scratchWithRemote('git@git.company.internal:acme/widgets.git');
+    const status = await scmStatus(repo, {
+      preference: 'gitlab',
+      gh: { bin: join(repo, 'no-gh') },
+      glab: { bin: join(repo, 'no-glab') },
+    });
+    expect(status.available).toBe(false);
+    expect(status.cli).toBe('glab');
+    expect(status.detail.toLowerCase()).toContain('gitlab');
+  });
+
+  it('reads the injected app preference when no per-call override is given', async () => {
+    const repo = scratchWithRemote('git@github.com:acme/widgets.git');
+    const glab = makeFakeGlab({ repoView: { path_with_namespace: 'acme/widgets' } });
+    setForgePreferenceProvider(() => 'gitlab');
+    const status = await scmStatus(repo, {
+      gh: { bin: join(repo, 'no-gh') },
+      glab: { bin: glab.bin },
+    });
+    expect(status.cli).toBe('glab');
   });
 });

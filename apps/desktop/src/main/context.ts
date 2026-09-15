@@ -70,7 +70,7 @@ import { tavilyCredentials, TavilyService } from './tavily/service.js';
 import { geminiLiveCredentials } from './gemini-live/credentials.js';
 import { GeminiLiveService } from './gemini-live/service.js';
 import { enabledModelIds, enabledModels, enabledPiModels } from './pi/enabled-models.js';
-import { scmStatus } from './system/forge.js';
+import { scmStatus, setForgePreferenceProvider } from './system/forge.js';
 
 export interface Scope {
   projectId?: string;
@@ -130,6 +130,9 @@ export class AppContext {
     private readonly assetsRoot: string,
   ) {
     this.settings = new SettingsStore(supportDir);
+    // Central hook: every forge call (IPC, companion, settle, compose) reads
+    // the live Settings preference instead of re-classifying in each caller.
+    setForgePreferenceProvider(() => this.settings.get().forgeProvider);
     this.projects = new ProjectStore(supportDir);
     this.roster = new RosterStore(supportDir);
     this.pipelines = new PipelineStore(supportDir);

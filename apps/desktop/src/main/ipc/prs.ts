@@ -1,6 +1,6 @@
 /**
  * Pull requests / merge requests, driven through the operator's own `gh` or
- * `glab` CLI (chosen from the git remote). This
+ * `glab` CLI (Settings → Forge, defaulting to the git remote). This
  * router owns the two moments where remote and local state must move together:
  * opening a PR records its coordinates on the run, and merging one settles the
  * matching foundry worktree and fast-forwards the local base ref so the repo
