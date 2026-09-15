@@ -10,9 +10,6 @@ import {
   SMITH_QUICK_PROMPTS_LABEL,
   SMITH_SECRET_VOICE_COPY,
   SMITH_USER_ACCESS_COPY,
-  SMITH_YOLO_ACTIVE_COPY,
-  SMITH_YOLO_OFF_COPY,
-  SMITH_YOLO_WARNING,
 } from '@renderer/view-models/smith-copy.js';
 
 describe('SMITH_NO_PROVIDER_COPY', () => {
@@ -23,17 +20,6 @@ describe('SMITH_NO_PROVIDER_COPY', () => {
 });
 
 describe('smith user-level access copy', () => {
-  it('states the YOLO risks, reset behavior, and private-card exceptions', () => {
-    expect(SMITH_YOLO_WARNING).toContain('delete data');
-    expect(SMITH_YOLO_WARNING).toContain('publish or merge code');
-    expect(SMITH_YOLO_WARNING).toContain('by voice');
-    expect(SMITH_YOLO_WARNING).toContain('Project boundaries and validation stay on');
-    expect(SMITH_YOLO_WARNING).toContain('New chat or app restart');
-    expect(SMITH_YOLO_OFF_COPY).toContain('asks for approval before app actions');
-    expect(SMITH_YOLO_OFF_COPY).toContain('Direct checkout access is unchanged');
-    expect(SMITH_YOLO_ACTIVE_COPY).toContain('Key entry and pairing still need private cards');
-    expect(SMITH_YOLO_ACTIVE_COPY).toContain('work already started continues');
-  });
   it('names every capability in both surfaces with the approval rule', () => {
     expect(SMITH_USER_ACCESS_COPY).toMatch(/assigned Linear/i);
     expect(SMITH_USER_ACCESS_COPY).toMatch(/Smith compose a run plan/i);

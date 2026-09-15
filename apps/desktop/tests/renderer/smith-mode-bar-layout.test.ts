@@ -1,7 +1,6 @@
 /**
  * YOLO used to sit in its own padded, wrapping header above Text/Voice.
- * That extra chrome row is gone: the toggle and its status copy live on
- * the mode bar, nowrap, with the sentence shrinking via ellipsis.
+ * That extra chrome row is gone: the toggle lives on the mode bar.
  *
  * Visual layout is not executable under Vitest's node environment, so this
  * file reads the source the renderer ships rather than painting pixels.
@@ -62,18 +61,13 @@ describe('Smith mode bar YOLO placement', () => {
     expect(rule(barCss, '.connection')).toMatch(/flex:\s*none/);
   });
 
-  it('lets the YOLO sentence shrink instead of wrapping a second header', () => {
+  it('keeps YOLO as a compact control without wrapping chrome', () => {
     const control = rule(permissionCss, '.control');
-    expect(control).toMatch(/flex-wrap:\s*nowrap/);
-    expect(control).toMatch(/flex:\s*1 1 auto/);
+    expect(control).toMatch(/flex:\s*none/);
     expect(control).toMatch(/min-width:\s*0/);
     expect(control).not.toMatch(/padding:/);
-
-    const copy = rule(permissionCss, '.detail,\n.warning');
-    expect(copy).toMatch(/min-width:\s*0/);
-    expect(copy).toMatch(/white-space:\s*nowrap/);
-    expect(copy).toMatch(/text-overflow:\s*ellipsis/);
-    expect(copy).not.toMatch(/min-width:\s*180px/);
+    expect(permissionCss).not.toMatch(/\.detail/);
+    expect(permissionCss).not.toMatch(/\.warning/);
   });
 
   it('places the permission control on the mode bar in both Smith surfaces', () => {
