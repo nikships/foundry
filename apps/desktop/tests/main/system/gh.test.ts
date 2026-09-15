@@ -293,7 +293,7 @@ describe('viewPr', () => {
     });
     const view = gh.calls().find((argv) => argv[0] === 'pr' && argv[1] === 'view');
     expect(view).toContain(handle.branch);
-    expect(view).toContain('number,url,headRefName,baseRefName');
+    expect(view).toContain('number,url,headRefName,baseRefName,state,mergedAt');
   });
 
   it('answers null when the branch has no PR, so the manual fallback still applies', async () => {

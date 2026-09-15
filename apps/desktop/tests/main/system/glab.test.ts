@@ -1,6 +1,6 @@
 /**
- * GitLab CLI surface: detection/auth and a representative MR create path,
- * mirrored from gh.test.ts so the two forge CLIs stay in lockstep.
+ * GitLab path through the shared forge-ops surface (provider = gitlab).
+ * Pins detection/auth, token env, and a representative MR create.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../helpers/tmp.js';
 import { makeFakeGlab } from '../../helpers/fake-glab.js';
-import { glabStatus, openMr } from '../../../src/main/system/glab.js';
+import { forgeOpen, forgeStatus } from '../../../src/main/system/forge-ops.js';
 import * as worktree from '../../../src/main/engine/worktree.js';
 
 const TOKEN_KEYS = ['GITLAB_TOKEN', 'GITLAB_ACCESS_TOKEN', 'OAUTH_TOKEN'] as const;
@@ -60,11 +60,11 @@ async function runBranch(repo: string, runId: string) {
   return handle;
 }
 
-describe('glabStatus', () => {
+describe('forgeStatus (gitlab)', () => {
   it('reports glab missing when the binary does not run', async () => {
     clearGitlabTokens();
     const { repo } = scratchRepoWithOrigin();
-    const status = await glabStatus(repo, { bin: join(repo, 'no-such-glab') });
+    const status = await forgeStatus('gitlab', repo, { bin: join(repo, 'no-such-glab') });
     expect(status.available).toBe(false);
     expect(status.detail).toContain('not installed');
     expect(status.cli).toBe('glab');
@@ -74,7 +74,7 @@ describe('glabStatus', () => {
     clearGitlabTokens();
     const { repo } = scratchRepoWithOrigin();
     const glab = makeFakeGlab({ authed: false });
-    const status = await glabStatus(repo, { bin: glab.bin });
+    const status = await forgeStatus('gitlab', repo, { bin: glab.bin });
     expect(status.available).toBe(false);
     expect(status.detail).toContain('glab auth login');
   });
@@ -87,7 +87,7 @@ describe('glabStatus', () => {
       repoView: { path_with_namespace: 'acme/widgets' },
     });
     process.env.GITLAB_TOKEN = 'glpat-test-token';
-    const status = await glabStatus(repo, { bin: glab.bin });
+    const status = await forgeStatus('gitlab', repo, { bin: glab.bin });
     expect(status.available).toBe(true);
     expect(status.repo).toBe('acme/widgets');
     expect(status.cli).toBe('glab');
@@ -97,13 +97,13 @@ describe('glabStatus', () => {
     clearGitlabTokens();
     const { repo } = scratchRepoWithOrigin();
     const glab = makeFakeGlab({ repoView: { path_with_namespace: 'group/project' } });
-    const status = await glabStatus(repo, { bin: glab.bin });
+    const status = await forgeStatus('gitlab', repo, { bin: glab.bin });
     expect(status.available).toBe(true);
     expect(status.repo).toBe('group/project');
   });
 });
 
-describe('openMr', () => {
+describe('forgeOpen (gitlab)', () => {
   it('pushes the branch before asking glab to create', async () => {
     clearGitlabTokens();
     const { repo, bare } = scratchRepoWithOrigin();
@@ -112,7 +112,8 @@ describe('openMr', () => {
       createUrl: 'https://gitlab.com/acme/widgets/-/merge_requests/7',
     });
 
-    const result = await openMr(
+    const result = await forgeOpen(
+      'gitlab',
       repo,
       { branch: handle.branch, baseRef: 'main', title: 'add work', body: 'body' },
       { bin: glab.bin },

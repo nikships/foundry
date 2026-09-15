@@ -12,12 +12,7 @@ import type { BridgeProviderStatus } from '../bridge/auth.js';
 import { currentBranch, isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
 import { resolvedEnv } from './env.js';
-import {
-  authDetail,
-  cliAuthSatisfied,
-  githubTokenEnvName,
-  gitlabTokenEnvName,
-} from './scm-auth.js';
+import { appendForgeDoctorChecks } from './scm-auth.js';
 
 /** Runners a detected project command is most likely to need. */
 const TOOLCHAIN_BINARIES = ['node', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go', 'uv', 'swift'];
@@ -152,62 +147,7 @@ export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]
 
   // Pull requests ride on the operator's own forge CLI install and auth;
   // Foundry holds no host token. Never blocking — local merge works without it.
-  const gh = await probe(['gh', '--version'], 10_000);
-  checks.push({
-    id: 'gh',
-    label: 'GitHub CLI',
-    ok: gh.passed,
-    detail: gh.passed
-      ? (gh.outputTail.trim().split('\n')[0] ?? 'installed')
-      : 'gh is not on PATH — GitHub pull requests are unavailable (local merge still works)',
-    fix: gh.passed ? undefined : { kind: 'open-url', value: 'https://cli.github.com' },
-  });
-  if (gh.passed) {
-    const ghAuth = await probe(['gh', 'auth', 'status'], 15_000);
-    const tokenEnv = githubTokenEnvName();
-    const authed = cliAuthSatisfied(ghAuth.passed, tokenEnv);
-    checks.push({
-      id: 'gh:auth',
-      label: 'GitHub CLI authentication',
-      ok: authed,
-      detail: authed
-        ? authDetail(ghAuth.passed, tokenEnv)
-        : 'not signed in — run `gh auth login` or set GH_TOKEN / GITHUB_TOKEN to enable pull requests',
-      fix: authed
-        ? undefined
-        : { kind: 'open-url', value: 'https://cli.github.com/manual/gh_auth_login' },
-    });
-  }
-
-  const glab = await probe(['glab', '--version'], 10_000);
-  checks.push({
-    id: 'glab',
-    label: 'GitLab CLI',
-    ok: glab.passed,
-    detail: glab.passed
-      ? (glab.outputTail.trim().split('\n')[0] ?? 'installed')
-      : 'glab is not on PATH — GitLab merge requests are unavailable (local merge still works)',
-    fix: glab.passed ? undefined : { kind: 'open-url', value: 'https://gitlab.com/gitlab-org/cli' },
-  });
-  if (glab.passed) {
-    const glabAuth = await probe(['glab', 'auth', 'status'], 15_000);
-    const tokenEnv = gitlabTokenEnvName();
-    const authed = cliAuthSatisfied(glabAuth.passed, tokenEnv);
-    checks.push({
-      id: 'glab:auth',
-      label: 'GitLab CLI authentication',
-      ok: authed,
-      detail: authed
-        ? authDetail(glabAuth.passed, tokenEnv)
-        : 'not signed in — run `glab auth login` or set GITLAB_TOKEN to enable merge requests',
-      fix: authed
-        ? undefined
-        : {
-            kind: 'open-url',
-            value: 'https://gitlab.com/gitlab-org/cli/-/blob/main/docs/source/auth/login.md',
-          },
-    });
-  }
+  await appendForgeDoctorChecks(checks, probe);
 
   // macOS 26 is the floor; the version conveniences are verified only there.
   const version = release();

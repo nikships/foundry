@@ -1,22 +1,33 @@
 /**
- * Pick GitHub (`gh`) or GitLab (`glab`) from the repo remote, then expose the
- * same PR/MR operations both CLIs implement. Callers stay forge-agnostic;
- * create-on-GitHub flows keep using system/gh.ts directly.
+ * Pick GitHub (`gh`) or GitLab (`glab`) from the repo remote, then run the
+ * shared forge-ops surface. Callers stay forge-agnostic; create-on-GitHub
+ * flows keep using system/gh.ts directly.
  */
 
 import type { GhStatus, PrMergeMethod } from '@shared/types.js';
 import type { IssueAction, PrAction, PrList } from '@shared/ipc-contract.js';
 import { preferredRemote, remoteUrl } from '../engine/git.js';
-import * as ghLib from './gh.js';
-import type { GhOptions } from './gh.js';
-import * as glabLib from './glab.js';
-import type { GlabOptions } from './glab.js';
+import {
+  forgeCreateIssue,
+  forgeList,
+  forgeMerge,
+  forgeOpen,
+  forgeStatus,
+  forgeView,
+  forgeViewMergeState,
+  type ForgeBinOptions,
+  type ForgeKind,
+  type MergeOutcome,
+  type PrMergeState,
+  type PrRef,
+} from './forge-ops.js';
 
-export type ForgeKind = 'github' | 'gitlab';
+export type { ForgeKind, ForgeBinOptions, PrRef, PrMergeState, MergeOutcome };
+export { summarizeChecks } from './forge-ops.js';
 
 export interface ForgeOptions {
-  gh?: GhOptions;
-  glab?: GlabOptions;
+  gh?: ForgeBinOptions;
+  glab?: ForgeBinOptions;
 }
 
 /**
@@ -27,7 +38,6 @@ export interface ForgeOptions {
 export function classifyRemoteUrl(url: string): ForgeKind {
   const normalized = url.trim().toLowerCase();
   if (!normalized) return 'github';
-  // SSH scp-like: git@gitlab.com:group/repo.git / git@github.com:owner/repo.git
   const host = (() => {
     const ssh = /^[^@]+@([^:]+):/.exec(normalized);
     if (ssh) return ssh[1]!;
@@ -65,15 +75,13 @@ export async function detectForge(repo: string): Promise<ForgeKind> {
   return url ? classifyRemoteUrl(url) : 'github';
 }
 
-/** Tag GitHub status answers so the UI can tell which CLI answered. */
-function withGhCli(status: GhStatus): GhStatus {
-  return { ...status, cli: status.cli ?? 'gh' };
+function bins(kind: ForgeKind, opts: ForgeOptions): ForgeBinOptions {
+  return kind === 'gitlab' ? (opts.glab ?? {}) : (opts.gh ?? {});
 }
 
 export async function scmStatus(repo: string, opts: ForgeOptions = {}): Promise<GhStatus> {
-  const forge = await detectForge(repo);
-  if (forge === 'gitlab') return glabLib.glabStatus(repo, opts.glab ?? {});
-  return withGhCli(await ghLib.ghStatus(repo, opts.gh ?? {}));
+  const kind = await detectForge(repo);
+  return forgeStatus(kind, repo, bins(kind, opts));
 }
 
 export async function openPullRequest(
@@ -81,35 +89,31 @@ export async function openPullRequest(
   input: { branch: string; baseRef: string; title: string; body: string },
   opts: ForgeOptions = {},
 ): Promise<PrAction> {
-  const forge = await detectForge(repo);
-  if (forge === 'gitlab') return glabLib.openMr(repo, input, opts.glab ?? {});
-  return ghLib.openPr(repo, input, opts.gh ?? {});
+  const kind = await detectForge(repo);
+  return forgeOpen(kind, repo, input, bins(kind, opts));
 }
 
 export async function viewPullRequest(
   repo: string,
   ref: string | number,
   opts: ForgeOptions = {},
-): Promise<{ number: number; url: string; headRefName: string; baseRefName: string } | null> {
-  const forge = await detectForge(repo);
-  if (forge === 'gitlab') return glabLib.viewMr(repo, ref, opts.glab ?? {});
-  return ghLib.viewPr(repo, ref, opts.gh ?? {});
+): Promise<PrRef | null> {
+  const kind = await detectForge(repo);
+  return forgeView(kind, repo, ref, bins(kind, opts));
 }
 
 export async function viewPullRequestMergeState(
   repo: string,
   ref: string | number,
   opts: ForgeOptions = {},
-): Promise<{ number: number; url: string; merged: boolean; state: string } | null> {
-  const forge = await detectForge(repo);
-  if (forge === 'gitlab') return glabLib.viewMrMergeState(repo, ref, opts.glab ?? {});
-  return ghLib.viewPrMergeState(repo, ref, opts.gh ?? {});
+): Promise<PrMergeState | null> {
+  const kind = await detectForge(repo);
+  return forgeViewMergeState(kind, repo, ref, bins(kind, opts));
 }
 
 export async function listOpenPullRequests(repo: string, opts: ForgeOptions = {}): Promise<PrList> {
-  const forge = await detectForge(repo);
-  if (forge === 'gitlab') return glabLib.listOpenMrs(repo, opts.glab ?? {});
-  return ghLib.listOpenPrs(repo, opts.gh ?? {});
+  const kind = await detectForge(repo);
+  return forgeList(kind, repo, bins(kind, opts));
 }
 
 export async function mergePullRequest(
@@ -117,16 +121,9 @@ export async function mergePullRequest(
   number: number,
   method: PrMergeMethod,
   opts: ForgeOptions = {},
-): Promise<{
-  ok: boolean;
-  detail: string;
-  headRefName?: string;
-  baseRefName?: string;
-  url?: string;
-}> {
-  const forge = await detectForge(repo);
-  if (forge === 'gitlab') return glabLib.mergeMr(repo, number, method, opts.glab ?? {});
-  return ghLib.mergePr(repo, number, method, opts.gh ?? {});
+): Promise<MergeOutcome> {
+  const kind = await detectForge(repo);
+  return forgeMerge(kind, repo, number, method, bins(kind, opts));
 }
 
 export async function createForgeIssue(
@@ -134,7 +131,6 @@ export async function createForgeIssue(
   input: { title: string; body: string; labels?: string[] },
   opts: ForgeOptions = {},
 ): Promise<IssueAction> {
-  const forge = await detectForge(repo);
-  if (forge === 'gitlab') return glabLib.createGitlabIssue(repo, input, opts.glab ?? {});
-  return ghLib.createIssue(repo, input, opts.gh ?? {});
+  const kind = await detectForge(repo);
+  return forgeCreateIssue(kind, repo, input, bins(kind, opts));
 }

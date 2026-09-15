@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  appendForgeDoctorChecks,
   cliAuthSatisfied,
   githubTokenEnvName,
   gitlabTokenEnvName,
@@ -60,5 +61,26 @@ describe('scm-auth token detection', () => {
     expect(cliAuthSatisfied(true, undefined)).toBe(true);
     expect(cliAuthSatisfied(false, undefined)).toBe(false);
     expect(cliAuthSatisfied(false, 'GH_TOKEN')).toBe(true);
+  });
+});
+
+describe('appendForgeDoctorChecks', () => {
+  it('emits install + auth rows for both forge CLIs', async () => {
+    const checks: { id: string; label: string; ok: boolean; detail: string }[] = [];
+    await appendForgeDoctorChecks(checks, async (argv) => {
+      if (argv[0] === 'gh' && argv[1] === '--version') {
+        return { passed: true, outputTail: 'gh version 2.0.0' };
+      }
+      if (argv[0] === 'gh' && argv[1] === 'auth') {
+        return { passed: true, outputTail: 'logged in' };
+      }
+      if (argv[0] === 'glab' && argv[1] === '--version') {
+        return { passed: false, outputTail: '' };
+      }
+      return { passed: false, outputTail: '' };
+    });
+    expect(checks.map((c) => c.id)).toEqual(['gh', 'gh:auth', 'glab']);
+    expect(checks.find((c) => c.id === 'gh:auth')?.ok).toBe(true);
+    expect(checks.find((c) => c.id === 'glab')?.ok).toBe(false);
   });
 });
