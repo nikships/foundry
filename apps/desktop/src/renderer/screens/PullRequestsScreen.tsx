@@ -24,7 +24,11 @@ import {
   type PrRepairPhase,
 } from '../view-models/pr-repair-view.js';
 import styles from './PullRequestsScreen.module.css';
-import { forgeCliLoadingListHint, forgeCliNotReadyTitle } from '@shared/forge-cli.js';
+import {
+  forgeCliLoadingListHint,
+  forgeCliNotReadyBody,
+  forgeCliNotReadyTitle,
+} from '@shared/forge-cli.js';
 
 const FOUNDRY_BRANCH = /^foundry\//;
 
@@ -190,7 +194,7 @@ export default function PullRequestsScreen({
 }: {
   onOpenRun: (runId: string) => void;
 }): React.JSX.Element {
-  const { project, projectId } = useApp();
+  const { project, projectId, settings } = useApp();
   const [gh, setGh] = useState<GhStatus | null>(null);
   const [prs, setPrs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -337,7 +341,14 @@ export default function PullRequestsScreen({
         {!project ? (
           <EmptyState title="No project" body="Add a project to see its pull requests." />
         ) : gh && !gh.available ? (
-          <EmptyState title={forgeCliNotReadyTitle(gh.cli)} body={gh.detail}>
+          <EmptyState
+            title={forgeCliNotReadyTitle(gh.cli)}
+            body={forgeCliNotReadyBody({
+              cli: gh.cli,
+              detail: gh.detail,
+              preference: settings?.forgeProvider,
+            })}
+          >
             <Button size="sm" onClick={() => void refresh()}>
               Check again
             </Button>

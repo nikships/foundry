@@ -141,6 +141,19 @@ describe('searchSettings', () => {
     );
   });
 
+  it('finds the forge host control under Integrations', () => {
+    expect(
+      searchSettings('gitlab').some(
+        (hit) => hit.pane === 'integrations' && hit.sectionId === 'source-control',
+      ),
+    ).toBe(true);
+    expect(
+      searchSettings('glab').some(
+        (hit) => hit.pane === 'integrations' && hit.sectionId === 'source-control',
+      ),
+    ).toBe(true);
+  });
+
   it('keeps integrations and repository settings distinct', () => {
     expect(
       searchSettings('linear').some(

@@ -524,3 +524,39 @@ describe('smithLiveVoice', () => {
     expect(result.ok && result.settings.smithLiveVoice).toBe('random');
   });
 });
+
+describe('forgeProvider', () => {
+  it('defaults to auto on a fresh install', () => {
+    expect(defaultSettings().forgeProvider).toBe('auto');
+  });
+
+  it('reads auto when the field is missing', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.forgeProvider;
+    expect(migrate(stored).forgeProvider).toBe('auto');
+  });
+
+  it('keeps github and gitlab', () => {
+    expect(migrate({ ...defaultSettings(), forgeProvider: 'github' }).forgeProvider).toBe('github');
+    expect(migrate({ ...defaultSettings(), forgeProvider: 'gitlab' }).forgeProvider).toBe('gitlab');
+  });
+
+  it('repairs an unknown provider to auto', () => {
+    expect(
+      migrate({ ...defaultSettings(), forgeProvider: 'bitbucket' as never }).forgeProvider,
+    ).toBe('auto');
+  });
+
+  it('rejects an unknown provider on patch', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    const result = store.patch({ forgeProvider: 'bitbucket' as never });
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts gitlab on patch', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    const result = store.patch({ forgeProvider: 'gitlab' });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.settings.forgeProvider).toBe('gitlab');
+  });
+});
