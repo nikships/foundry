@@ -4,20 +4,26 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { FunctionResponseScheduling } from '@google/genai';
 import type { SmithChatState, SmithTranscriptEntry } from '../../src/shared/ipc-contract.js';
 import {
+  appendTranscript,
   EMPTY_SETTLE_WATCH,
   foldSettleWatch,
   friendlyVoiceError,
+  missedWorkNudge,
   proposalSummary,
   settledAnswerText,
   settledWorkPrompt,
   SMITH_VOICE_CAPABILITY_PROMPTS,
+  soundsLikeWorkComing,
   voiceCapabilityWorkText,
   VOICE_SECRET_REDIRECT,
   voiceSecretRefusal,
   VOICE_TOOL_NAMES,
   voiceToolDeclarations,
+  voiceToolResponseScheduling,
+  workDelegated,
   workStartedResult,
 } from '../../src/renderer/view-models/smith-voice-view.js';
 
@@ -73,6 +79,131 @@ describe('foldSettleWatch', () => {
     const folded = foldSettleWatch({ delegated: true, running: true }, null);
     expect(folded.settled).toBe(false);
     expect(folded.next).toEqual({ delegated: true, running: true });
+  });
+
+  it('keeps a pending watch armed until the delegated turn actually appears', () => {
+    // The watch arms before `smith:send` lands, so an unrelated quiet snapshot
+    // (e.g. a proposal emit) must not settle it early.
+    const pending = { delegated: true, running: false };
+    const quiet = foldSettleWatch(pending, chat({ running: false }));
+    expect(quiet.settled).toBe(false);
+    expect(quiet.next).toEqual(pending);
+
+    const started = foldSettleWatch(quiet.next, chat({ running: true }));
+    expect(started.settled).toBe(false);
+    expect(started.next).toEqual({ delegated: true, running: true });
+
+    const done = foldSettleWatch(started.next, chat({ running: false }));
+    expect(done.settled).toBe(true);
+  });
+
+  it('settles a pending watch when the turn fails before ever running', () => {
+    // ensureStarted can fail instantly: the snapshot carries the error while
+    // running never went true — the voice model must still hear an answer.
+    const failed = foldSettleWatch(
+      { delegated: true, running: false },
+      chat({ running: false, error: 'transport refused to start' }),
+    );
+    expect(failed.settled).toBe(true);
+    expect(failed.next).toEqual(EMPTY_SETTLE_WATCH);
+  });
+});
+
+describe('workDelegated', () => {
+  it('is true only when the newest operator row is the text voice just sent', () => {
+    const accepted = chat({
+      running: true,
+      transcript: [text('a', 'operator', 'check my runs'), text('b', 'smith', 'on it')],
+    });
+    expect(workDelegated(accepted, 'check my runs')).toBe(true);
+
+    const busy = chat({
+      running: true,
+      transcript: [text('a', 'operator', 'an earlier request'), text('b', 'smith', 'working')],
+    });
+    expect(workDelegated(busy, 'check my runs')).toBe(false);
+
+    expect(workDelegated(chat({ transcript: [] }), 'check my runs')).toBe(false);
+  });
+});
+
+describe('appendTranscript', () => {
+  it('inserts the missing space between sentences streamed as separate chunks', () => {
+    let acc = appendTranscript('', 'Let me check on that.');
+    acc = appendTranscript(acc, 'One moment.');
+    expect(acc).toBe('Let me check on that. One moment.');
+  });
+
+  it('keeps chunks that carry their own spacing untouched', () => {
+    expect(appendTranscript('Let’s explore ', 'your idea.')).toBe('Let’s explore your idea.');
+    expect(appendTranscript('Help me ', 'think.')).toBe('Help me think.');
+  });
+
+  it('joins punctuation flush and mid-word splits without inventing gaps', () => {
+    expect(appendTranscript('Wait', ', one sec')).toBe('Wait, one sec');
+    expect(appendTranscript('transcri', 'ption')).toBe('transcription');
+    expect(appendTranscript('isn', "'t")).toBe("isn't");
+    expect(appendTranscript('and/', 'or')).toBe('and/or');
+  });
+
+  it('handles the empty sides', () => {
+    expect(appendTranscript('', 'Hello.')).toBe('Hello.');
+    expect(appendTranscript('Hello.', '')).toBe('Hello.');
+  });
+});
+
+describe('soundsLikeWorkComing', () => {
+  it('catches the spoken promises that should carry a tool call', () => {
+    for (const said of [
+      'Let me check on that.',
+      "I'll look into it.",
+      'Let me think about that for a moment.',
+      "I'm checking on that now.",
+      'One moment while I check.',
+      'Let me see what is running.',
+    ]) {
+      expect(soundsLikeWorkComing(said)).toBe(true);
+    }
+  });
+
+  it('ignores ordinary answers and small talk', () => {
+    for (const said of [
+      'The run failed because lint is red.',
+      'Let’s explore your idea.',
+      'Sure, sounds good.',
+      'I am still working on it.',
+    ]) {
+      expect(soundsLikeWorkComing(said)).toBe(false);
+    }
+  });
+});
+
+describe('missedWorkNudge', () => {
+  it('reminds the model to make the call or move on', () => {
+    const nudge = missedWorkNudge();
+    expect(nudge).toContain('no tool call went through');
+    expect(nudge).toContain('smith_work');
+    expect(nudge).toContain('small talk');
+  });
+});
+
+describe('voiceToolResponseScheduling', () => {
+  it('keeps a successful smith_work receipt silent and everything else spoken', () => {
+    expect(voiceToolResponseScheduling(VOICE_TOOL_NAMES.work, false)).toBe(
+      FunctionResponseScheduling.SILENT,
+    );
+    expect(voiceToolResponseScheduling(VOICE_TOOL_NAMES.work, true)).toBe(
+      FunctionResponseScheduling.WHEN_IDLE,
+    );
+    expect(voiceToolResponseScheduling(VOICE_TOOL_NAMES.cancel, false)).toBe(
+      FunctionResponseScheduling.WHEN_IDLE,
+    );
+    expect(voiceToolResponseScheduling(VOICE_TOOL_NAMES.proposalRead, false)).toBe(
+      FunctionResponseScheduling.WHEN_IDLE,
+    );
+    expect(voiceToolResponseScheduling(VOICE_TOOL_NAMES.proposalAnswer, false)).toBe(
+      FunctionResponseScheduling.WHEN_IDLE,
+    );
   });
 });
 
@@ -211,6 +342,7 @@ describe('voice work handoff language', () => {
     const prompt = settledWorkPrompt('Changed the setting successfully.');
     expect(prompt).toContain('Continue the conversation as Smith');
     expect(prompt).toContain('Answer the operator in first person');
+    expect(prompt).toContain('do not say you will check');
     expect(prompt).toContain('Changed the setting successfully.');
   });
 });

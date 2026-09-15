@@ -64,6 +64,21 @@ async function emit(window: Page, serverContent: object): Promise<void> {
   }, serverContent);
 }
 
+/** Any raw server message — tool calls, cancellations, resumption updates, goAway. */
+async function emitRaw(window: Page, message: object): Promise<void> {
+  await window.evaluate((data) => {
+    (
+      globalThis as unknown as { voiceSocket: { receive: (d: object) => void } }
+    ).voiceSocket.receive(data);
+  }, message);
+}
+
+function sentMessages(window: Page): Promise<string[]> {
+  return window.evaluate(
+    () => (globalThis as unknown as { voiceMessages: string[] }).voiceMessages,
+  );
+}
+
 async function openVoice(window: Page): Promise<void> {
   const launcher = window.getByTestId('smith-bubble');
   const modeVoice = window.getByTestId('smith-mode-voice');
@@ -144,15 +159,137 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Microphone muted');
     await window.getByTestId('smith-voice-mute').click();
     expect(await tracks(window)).toEqual([{ enabled: true, state: 'live' }]);
+    await emitRaw(window, { sessionResumptionUpdate: { newHandle: 'resume-handle-1' } });
     await window.evaluate(() =>
       (globalThis as unknown as { voiceSocket: { close: () => void } }).voiceSocket.close(),
     );
-    await expect(window.getByTestId('smith-voice-status')).toHaveText('Let’s reconnect');
-    expect(await tracks(window)).toEqual([{ enabled: true, state: 'ended' }]);
-    await window.getByTestId('smith-voice-start').click();
+    // A dropped socket resumes in place on a fresh token; the mic stays open.
     await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
+    expect(await tracks(window)).toEqual([{ enabled: true, state: 'live' }]);
+    await expect
+      .poll(async () =>
+        (await sentMessages(window)).some((message) =>
+          message.includes('"handle":"resume-handle-1"'),
+        ),
+      )
+      .toBe(true);
     await window.getByTestId('smith-voice-stop').click();
     expect((await tracks(window)).every((track) => track.state === 'ended')).toBe(true);
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
+  } finally {
+    await app.close();
+  }
+});
+
+test('voice: tool calls, missed-call nudge, cancellation, and caption spacing', async () => {
+  const { app, window } = await launchFoundry(seedOnboardedFixture().userDataDir);
+  try {
+    await expect(window.getByTestId('run-composer')).toBeVisible();
+    await app.evaluate(({ ipcMain }) => {
+      const target = globalThis as unknown as { voiceCancelCount: number };
+      target.voiceCancelCount = 0;
+      ipcMain.removeHandler('gemini-live:mintToken');
+      ipcMain.handle('gemini-live:mintToken', () => ({
+        token: 'test-token',
+        model: 'gemini-3.8-live-extended-thinking',
+        systemInstruction: 'Test voice.',
+      }));
+      ipcMain.removeHandler('smith:send');
+      ipcMain.handle('smith:send', (_event, _projectId: unknown, text: string) => ({
+        model: 'inherit',
+        activeModel: 'inherit',
+        reasoningEffort: 'medium',
+        activeReasoningEffort: 'medium',
+        permissionMode: 'ask',
+        running: true,
+        error: null,
+        transcript: [{ id: 't1', kind: 'text', source: 'operator', text, at: 0 }],
+      }));
+      ipcMain.removeHandler('smith:cancel');
+      ipcMain.handle('smith:cancel', () => {
+        target.voiceCancelCount += 1;
+        return null;
+      });
+      ipcMain.removeHandler('smith:proposalsList');
+      ipcMain.handle('smith:proposalsList', () => []);
+    });
+    await controlledMicrophone(window);
+    await controlledSocket(window);
+    await openVoice(window);
+    await window.getByTestId('smith-voice-start').click();
+    await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
+
+    // A turn that ends on a spoken promise with no tool call earns one text
+    // nudge to make the smith_work call late.
+    await emit(window, {
+      outputTranscription: { text: 'Let me check on that.' },
+      turnComplete: true,
+    });
+    await expect
+      .poll(async () =>
+        (await sentMessages(window)).some((message) =>
+          message.includes('no tool call went through'),
+        ),
+      )
+      .toBe(true);
+
+    // A smith_work call dispatches the send and answers SILENT so the model
+    // never repeats the acknowledgment for the receipt.
+    await emitRaw(window, {
+      toolCall: {
+        functionCalls: [{ id: 'c1', name: 'smith_work', args: { text: 'check my runs' } }],
+      },
+    });
+    await expect
+      .poll(async () =>
+        (await sentMessages(window)).some((message) => message.includes('"toolResponse"')),
+      )
+      .toBe(true);
+    const workResponse = (await sentMessages(window)).find((message) =>
+      message.includes('"toolResponse"'),
+    );
+    expect(workResponse).toContain('"scheduling":"SILENT"');
+    expect(workResponse).toContain('"started":true');
+
+    // A second overlapping work call is refused while the first still runs.
+    await emitRaw(window, {
+      toolCall: {
+        functionCalls: [{ id: 'c2', name: 'smith_work', args: { text: 'check my runs again' } }],
+      },
+    });
+    await expect
+      .poll(
+        async () =>
+          (await sentMessages(window)).filter((message) => message.includes('"toolResponse"'))
+            .length,
+      )
+      .toBe(2);
+    const refused = (await sentMessages(window)).filter((message) =>
+      message.includes('"toolResponse"'),
+    )[1];
+    expect(refused).toContain('"scheduling":"WHEN_IDLE"');
+    expect(refused).toContain('already working');
+
+    // The server retracting the call that started the turn (the operator
+    // barged in mid-call) cancels the delegated Smith turn; retracting any
+    // other call does not.
+    await emitRaw(window, { toolCallCancellation: { ids: ['c2'] } });
+    await emitRaw(window, { toolCallCancellation: { ids: ['c1'] } });
+    await expect
+      .poll(async () =>
+        app.evaluate(
+          () => (globalThis as unknown as { voiceCancelCount: number }).voiceCancelCount,
+        ),
+      )
+      .toBe(1);
+
+    // Sentence-boundary chunks join with the space the wire leaves out.
+    await emit(window, { outputTranscription: { text: 'First sentence.' } });
+    await emit(window, { outputTranscription: { text: 'Second one.' } });
+    await expect(window.getByTestId('smith-voice-panel')).toContainText(
+      'First sentence. Second one.',
+    );
+    await window.getByTestId('smith-voice-stop').click();
     await expect(window.getByTestId('smith-voice-status')).toHaveText('Think out loud');
   } finally {
     await app.close();
@@ -196,7 +333,8 @@ test('voice: cancelling a pending token cannot revive an old connection', async 
       (globalThis as unknown as { finishVoiceMint: () => void }).finishVoiceMint(),
     );
     await expect(window.getByRole('alert')).toHaveText('New attempt failed safely.');
-    expect(await tracks(window)).toEqual([]);
+    // Both starts captured the mic before minting; teardown must have released them.
+    expect((await tracks(window)).every((track) => track.state === 'ended')).toBe(true);
   } finally {
     await app.close();
   }
