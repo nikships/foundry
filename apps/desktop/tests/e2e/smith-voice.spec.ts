@@ -65,10 +65,13 @@ async function emit(window: Page, serverContent: object): Promise<void> {
 }
 
 async function openVoice(window: Page): Promise<void> {
+  // SmithBubble is lazy-loaded; wait for the launcher before toggling modes.
   const launcher = window.getByTestId('smith-bubble');
-  if ((await launcher.isVisible()) && (await launcher.getAttribute('aria-expanded')) === 'false') {
+  await expect(launcher).toBeVisible();
+  if ((await launcher.getAttribute('aria-expanded')) !== 'true') {
     await launcher.click();
   }
+  await expect(window.getByTestId('smith-mode-voice')).toBeVisible();
   await window.getByTestId('smith-mode-voice').click();
 }
 
