@@ -19,15 +19,6 @@ export const SMITH_NO_PROVIDER_COPY =
 export const SMITH_USER_ACCESS_COPY =
   'Ask about your assigned Linear tickets, have Smith compose a run plan, or run a saved pipeline — by text here or by voice. App actions wait for approval unless you enable YOLO mode for this chat.';
 
-export const SMITH_YOLO_WARNING =
-  'Smith will execute app actions and save definitions without approval cards in this chat, including requests sent by voice. It can delete data, run commands, change credentials, publish or merge code, and close the app. API key entry and Companion pairing still use private cards. Project boundaries and validation stay on. This mode resets on New chat or app restart. Enable it only for work you trust.';
-
-export const SMITH_YOLO_OFF_COPY =
-  'Smith asks for approval before app actions. Direct checkout access is unchanged.';
-
-export const SMITH_YOLO_ACTIVE_COPY =
-  'YOLO is on for this chat: app actions run without approval. Key entry and pairing still need private cards. Turn it off to require approval for the next action; work already started continues. New chat or app restart turns it off.';
-
 /** Label above the composer quick prompts. */
 export const SMITH_QUICK_PROMPTS_LABEL = 'Try asking Smith…';
 

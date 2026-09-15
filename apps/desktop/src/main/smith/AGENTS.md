@@ -39,7 +39,7 @@ Smith is the native operator agent. It exposes typed app capabilities. Normal mo
 
 - `ProposalQueue` allows one pending entity/action proposal globally. Public data is clone-safe; executor closures remain in main.
 - YOLO mode uses the same proposal executors, validation, and action receipts, but does not show approval cards for ordinary actions or entity saves. It does not change tool allowlists, write boundaries, or run gates.
-- Only the renderer permission control can enable YOLO mode, after confirmation and while the chat is idle. Disabling it affects future proposals, not work already started. The mode belongs to the source chat, not an action's target project. It is never saved and resets on New chat or app restart.
+- Only the renderer permission control can enable YOLO mode, and only while the chat is idle. Disabling it affects future proposals, not work already started. The mode belongs to the source chat, not an action's target project. It is never saved and resets on New chat or app restart.
 - Secret requests and Companion pairing always use interactive cards. Automatic entity-save failures settle instead of waiting for an invisible retry card.
 - Validate entities before showing the card. Entity save failures may retry; settled action failures clear the slot.
 - API keys are accepted only as `SmithProposalAnswer.secret` for a matching `secretRequest`. Never place credentials in args, transcripts, model results, state JSON, artifacts, or logs.

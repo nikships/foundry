@@ -20,7 +20,6 @@ export default function SmithScopePicker({ running }: { running: boolean }): Rea
 
   return (
     <label className={styles.scope}>
-      <span className={styles.label}>Scope</span>
       <select
         className={styles.select}
         value={smithProjectId ?? ALL}
