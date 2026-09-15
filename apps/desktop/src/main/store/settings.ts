@@ -14,6 +14,11 @@ import {
 } from '@shared/gemini-live-voices.js';
 import type { AppSettings, LinearStatusMapping } from '@shared/types.js';
 import { sanitizeFontFamily } from '@shared/types.js';
+import {
+  DEFAULT_FORGE_PROVIDER,
+  FORGE_PROVIDER_SETTINGS,
+  isForgeProviderPreference,
+} from '@shared/forge-cli.js';
 import { JsonStore } from './json-store.js';
 
 /**
@@ -53,6 +58,7 @@ export const appSettingsSchema = z.object({
   interfaceFont: z.string().trim().max(128).nullable(),
   monoFont: z.string().trim().max(128).nullable(),
   smithLiveVoice: z.enum(SMITH_LIVE_VOICE_SETTINGS),
+  forgeProvider: z.enum(FORGE_PROVIDER_SETTINGS),
 });
 
 export function defaultSettings(): AppSettings {
@@ -78,6 +84,7 @@ export function defaultSettings(): AppSettings {
     interfaceFont: null,
     monoFont: null,
     smithLiveVoice: DEFAULT_SMITH_LIVE_VOICE,
+    forgeProvider: DEFAULT_FORGE_PROVIDER,
   };
 }
 
@@ -144,6 +151,9 @@ export function migrate(raw: unknown): AppSettings {
   merged.monoFont = sanitizeFontFamily(merged.monoFont);
   if (!isSmithLiveVoiceSetting(merged.smithLiveVoice)) {
     merged.smithLiveVoice = base.smithLiveVoice;
+  }
+  if (!isForgeProviderPreference(merged.forgeProvider)) {
+    merged.forgeProvider = base.forgeProvider;
   }
   return withoutHiddenPins(merged);
 }

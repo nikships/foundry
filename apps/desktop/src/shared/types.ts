@@ -5,6 +5,7 @@
 
 import type { AppTheme } from './themes.js';
 import type { SmithLiveVoiceSetting } from './gemini-live-voices.js';
+import type { ForgeProviderPreference } from './forge-cli.js';
 
 // ── Pipelines (data, not scripts) ────────────────────────────────────────────
 
@@ -375,6 +376,13 @@ export interface AppSettings {
    * is used for every connection until the setting changes.
    */
   smithLiveVoice: SmithLiveVoiceSetting;
+  /**
+   * Which forge CLI Foundry uses for PRs/MRs. `auto` classifies from the
+   * project git remote. Unknown hosts still default to GitHub, so a
+   * GitLab-only machine or unrecognized self-hosted host needs an explicit
+   * choice.
+   */
+  forgeProvider: ForgeProviderPreference;
 }
 
 // ── Fonts (installed-font preference + bundled symbol coverage) ────────────
