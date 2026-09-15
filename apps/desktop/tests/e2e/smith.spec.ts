@@ -9,7 +9,7 @@ import {
 import { launchFoundry } from './harness.js';
 
 test.describe('smith / chat', () => {
-  test('confirms YOLO mode, keeps it scoped, and resets it on New chat', async () => {
+  test('toggles YOLO mode, keeps it scoped, and resets it on New chat', async () => {
     // No pending proposal: one would disable the scope picker, and this test
     // is about YOLO scoping, not proposals.
     const fixture = seedOnboardedFixture(undefined, 'none');
@@ -23,29 +23,22 @@ test.describe('smith / chat', () => {
       const scope = window.getByTestId('smith-scope');
       const projectId = await scope.inputValue();
       await expect(mode).toHaveAttribute('aria-pressed', 'false');
-      await mode.click();
-      const confirmation = window.getByRole('dialog', { name: 'Enable YOLO mode for this chat?' });
-      await expect(confirmation).toContainText('delete data');
-      await window.getByTestId('confirm-cancel').click();
-      await expect(confirmation).toBeHidden();
-      await expect(mode).toHaveAttribute('aria-pressed', 'false');
+      await expect(mode).toHaveText('YOLO');
+      await expect(
+        window.getByRole('dialog', { name: 'Enable YOLO mode for this chat?' }),
+      ).toHaveCount(0);
 
       await mode.click();
-      await window.getByTestId('confirm-accept').click();
-      await expect(confirmation).toBeHidden();
       await expect(mode).toHaveAttribute('aria-pressed', 'true');
-      await expect(window.getByText('YOLO is on for this chat:', { exact: false })).toBeVisible();
       await scope.selectOption('__all__');
       await expect(mode).toHaveAttribute('aria-pressed', 'false');
       await scope.selectOption(projectId);
       await expect(mode).toHaveAttribute('aria-pressed', 'true');
       await mode.click();
       await expect(mode).toHaveAttribute('aria-pressed', 'false');
-      await expect(confirmation).toBeHidden();
 
       await mode.click();
-      await window.getByTestId('confirm-accept').click();
-      await expect(confirmation).toBeHidden();
+      await expect(mode).toHaveAttribute('aria-pressed', 'true');
       await window.getByTestId('smith-new-chat').click();
       await expect(mode).toHaveAttribute('aria-pressed', 'false');
     } finally {
