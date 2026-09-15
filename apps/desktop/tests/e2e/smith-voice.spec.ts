@@ -65,14 +65,18 @@ async function emit(window: Page, serverContent: object): Promise<void> {
 }
 
 async function openVoice(window: Page): Promise<void> {
-  // SmithBubble is lazy-loaded; wait for the launcher before toggling modes.
   const launcher = window.getByTestId('smith-bubble');
-  await expect(launcher).toBeVisible();
-  if ((await launcher.getAttribute('aria-expanded')) !== 'true') {
-    await launcher.click();
+  const modeVoice = window.getByTestId('smith-mode-voice');
+  // Floating bubble is lazy-loaded on other screens and omitted on Smith (⌘5),
+  // where the mode bar is already mounted. Wait for whichever surface is up.
+  await expect(launcher.or(modeVoice)).toBeVisible();
+  if (await launcher.isVisible()) {
+    if ((await launcher.getAttribute('aria-expanded')) !== 'true') {
+      await launcher.click();
+    }
   }
-  await expect(window.getByTestId('smith-mode-voice')).toBeVisible();
-  await window.getByTestId('smith-mode-voice').click();
+  await expect(modeVoice).toBeVisible();
+  await modeVoice.click();
 }
 
 test('voice: captions, playback, mute, navigation, interruption, disconnect and reconnect', async () => {
