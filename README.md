@@ -30,10 +30,6 @@ https://github.com/user-attachments/assets/798a0e94-762f-4f0d-af0a-996ed594d849
 
 **Foundry removes both.** You define the lifecycle as data — phases, checks, boundaries, human checkpoints — and you assign a model per agent and per phase, mixed freely across providers, with automatic failover to the next reachable model when one dies mid-run.
 
-<p align="center">
-  <img src="assets/readme/onboarding-hero.png" alt="Foundry onboarding — the factory" width="820">
-</p>
-
 ## What this actually is
 
 Foundry is a native macOS app. Not a CLI wrapper. Not a chat skin.
@@ -41,10 +37,6 @@ Foundry is a native macOS app. Not a CLI wrapper. Not a chat skin.
 You point it at any git repo. Every run gets its own branch and worktree. Every phase leaves typed evidence — what was tried, what was checked, why it passed or failed. Code judges the work, not the model.
 
 **Agent proposes. Code disposes.** That's why the same request gives you the same _kind_ of result twice, no matter which model answered.
-
-<p align="center">
-  <img src="assets/readme/concepts.png" alt="Three primitives: run as data, typed reports, checks that leave evidence" width="820">
-</p>
 
 ## Structure the SDLC to your liking
 
@@ -136,7 +128,7 @@ No black box. The Inspector is a live waterfall — tool calls streaming mid-pha
 Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
 
 <p align="center">
-  <img width="1552" height="1052" alt="image" src="https://github.com/user-attachments/assets/c2b40fad-626a-4857-8c00-14171e0d570b" />
+  <img src="assets/readme/run-timeline.png" alt="Run timeline — phases, timing, and per-phase detail" width="820">
 </p>
 
 ## Safe by default
