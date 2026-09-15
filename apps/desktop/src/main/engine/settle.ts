@@ -27,7 +27,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppSettings, PrMergeMethod, ProjectDef, RunRow } from '@shared/types.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
-import { mergePr, viewPr, type GhOptions } from '../system/gh.js';
+import type { GhOptions } from '../system/gh.js';
+import * as forge from '../system/forge.js';
 import type { EventInput } from '../trace/tracer.js';
 import { applyCommandDrifts, parseCommandDrift } from './detect.js';
 import {
@@ -140,7 +141,9 @@ async function landViaGhMerge(
   input: { prNumber: number; method: PrMergeMethod },
 ): Promise<SettleResult> {
   const { project, tracer } = scoped;
-  const merged = await mergePr(project.path, input.prNumber, input.method, hooks.gh);
+  const merged = await forge.mergePullRequest(project.path, input.prNumber, input.method, {
+    gh: hooks.gh,
+  });
   if (!merged.ok) return { ok: false, detail: merged.detail, number: input.prNumber };
 
   const notes = [merged.detail];
@@ -252,9 +255,13 @@ async function repairThenPush(
   prNumber: number,
 ): Promise<SettleResult> {
   const { project, tracer } = scoped;
-  const pr = await viewPr(project.path, prNumber, hooks.gh);
+  const pr = await forge.viewPullRequest(project.path, prNumber, { gh: hooks.gh });
   if (!pr) {
-    return { ok: false, detail: `could not read PR #${prNumber} via gh`, number: prNumber };
+    return {
+      ok: false,
+      detail: `could not read PR #${prNumber} via the forge CLI`,
+      number: prNumber,
+    };
   }
   if (!pr.headRefName.startsWith('foundry/')) {
     return {

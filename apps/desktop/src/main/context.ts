@@ -70,7 +70,7 @@ import { tavilyCredentials, TavilyService } from './tavily/service.js';
 import { geminiLiveCredentials } from './gemini-live/credentials.js';
 import { GeminiLiveService } from './gemini-live/service.js';
 import { enabledModelIds, enabledModels, enabledPiModels } from './pi/enabled-models.js';
-import { ghStatus } from './system/gh.js';
+import { scmStatus } from './system/forge.js';
 
 export interface Scope {
   projectId?: string;
@@ -256,7 +256,7 @@ export class AppContext {
               defaultModel: this.settings.get().defaultModel,
               enabledModels: () =>
                 enabledModels(this.supportDir, this.settings.get().hiddenModelIds),
-              ghAvailable: (path) => ghStatus(path).then((status) => status.available),
+              ghAvailable: (path) => scmStatus(path).then((status) => status.available),
             },
           ),
         state: (planId) => this.proposalLiveState(planId),

@@ -378,7 +378,7 @@ describe('ComposeSession', () => {
       ghAvailable: async () => false,
     });
 
-    expect(prompts[0]).toContain('GitHub is not available for this project');
+    expect(prompts[0]).toContain('GitHub/GitLab CLI is not available for this project');
     expect(prompts[0]).toContain('do not compose a PR phase');
   });
 

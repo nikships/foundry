@@ -50,7 +50,8 @@ import { killedRecoveryNote } from './prompts.js';
 import { artifactPathsOf, requiredFieldsFor, unresolvedFailuresOf } from './compaction.js';
 import type { CompactionFacts } from './compaction.js';
 import { PromptLedger } from './prompt-ledger.js';
-import { createIssue, openPr, type GhOptions } from '../system/gh.js';
+import type { GhOptions } from '../system/gh.js';
+import * as forge from '../system/forge.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import {
   CONTINUE_STATUS_REFUSAL,
@@ -1215,7 +1216,7 @@ export class Executor {
     if (!title || !body) {
       return { ok: false, detail: 'the pr envelope is missing a title or body' };
     }
-    return openPr(
+    return forge.openPullRequest(
       this.deps.project.path,
       {
         branch,
@@ -1223,14 +1224,15 @@ export class Executor {
         title,
         body,
       },
-      this.deps.gh,
+      { gh: this.deps.gh },
     );
   }
 
   /**
-   * File a GitHub issue from the project checkout. No branch is needed — an
-   * issue is repository metadata — so this also serves a non-isolated run.
-   * No fallbacks: a missing gh or a refused create is the exact error.
+   * File an issue from the project checkout (GitHub or GitLab). No branch is
+   * needed — an issue is repository metadata — so this also serves a
+   * non-isolated run. No fallbacks: a missing CLI or a refused create is the
+   * exact error.
    */
   private async recordIssue(input: {
     title: string;
@@ -1242,7 +1244,11 @@ export class Executor {
     if (!title || !body) {
       return { ok: false, detail: 'the issue envelope is missing a title or body' };
     }
-    return createIssue(this.deps.project.path, { title, body, labels: input.labels }, this.deps.gh);
+    return forge.createForgeIssue(
+      this.deps.project.path,
+      { title, body, labels: input.labels },
+      { gh: this.deps.gh },
+    );
   }
 
   private phaseId(name: string): string {

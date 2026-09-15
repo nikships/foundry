@@ -17,7 +17,7 @@ import { SessionRegistry } from '../session/registry.js';
 import { readMarkerAtBaseRef } from './marker.js';
 import { createAgentRemediator, resolveReadinessModel } from './remediator.js';
 import { ReadinessSession, type ReadinessIo } from './session.js';
-import * as ghLib from '../system/gh.js';
+import * as forge from '../system/forge.js';
 
 /**
  * The single readiness verdict. Reads the marker from the project's base ref —
@@ -43,8 +43,8 @@ export async function inspectProject(project: ProjectDef): Promise<ReadinessInsp
 export function defaultReadinessIo(oneShot: OneShotFactory): ReadinessIo {
   return {
     remediator: createAgentRemediator({ oneShot }),
-    openPr: (repo, input) => ghLib.openPr(repo, input),
-    viewPrMerge: (repo, ref) => ghLib.viewPrMergeState(repo, ref),
+    openPr: (repo, input) => forge.openPullRequest(repo, input),
+    viewPrMerge: (repo, ref) => forge.viewPullRequestMergeState(repo, ref),
   };
 }
 

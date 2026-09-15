@@ -68,7 +68,7 @@ import { COMPANION_PROTOCOL_VERSION } from '@shared/companion.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import type { GhOptions } from '../system/gh.js';
-import * as ghLib from '../system/gh.js';
+import * as forge from '../system/forge.js';
 import {
   createRunPr,
   eventPage,
@@ -733,7 +733,7 @@ export class CompanionHost {
     const tracer = this.deps.registry.tracerFor(project);
 
     if (method === 'GET' && kind === 'pr-status' && rest.length === 2) {
-      return ghLib.ghStatus(project.path, this.deps.gh ?? {});
+      return forge.scmStatus(project.path, { gh: this.deps.gh ?? {} });
     }
 
     if (kind !== 'runs') throw new RouteError(404, 'not_found', 'no such route');

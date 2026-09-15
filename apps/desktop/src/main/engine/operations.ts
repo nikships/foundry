@@ -30,8 +30,8 @@ import {
   parseDetectResult,
 } from './detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './preflight.js';
-import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
+import * as forge from '../system/forge.js';
 import { checkPlanRails } from '../smith/compose/plan.js';
 
 export interface StartRunOutcome {
@@ -305,7 +305,7 @@ export async function createRunPr(
   }
 
   const draft = runPrDraft(tracer, runId);
-  const result = await ghLib.openPr(
+  const result = await forge.openPullRequest(
     project.path,
     {
       branch: run.branch,
@@ -313,7 +313,7 @@ export async function createRunPr(
       title: title.trim() || draft?.title || `${run.pipelineName}: ${run.request.slice(0, 72)}`,
       body: body.trim() !== '' ? body : (draft?.body ?? body),
     },
-    deps.gh ?? {},
+    { gh: deps.gh ?? {} },
   );
   if (result.ok && result.number && result.url) tracer.setPr(runId, result.number, result.url);
   tracer.event({

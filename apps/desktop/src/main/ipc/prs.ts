@@ -1,5 +1,6 @@
 /**
- * Pull requests, driven entirely through the operator's own `gh` CLI. This
+ * Pull requests / merge requests, driven through the operator's own `gh` or
+ * `glab` CLI (chosen from the git remote). This
  * router owns the two moments where remote and local state must move together:
  * opening a PR records its coordinates on the run, and merging one settles the
  * matching foundry worktree and fast-forwards the local base ref so the repo
@@ -10,7 +11,7 @@ import type { GhStatus, PrMergeMethod } from '@shared/types.js';
 import { IPC, type PrAction, type PrList } from '@shared/ipc-contract.js';
 import { createRunPr } from '../engine/operations.js';
 import { landRun, repairBranch } from '../engine/settle.js';
-import * as ghLib from '../system/gh.js';
+import * as forge from '../system/forge.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifyRuns, projectTracer, settleHooks } from './shared.js';
@@ -24,13 +25,13 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.prsStatus, async (projectId: string): Promise<GhStatus> => {
     const project = projectOf(projectId);
     if (!project) return { available: false, detail: 'project not found' };
-    return ghLib.ghStatus(project.path);
+    return forge.scmStatus(project.path);
   });
 
   handle(IPC.prsList, async (projectId: string): Promise<PrList> => {
     const project = projectOf(projectId);
     if (!project) return { ok: false, detail: 'project not found', prs: [] };
-    return ghLib.listOpenPrs(project.path);
+    return forge.listOpenPullRequests(project.path);
   });
 
   // Shared with the companion host, so a phone's "Create PR" is this exact path.

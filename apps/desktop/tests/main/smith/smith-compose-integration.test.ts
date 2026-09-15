@@ -15,6 +15,9 @@ vi.mock('../../../src/main/pi/enabled-models.js', () => ({
   enabledModelIds: async () => [],
 }));
 vi.mock('../../../src/main/system/gh.js', () => ({ ghStatus: async () => ({ available: false }) }));
+vi.mock('../../../src/main/system/forge.js', () => ({
+  scmStatus: async () => ({ available: false, detail: 'mocked', cli: 'gh' }),
+}));
 
 const planReply = {
   refinedRequest: 'Make help text explain the next action. Keep existing shortcuts.',

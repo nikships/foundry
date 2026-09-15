@@ -12,6 +12,7 @@ import type { BridgeProviderStatus } from '../bridge/auth.js';
 import { currentBranch, isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
 import { resolvedEnv } from './env.js';
+import { appendForgeDoctorChecks } from './scm-auth.js';
 
 /** Runners a detected project command is most likely to need. */
 const TOOLCHAIN_BINARIES = ['node', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go', 'uv', 'swift'];
@@ -144,32 +145,9 @@ export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]
     blocking: !git.passed,
   });
 
-  // Pull requests ride on the operator's own gh install and login; Foundry
-  // holds no GitHub token. Never blocking — local merge works without it.
-  const gh = await probe(['gh', '--version'], 10_000);
-  checks.push({
-    id: 'gh',
-    label: 'GitHub CLI',
-    ok: gh.passed,
-    detail: gh.passed
-      ? (gh.outputTail.trim().split('\n')[0] ?? 'installed')
-      : 'gh is not on PATH — pull requests are unavailable (local merge still works)',
-    fix: gh.passed ? undefined : { kind: 'open-url', value: 'https://cli.github.com' },
-  });
-  if (gh.passed) {
-    const ghAuth = await probe(['gh', 'auth', 'status'], 15_000);
-    checks.push({
-      id: 'gh:auth',
-      label: 'GitHub CLI authentication',
-      ok: ghAuth.passed,
-      detail: ghAuth.passed
-        ? 'signed in'
-        : 'not signed in — run `gh auth login` to enable pull requests',
-      fix: ghAuth.passed
-        ? undefined
-        : { kind: 'open-url', value: 'https://cli.github.com/manual/gh_auth_login' },
-    });
-  }
+  // Pull requests ride on the operator's own forge CLI install and auth;
+  // Foundry holds no host token. Never blocking — local merge works without it.
+  await appendForgeDoctorChecks(checks, probe);
 
   // macOS 26 is the floor; the version conveniences are verified only there.
   const version = release();

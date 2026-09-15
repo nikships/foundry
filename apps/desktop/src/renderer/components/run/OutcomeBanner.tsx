@@ -11,6 +11,7 @@ import type { RestoreAvailability } from '../../view-models/restore-view.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import styles from './OutcomeBanner.module.css';
+import { forgeCliCheckingHint } from '@shared/forge-cli.js';
 
 function colorFor(status: RunRow['status']): string {
   if (status === 'accepted') return 'var(--green)';
@@ -164,7 +165,7 @@ export default function OutcomeBanner({
   };
 
   const ghReady = !!gh?.available;
-  const ghHint = gh === null ? 'Checking the GitHub CLI…' : gh.available ? '' : gh.detail;
+  const ghHint = gh === null ? forgeCliCheckingHint() : gh.available ? '' : gh.detail;
 
   return (
     <section

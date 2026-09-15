@@ -24,6 +24,7 @@ import {
   type PrRepairPhase,
 } from '../view-models/pr-repair-view.js';
 import styles from './PullRequestsScreen.module.css';
+import { forgeCliLoadingListHint, forgeCliNotReadyTitle } from '@shared/forge-cli.js';
 
 const FOUNDRY_BRANCH = /^foundry\//;
 
@@ -336,13 +337,13 @@ export default function PullRequestsScreen({
         {!project ? (
           <EmptyState title="No project" body="Add a project to see its pull requests." />
         ) : gh && !gh.available ? (
-          <EmptyState title="GitHub CLI not ready" body={gh.detail}>
+          <EmptyState title={forgeCliNotReadyTitle(gh.cli)} body={gh.detail}>
             <Button size="sm" onClick={() => void refresh()}>
               Check again
             </Button>
           </EmptyState>
         ) : loading && prs.length === 0 ? (
-          <p className={`faint ${styles.loading}`}>Asking gh for open pull requests…</p>
+          <p className={`faint ${styles.loading}`}>{forgeCliLoadingListHint()}</p>
         ) : prs.length === 0 && !listError ? (
           <EmptyState
             title="No open pull requests"

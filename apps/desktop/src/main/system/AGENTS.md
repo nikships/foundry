@@ -26,3 +26,7 @@ pnpm exec vitest run apps/desktop/tests/main/system/env.test.ts
 ```
 
 Startup diagnostics use prefixed `console.warn` messages.
+
+## Forge CLIs (`gh` / `glab`)
+
+`forge-ops.ts` is the shared typed surface for PR/MR list/view/create/merge and issue create, parameterized by provider. `forge.ts` picks GitHub vs GitLab from the preferred git remote. `gh.ts` keeps GitHub-only flows (account probe, `repo create`) and thin wrappers over forge-ops. Auth is satisfied by `auth status` **or** a token env var the CLI honors (`GH_TOKEN` / `GITHUB_TOKEN` for gh; `GITLAB_TOKEN` / `GITLAB_ACCESS_TOKEN` / `OAUTH_TOKEN` for glab). Doctor checks both installs and both auth paths via `appendForgeDoctorChecks`; neither is blocking.
