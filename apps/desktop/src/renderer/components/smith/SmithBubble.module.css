@@ -56,6 +56,8 @@
 
 .launcherMark {
   display: block;
+  height: 20px;
+  width: auto;
 }
 
 .badge {
@@ -136,7 +138,9 @@
 }
 
 .identityMark {
-  color: var(--accent);
+  display: block;
+  height: 16px;
+  width: auto;
 }
 
 .scopeChip {

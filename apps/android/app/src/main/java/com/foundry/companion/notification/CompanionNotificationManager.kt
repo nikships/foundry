@@ -125,7 +125,7 @@ class FoundryNotificationManager(
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_SETTLED_RUNS)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_foundry)
             .setColor(accentColor)
             .setContentTitle(title)
             .setContentText(contentText)
@@ -169,7 +169,7 @@ class FoundryNotificationManager(
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ENGINEER_WAITING)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_foundry)
             .setColor(0xFFF5A623.toInt())
             .setContentTitle(title)
             .setContentText(contentText)

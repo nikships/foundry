@@ -24,7 +24,7 @@ changed. "Agents" is the user-facing name for the roster crew mark.
 | Envelopes | Sealed handoff with its typed slot | — |
 | Inspector | Aperture with reticle ticks | `Eye` |
 | Pull Requests | Two heads merging onto one rail | `GitPullRequest` |
-| Smith | Anvil and a single forge spark | `TerminalSquare` |
+| Smith | Forge cube; ember glow at rest, full flare on hover, no hover wash | `TerminalSquare` |
 | Project picker | Tabbed work bin | `Folder` |
 | Settings | Hex nut | `Settings` |
 | Pending / needs you | Shop-floor call bell | `Bell` |

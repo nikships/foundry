@@ -85,7 +85,7 @@ class CompanionWatchService : Service() {
         )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_WATCH)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_foundry)
             .setColor(0xFFEE6018.toInt())
             .setContentTitle("Watching $desktopName")
             .setContentText("Foundry will notify you when a run settles or needs you.")

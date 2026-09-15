@@ -191,6 +191,26 @@
   display: block;
   flex: none;
 }
+/* Smith's cube rests in a faint ember glow and flares to full forge power
+   on hover, with no hover wash so the box never battles the glow. Rest and
+   hover carry the same two drop-shadows so the power-up interpolates
+   smoothly; the glow lives in CSS so the emblem markup stays plain
+   currentColor linework. */
+.smith-item .nav-emblem {
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--accent) 45%, transparent))
+    drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 0%, transparent));
+  transition:
+    filter var(--slow) var(--ease),
+    color var(--fast) var(--ease);
+}
+.smith-item:hover:not(.active) {
+  background: transparent;
+}
+.smith-item:hover .nav-emblem {
+  color: var(--accent);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 90%, transparent))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 55%, transparent));
+}
 .settings-item {
   width: 100%;
 }

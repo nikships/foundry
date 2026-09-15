@@ -22,6 +22,7 @@ import { useApp } from '../../stores/app.js';
 import { useSmithChat } from '../../hooks/useSmithChat.js';
 import { useSmithChatUI } from '../../stores/smith-chat-ui.js';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
+import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
 import SmithProposalCard, { type SmithNavTarget } from './SmithProposalCard.js';
 import SmithScopePicker from './SmithScopePicker.js';
 import SmithPermissionControl from './SmithPermissionControl.js';
@@ -31,7 +32,6 @@ import SmithVoicePanel from './SmithVoicePanel.js';
 import SmithPinnedPlan from './SmithPinnedPlan.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
-import { SmithEmblem } from '../layout/SidebarEmblems.js';
 import styles from './SmithBubble.module.css';
 
 function HeadAction({
@@ -102,6 +102,8 @@ export default function SmithBubble({
 
   const running = state?.running ?? false;
   const transcript = useMemo(() => state?.transcript ?? [], [state?.transcript]);
+  /** The extracted forge cube; empty until main resolves the file URL. */
+  const cubeSrc = useBrandedAsset('smith/smith-cube.png');
 
   useEffect(() => {
     const refresh = async (): Promise<void> => {
@@ -171,7 +173,7 @@ export default function SmithBubble({
         >
           <header className={styles.popoverHead}>
             <span className={styles.identity}>
-              <SmithEmblem size={15} className={styles.identityMark} />
+              {cubeSrc && <img src={cubeSrc} className={styles.identityMark} alt="" />}
               Smith
             </span>
             <SmithScopePicker running={running} />
@@ -335,7 +337,7 @@ export default function SmithBubble({
         aria-expanded={open}
         data-testid="smith-bubble"
       >
-        <SmithEmblem size={17} className={styles.launcherMark} />
+        {cubeSrc && <img src={cubeSrc} className={styles.launcherMark} alt="" />}
         {voiceConnected && <span className={styles.voiceDot} aria-hidden />}
         {badge && (
           <span

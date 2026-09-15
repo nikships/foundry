@@ -120,14 +120,12 @@ export function PullRequestsEmblem(props: EmblemProps): React.JSX.Element {
   );
 }
 
-/** Smith — anvil and a single forge spark. */
+/** Smith — the forge cube in isometric linework. */
 export function SmithEmblem(props: EmblemProps): React.JSX.Element {
   return (
     <EmblemSvg {...props}>
-      <path d="M5.2 12.2h13.6L17.4 15H6.6L5.2 12.2z" />
-      <path d="M9.6 15v3.4h4.8V15" />
-      <path d="M7.2 12.2V10H11V8.6H6.4c-1.1 0-1.8.8-1.8 1.8 0 .9.6 1.8 2.6 1.8" />
-      <path d="M12 4.4v2.4M10.6 5.6 12 4.4l1.4 1.2" />
+      <path d="M12 3l8.2 4.8v8.4L12 21l-8.2-4.8V7.8L12 3z" />
+      <path d="M12 12l8.2-4.2M12 12 3.8 7.8M12 12v9" />
     </EmblemSvg>
   );
 }

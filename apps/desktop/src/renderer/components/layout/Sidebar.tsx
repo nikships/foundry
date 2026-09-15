@@ -235,7 +235,7 @@ export default function Sidebar({
         })}
         <button
           type="button"
-          className={navItemClass(view === 'smith')}
+          className={navItemClass(view === 'smith', styles.smithItem)}
           onClick={() => onOpenSmith?.()}
           title={collapsed ? `${SMITH_NAV_ITEM.label} (⌘${SMITH_NAV_ITEM.key})` : undefined}
           aria-label="Smith"

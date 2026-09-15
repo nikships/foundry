@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="bg_base">#020202</color>
+    <!-- Adaptive-icon background: median of the launcher artwork's surround. -->
+    <color name="ic_launcher_background">#141414</color>
     <color name="bg_panel">#0A0A0A</color>
     <color name="bg_raised">#101010</color>
     <color name="bg_input">#050505</color>
