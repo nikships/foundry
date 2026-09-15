@@ -188,6 +188,11 @@ describe('voiceToolDeclarations', () => {
     expect(delegate.parameters?.required).toEqual(['text']);
   });
 
+  it('leaves tool behavior unset so Extended Thinking keeps async-only calling', () => {
+    const declarations = voiceToolDeclarations();
+    expect(declarations.every((d) => d.behavior == null)).toBe(true);
+  });
+
   it('describes work as Smith without exposing a separate agent', () => {
     const work = voiceToolDeclarations()[0];
     expect(work.description).toContain('Continue your work as Smith');

@@ -25,7 +25,7 @@ import type {
 import type { SecretStore } from '../system/secret-file.js';
 
 /** The Live API model the voice layer speaks with. */
-export const GEMINI_LIVE_MODEL = 'gemini-3.1-flash-live-preview';
+export const GEMINI_LIVE_MODEL = 'gemini-3.8-live-extended-thinking';
 
 /**
  * Maps a token-mint failure to the one line the voice overlay shows. Google's

@@ -66,10 +66,17 @@ async function emit(window: Page, serverContent: object): Promise<void> {
 
 async function openVoice(window: Page): Promise<void> {
   const launcher = window.getByTestId('smith-bubble');
-  if ((await launcher.isVisible()) && (await launcher.getAttribute('aria-expanded')) === 'false') {
-    await launcher.click();
+  const modeVoice = window.getByTestId('smith-mode-voice');
+  // Floating bubble is lazy-loaded on other screens and omitted on Smith (⌘5),
+  // where the mode bar is already mounted. Wait for whichever surface is up.
+  await expect(launcher.or(modeVoice)).toBeVisible();
+  if (await launcher.isVisible()) {
+    if ((await launcher.getAttribute('aria-expanded')) !== 'true') {
+      await launcher.click();
+    }
   }
-  await window.getByTestId('smith-mode-voice').click();
+  await expect(modeVoice).toBeVisible();
+  await modeVoice.click();
 }
 
 test('voice: captions, playback, mute, navigation, interruption, disconnect and reconnect', async () => {
@@ -80,7 +87,7 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
       ipcMain.removeHandler('gemini-live:mintToken');
       ipcMain.handle('gemini-live:mintToken', () => ({
         token: 'test-token',
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'gemini-3.8-live-extended-thinking',
         systemInstruction: 'Test voice.',
       }));
     });
@@ -203,7 +210,7 @@ test('voice: stays inside Smith chat across modes and navigation', async () => {
       ipcMain.removeHandler('gemini-live:mintToken');
       ipcMain.handle('gemini-live:mintToken', () => ({
         token: 'test-token',
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'gemini-3.8-live-extended-thinking',
         systemInstruction: 'Test voice.',
       }));
     });

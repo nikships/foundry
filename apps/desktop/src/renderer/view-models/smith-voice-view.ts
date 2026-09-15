@@ -24,8 +24,13 @@ export const VOICE_TOOL_NAMES = {
 
 /**
  * JSON-schema function declarations for the live session, in the shape
- * `@google/genai`'s `tools` config expects. The SDK import is type-only, so
- * this module still runs in Node tests without the SDK loaded.
+ * `@google/genai`'s `tools` config expects.
+ *
+ * `gemini-3.8-live-extended-thinking` supports async function calling only
+ * (`NON_BLOCKING`); setting `BLOCKING` hard-errors. Leave `behavior` unset so
+ * the default async path applies. `smith_work` still returns a short "working"
+ * payload immediately; the long Smith turn settles later over `smith-progress`
+ * and is injected back into the live session.
  */
 export function voiceToolDeclarations(): FunctionDeclaration[] {
   return [
