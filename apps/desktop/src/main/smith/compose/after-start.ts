@@ -1,7 +1,7 @@
 import type { AppContext } from '../../context.js';
 import { warmStartPrep } from '../../engine/operations.js';
 import { enabledModelIds, enabledModels } from '../../pi/enabled-models.js';
-import { ghStatus } from '../../system/gh.js';
+import { scmStatus } from '../../system/forge.js';
 import type { PlanImageAttachment, ReasoningEffort } from '@shared/types.js';
 import { resolveSmithModel } from './model.js';
 
@@ -29,7 +29,7 @@ export function startComposeWithPrep(
       envelopeDefs: ctx.envelopes.list(),
       defaultModel: ctx.settings.get().defaultModel,
       enabledModels: () => enabledModels(ctx.supportDir, ctx.settings.get().hiddenModelIds),
-      ghAvailable: (path) => ghStatus(path).then((status) => status.available),
+      ghAvailable: (path) => scmStatus(path).then((status) => status.available),
     },
   );
   if (!('error' in started)) afterComposeStart(ctx, projectId);

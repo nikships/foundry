@@ -1250,6 +1250,18 @@ export function createMockFoundryApi(): FoundryApi {
           detail: 'signed in',
         },
         {
+          id: 'glab',
+          label: 'GitLab CLI',
+          ok: true,
+          detail: 'glab 1.118.0',
+        },
+        {
+          id: 'glab:auth',
+          label: 'GitLab CLI authentication',
+          ok: true,
+          detail: 'signed in',
+        },
+        {
           id: 'macos',
           label: 'macOS 26 or newer',
           ok: true,

@@ -76,9 +76,67 @@ describe('ghStatus', () => {
   it('reports not signed in before blaming the repo', async () => {
     const { repo } = scratchRepoWithOrigin();
     const gh = makeFakeGh({ authed: false });
-    const status = await ghStatus(repo, { bin: gh.bin });
-    expect(status.available).toBe(false);
-    expect(status.detail).toContain('gh auth login');
+    const prev = {
+      GH_TOKEN: process.env.GH_TOKEN,
+      GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+      GH_ENTERPRISE_TOKEN: process.env.GH_ENTERPRISE_TOKEN,
+      GITHUB_ENTERPRISE_TOKEN: process.env.GITHUB_ENTERPRISE_TOKEN,
+    };
+    delete process.env.GH_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GH_ENTERPRISE_TOKEN;
+    delete process.env.GITHUB_ENTERPRISE_TOKEN;
+    try {
+      const status = await ghStatus(repo, { bin: gh.bin });
+      expect(status.available).toBe(false);
+      expect(status.detail).toContain('gh auth login');
+    } finally {
+      for (const [key, value] of Object.entries(prev)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it('treats GH_TOKEN as signed in when auth status fails', async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const gh = makeFakeGh({
+      authed: false,
+      repoView: { nameWithOwner: 'acme/widgets' },
+    });
+    const prev = process.env.GH_TOKEN;
+    process.env.GH_TOKEN = 'ghs_test_token_for_foundry';
+    try {
+      const status = await ghStatus(repo, { bin: gh.bin });
+      expect(status.available).toBe(true);
+      expect(status.repo).toBe('acme/widgets');
+      expect(status.cli).toBe('gh');
+    } finally {
+      if (prev === undefined) delete process.env.GH_TOKEN;
+      else process.env.GH_TOKEN = prev;
+    }
+  });
+
+  it('treats GITHUB_TOKEN as signed in when auth status fails', async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const gh = makeFakeGh({
+      authed: false,
+      repoView: { nameWithOwner: 'acme/widgets' },
+    });
+    const prevGh = process.env.GH_TOKEN;
+    const prevGithub = process.env.GITHUB_TOKEN;
+    delete process.env.GH_TOKEN;
+    process.env.GITHUB_TOKEN = 'ghs_test_github_token';
+    try {
+      const status = await ghStatus(repo, { bin: gh.bin });
+      expect(status.available).toBe(true);
+      expect(status.repo).toBe('acme/widgets');
+    } finally {
+      if (prevGh === undefined) delete process.env.GH_TOKEN;
+      else process.env.GH_TOKEN = prevGh;
+      if (prevGithub === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = prevGithub;
+    }
   });
 
   it('resolves the repo name when everything is in place', async () => {

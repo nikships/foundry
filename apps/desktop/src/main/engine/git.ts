@@ -505,6 +505,13 @@ export async function preferredRemote(repo: string): Promise<string | null> {
   return names.includes('origin') ? 'origin' : names[0]!;
 }
 
+/** `git remote get-url` for a named remote, or null when missing. */
+export async function remoteUrl(repo: string, remote: string): Promise<string | null> {
+  const r = await git(repo, ['remote', 'get-url', remote]);
+  const url = r.ok ? r.stdout.trim() : '';
+  return url || null;
+}
+
 export async function pushBranch(repo: string, remote: string, branch: string): Promise<GitResult> {
   return git(repo, ['push', '-u', remote, branch]);
 }

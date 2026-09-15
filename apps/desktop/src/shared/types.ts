@@ -499,7 +499,7 @@ export function flakeRerunCount(
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
 
-// ── Pull requests (via the gh CLI) ───────────────────────────────────────────
+// ── Pull requests (via gh or glab) ───────────────────────────────────────────
 
 /** One word per PR, summarised from gh's per-context statusCheckRollup. */
 export type PrChecks = 'passing' | 'failing' | 'pending' | 'none';
@@ -524,15 +524,18 @@ export interface PullRequest {
 }
 
 /**
- * Whether PR features can work at all for a repo: gh installed, authenticated,
- * and the repo resolving to something on GitHub. `detail` carries the reason
- * when they cannot, in gh's own words where possible.
+ * Whether PR/MR features can work at all for a repo: the forge CLI installed,
+ * authenticated (login or token env), and the repo resolving on that host.
+ * `detail` carries the reason when they cannot, in the CLI's own words where
+ * possible. Named GhStatus for historical IPC stability; `cli` says which.
  */
 export interface GhStatus {
   available: boolean;
   detail: string;
   /** owner/name when the repo resolved, so the UI can say which repo. */
   repo?: string;
+  /** Which forge CLI produced this status. Defaults to gh when omitted. */
+  cli?: 'gh' | 'glab';
 }
 
 /**

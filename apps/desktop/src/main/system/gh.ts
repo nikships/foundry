@@ -1,8 +1,9 @@
 /**
  * GitHub's `gh` CLI as a typed surface, the same way engine/git.ts wraps git.
  * Foundry never talks to the GitHub API itself: gh owns auth, remotes, and
- * pagination, so the app inherits whatever the operator's `gh auth login`
- * already set up and stores no token of its own.
+ * pagination, so the app inherits whatever the operator already set up —
+ * `gh auth login` or a token env var (`GH_TOKEN` / `GITHUB_TOKEN`, and the
+ * enterprise pair) — and stores no token of its own.
  *
  * Calls run through execFile rather than runCommand because runCommand keeps
  * only a 4000-char output tail — fine for a failure log, fatal for `--json`
@@ -30,6 +31,7 @@ import type {
 } from '@shared/ipc-contract.js';
 import { preferredRemote, pushBranch } from '../engine/git.js';
 import { spawnEnv } from './env.js';
+import { cliAuthSatisfied, githubTokenEnvName } from './scm-auth.js';
 
 const exec = promisify(execFile);
 
@@ -93,24 +95,25 @@ function numberFromUrl(url: string | undefined, kind: 'pull' | 'issues'): number
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** Installed and signed in, or the reason not. Checked from `cwd`. */
+/** Installed and signed in (login or token env), or the reason not. Checked from `cwd`. */
 async function ghUsable(bin: string, cwd: string): Promise<string | null> {
   const version = await gh(bin, cwd, ['--version'], 10_000);
   if (!version.ok) return 'GitHub CLI (gh) is not installed or not on PATH';
   const auth = await gh(bin, cwd, ['auth', 'status'], 15_000);
-  if (!auth.ok) return 'gh is not signed in — run `gh auth login` in a terminal';
-  return null;
+  if (cliAuthSatisfied(auth.ok, githubTokenEnvName())) return null;
+  return 'gh is not signed in — run `gh auth login` in a terminal, or set GH_TOKEN / GITHUB_TOKEN';
 }
 
 export async function ghStatus(repo: string, opts: GhOptions = {}): Promise<GhStatus> {
   const bin = opts.bin ?? 'gh';
   const unusable = await ghUsable(bin, repo);
-  if (unusable) return { available: false, detail: unusable };
+  if (unusable) return { available: false, detail: unusable, cli: 'gh' };
   const view = await gh(bin, repo, ['repo', 'view', '--json', 'nameWithOwner'], 30_000);
   if (!view.ok) {
     return {
       available: false,
       detail: firstLine(view) || 'gh could not resolve this repo on GitHub',
+      cli: 'gh',
     };
   }
   const name = safeParse<{ nameWithOwner?: string }>(view.stdout)?.nameWithOwner;
@@ -118,6 +121,7 @@ export async function ghStatus(repo: string, opts: GhOptions = {}): Promise<GhSt
     available: true,
     detail: name ? `gh is signed in; repo resolves to ${name}` : 'gh is signed in',
     repo: name,
+    cli: 'gh',
   };
 }
 

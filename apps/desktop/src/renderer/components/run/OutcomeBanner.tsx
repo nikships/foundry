@@ -164,7 +164,7 @@ export default function OutcomeBanner({
   };
 
   const ghReady = !!gh?.available;
-  const ghHint = gh === null ? 'Checking the GitHub CLI…' : gh.available ? '' : gh.detail;
+  const ghHint = gh === null ? 'Checking the forge CLI…' : gh.available ? '' : gh.detail;
 
   return (
     <section

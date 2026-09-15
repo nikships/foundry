@@ -234,7 +234,7 @@ export function buildPlanPrompt(inputs: PlanPromptInputs): string {
   if (inputs.ghAvailable === false) {
     parts.push(
       '',
-      'GitHub is not available for this project: do not compose a PR phase; use all_phases_pass acceptance.',
+      'GitHub/GitLab CLI is not available for this project: do not compose a PR phase; use all_phases_pass acceptance.',
     );
   }
   return parts.join('\n');

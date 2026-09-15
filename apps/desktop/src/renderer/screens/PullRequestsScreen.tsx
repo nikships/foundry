@@ -336,13 +336,16 @@ export default function PullRequestsScreen({
         {!project ? (
           <EmptyState title="No project" body="Add a project to see its pull requests." />
         ) : gh && !gh.available ? (
-          <EmptyState title="GitHub CLI not ready" body={gh.detail}>
+          <EmptyState
+            title={gh.cli === 'glab' ? 'GitLab CLI not ready' : 'GitHub CLI not ready'}
+            body={gh.detail}
+          >
             <Button size="sm" onClick={() => void refresh()}>
               Check again
             </Button>
           </EmptyState>
         ) : loading && prs.length === 0 ? (
-          <p className={`faint ${styles.loading}`}>Asking gh for open pull requests…</p>
+          <p className={`faint ${styles.loading}`}>Asking the forge CLI for open pull requests…</p>
         ) : prs.length === 0 && !listError ? (
           <EmptyState
             title="No open pull requests"
