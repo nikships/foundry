@@ -4,7 +4,7 @@ import type { SmithVoiceState } from '../../hooks/useSmithVoice.js';
 import { useSmithChatUI } from '../../stores/smith-chat-ui.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
-import { VoiceOrb } from './VoiceOrb.js';
+import { VoiceCube } from './VoiceCube.js';
 import styles from './SmithVoicePanel.module.css';
 
 function voicePresentation(state: SmithVoiceState): { title: string; detail: string } {
@@ -79,7 +79,7 @@ function VoicePanelContent({
         </button>
       </header>
       <div className={styles.stage} data-speaking={state.speaking}>
-        <VoiceOrb active={live || connecting} speaking={state.speaking} readLevel={readLevel} />
+        <VoiceCube active={live || connecting} speaking={state.speaking} readLevel={readLevel} />
         <div className={styles.status} role="status" data-testid="smith-voice-status">
           {presentation.title}
         </div>

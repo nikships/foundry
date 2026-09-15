@@ -39,7 +39,7 @@
   gap: var(--s4);
 }
 
-.expanded .orb {
+.expanded .cube {
   width: min(420px, 90%);
   height: auto;
   aspect-ratio: 4 / 3;
@@ -81,7 +81,7 @@
   text-align: center;
   padding-bottom: var(--s2);
 }
-.orb {
+.cube {
   display: block;
   width: 280px;
   height: 210px;
@@ -189,14 +189,14 @@
 }
 
 @media (max-height: 700px) {
-  .orb {
+  .cube {
     height: 140px;
     width: 187px;
   }
   .caption {
     max-height: 120px;
   }
-  .expanded .orb {
+  .expanded .cube {
     width: 210px;
     height: auto;
   }
