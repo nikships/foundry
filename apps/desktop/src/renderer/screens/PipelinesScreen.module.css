@@ -14,7 +14,6 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding-top: var(--titlebar-h);
 }
 
 .srOnly {
@@ -35,8 +34,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: calc(var(--titlebar-h) + 58px);
-  padding: calc(var(--titlebar-h) + 7px) 12px 7px;
+  min-height: 58px;
+  padding: 7px 12px;
   background: var(--bg-void);
   border-bottom: 1px solid var(--line-strong);
 }
