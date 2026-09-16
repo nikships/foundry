@@ -8,12 +8,15 @@ import { cx } from '../ui/cx.js';
 import styles from './AgentHero.module.css';
 
 const HERO_EASE = [0.4, 0, 0.2, 1] as const;
+/** Compact mark for the full-width banner masthead (concept B). */
+const PORTRAIT_SIZE = 96;
+const BUBBLE_SIZE = 28;
 
 /**
- * The selected agent, life-size: portrait with a breathing hue glow and its
- * backing model's mark, the name set large, and the one-line summary of what
- * it runs and what it returns. Editing happens in the sections below; the
- * hero keeps only the actions that operate on the agent as a whole.
+ * The selected agent as an open full-width banner: compact portrait left,
+ * name + meta + purpose spanning the middle, actions as a right column.
+ * Editing happens in the sections below; the hero keeps only the actions
+ * that operate on the agent as a whole.
  */
 export default function AgentHero({
   agent,
@@ -64,76 +67,94 @@ export default function AgentHero({
             aria-hidden
             style={{ background: `radial-gradient(circle, ${hue} 0%, transparent 68%)` }}
           />
-          <AgentMarkTrigger
-            name={agent.name}
-            emblem={agent.emblem}
-            color={agent.color}
-            size={148}
-            ring={2}
-            onClick={onEditMark}
+          <span className={styles.mark}>
+            <AgentMarkTrigger
+              name={agent.name}
+              emblem={agent.emblem}
+              color={agent.color}
+              size={PORTRAIT_SIZE}
+              ring={2}
+              onClick={onEditMark}
+            />
+          </span>
+          <ProviderBubble
+            provider={provider}
+            size={BUBBLE_SIZE}
+            className={styles.portraitBubble}
           />
-          <ProviderBubble provider={provider} size={38} className={styles.portraitBubble} />
         </motion.div>
       </AnimatePresence>
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={agent.name}
-          className={styles.body}
+          key={`${agent.name}-mid`}
+          className={styles.middle}
           initial={reduce ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, y: -6 }}
           transition={transition}
         >
-          <h2 className={styles.name}>{agent.name}</h2>
-          <div className={styles.meta}>
-            <ProviderIcon provider={provider} size={14} />
-            <span>{modelText}</span>
-            <span className={styles.metaDot} aria-hidden />
-            <span className={styles.metaEnvelope}>
-              <EnvelopesEmblem size={13} />
-              returns {agent.envelope}
-            </span>
+          <div className={styles.top}>
+            <h2 className={styles.name}>{agent.name}</h2>
+            <div className={styles.meta}>
+              <ProviderIcon provider={provider} size={14} />
+              <span>{modelText}</span>
+              <span className={styles.metaDot} aria-hidden />
+              <span className={styles.metaEnvelope}>
+                <EnvelopesEmblem size={13} />
+                returns {agent.envelope}
+              </span>
+            </div>
           </div>
           <p className={styles.purpose}>{agent.purpose || 'No purpose yet.'}</p>
-          <div className={styles.actions}>
+        </motion.div>
+      </AnimatePresence>
+
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={`${agent.name}-actions`}
+          className={styles.actions}
+          initial={reduce ? false : { opacity: 0, x: 8 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -8 }}
+          transition={transition}
+        >
+          <button
+            type="button"
+            className={styles.action}
+            onClick={onPreview}
+            data-testid="agent-preview"
+          >
+            Preview prompt
+          </button>
+          <button
+            type="button"
+            className={styles.action}
+            onClick={onDuplicate}
+            data-testid="agent-duplicate"
+          >
+            Duplicate
+          </button>
+          {agent.builtin && stale && (
             <button
               type="button"
               className={styles.action}
-              onClick={onPreview}
-              data-testid="agent-preview"
+              onClick={onReset}
+              data-testid="agent-reset"
             >
-              Preview prompt
+              Reset to shipped version
             </button>
+          )}
+          {!agent.builtin && (
             <button
               type="button"
-              className={styles.action}
-              onClick={onDuplicate}
-              data-testid="agent-duplicate"
+              className={cx(styles.action, styles.danger)}
+              onClick={onDelete}
+              data-testid="agent-delete"
             >
-              Duplicate
+              Delete
             </button>
-            {agent.builtin && stale && (
-              <button
-                type="button"
-                className={styles.action}
-                onClick={onReset}
-                data-testid="agent-reset"
-              >
-                Reset to shipped version
-              </button>
-            )}
-            {!agent.builtin && (
-              <button
-                type="button"
-                className={cx(styles.action, styles.danger)}
-                onClick={onDelete}
-                data-testid="agent-delete"
-              >
-                Delete
-              </button>
-            )}
-          </div>
+          )}
         </motion.div>
       </AnimatePresence>
     </section>
