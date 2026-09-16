@@ -409,16 +409,41 @@ function envExample(index: RepoFileIndex): ReadinessCriterion {
   );
 }
 
-function ciParity(root: string, index: RepoFileIndex): ReadinessCriterion {
-  const workflows = filesMatching(
+export function findCiConfigs(index: RepoFileIndex): {
+  github: string[];
+  gitlab: string[];
+  all: string[];
+} {
+  const isYaml = (rel: string) => /\.ya?ml$/.test(rel);
+  const github = filesMatching(index, (rel) => rel.startsWith('.github/workflows/') && isYaml(rel));
+  const gitlab = filesMatching(
     index,
-    (rel) => rel.startsWith('.github/workflows/') && /\.ya?ml$/.test(rel),
+    (rel) =>
+      rel === '.gitlab-ci.yml' ||
+      rel === '.gitlab-ci.yaml' ||
+      rel === '.gitlab/ci.yml' ||
+      rel === '.gitlab/ci.yaml' ||
+      rel === '.gitlab/.gitlab-ci.yml' ||
+      rel === '.gitlab/.gitlab-ci.yaml' ||
+      /^\.gitlab-ci(\..+)?\.ya?ml$/.test(rel) ||
+      (rel.startsWith('.gitlab/ci/') && isYaml(rel)) ||
+      (rel.startsWith('.gitlab-ci/') && isYaml(rel)) ||
+      (rel.startsWith('ci/') && /\.gitlab-ci.*\.ya?ml$/.test(rel)),
   );
+  return {
+    github,
+    gitlab,
+    all: [...github, ...gitlab],
+  };
+}
+
+function ciParity(root: string, index: RepoFileIndex): ReadinessCriterion {
+  const { github, gitlab, all: workflows } = findCiConfigs(index);
   if (!workflows.length) {
     return criterion(
       'ci_parity',
       'fail',
-      'No GitHub Actions workflows found under .github/workflows/.',
+      'No CI configuration found under .github/workflows/ or at root (.gitlab-ci.yml, .gitlab-ci.yaml).',
     );
   }
   const body = workflows.map((rel) => readText(root, rel)).join('\n');
@@ -428,42 +453,101 @@ function ciParity(root: string, index: RepoFileIndex): ReadinessCriterion {
     (name) => !body.includes(name) && !body.includes(`npm run ${name}`),
   );
   if (expected.length && missing.length === expected.length) {
+    const kind =
+      github.length && gitlab.length
+        ? 'CI configurations'
+        : github.length
+          ? 'Workflows'
+          : 'CI configurations';
     return criterion(
       'ci_parity',
       'fail',
-      `Workflows exist (${workflows.join(', ')}) but do not mention local check scripts: ${missing.join(', ')}.`,
+      `${kind} exist (${workflows.join(', ')}) but do not mention local check scripts: ${missing.join(', ')}.`,
       { workflows },
     );
   }
+  const label =
+    github.length && gitlab.length
+      ? 'CI configurations (GitHub Actions and GitLab CI)'
+      : github.length
+        ? 'GitHub Actions workflows'
+        : 'GitLab CI configuration';
+  const verb = label.endsWith('configuration') ? 'mirrors' : 'mirror';
   return criterion(
     'ci_parity',
     'pass',
-    `GitHub Actions workflows mirror local checks (${workflows.join(', ')}).`,
+    `${label} ${verb} local checks (${workflows.join(', ')}).`,
     { workflows },
   );
 }
 
-function templates(index: RepoFileIndex): ReadinessCriterion {
-  const issue =
+function hasGitHubIssueTemplate(index: RepoFileIndex): boolean {
+  return (
     index.dirs.has('.github/ISSUE_TEMPLATE') ||
     index.files.has('.github/ISSUE_TEMPLATE.md') ||
     index.files.has('ISSUE_TEMPLATE.md') ||
-    someFile(index, (rel) => rel.startsWith('.github/ISSUE_TEMPLATE/'));
-  const pr =
+    someFile(index, (rel) => rel.startsWith('.github/ISSUE_TEMPLATE/'))
+  );
+}
+
+function hasGitLabIssueTemplate(index: RepoFileIndex): boolean {
+  return (
+    index.dirs.has('.gitlab/issue_templates') ||
+    index.files.has('.gitlab/issue_template.md') ||
+    index.files.has('.gitlab/ISSUE_TEMPLATE.md') ||
+    someFile(index, (rel) => rel.startsWith('.gitlab/issue_templates/'))
+  );
+}
+
+function hasGitHubPrTemplate(index: RepoFileIndex): boolean {
+  return (
     index.files.has('.github/pull_request_template.md') ||
     index.files.has('.github/PULL_REQUEST_TEMPLATE.md') ||
     index.files.has('pull_request_template.md') ||
     index.files.has('PULL_REQUEST_TEMPLATE.md') ||
     index.dirs.has('.github/PULL_REQUEST_TEMPLATE') ||
-    someFile(index, (rel) => rel.startsWith('.github/PULL_REQUEST_TEMPLATE/'));
-  if (issue && pr) {
-    return criterion(
-      'templates',
-      'pass',
-      'Issue and pull request templates are present under .github/.',
-    );
+    someFile(index, (rel) => rel.startsWith('.github/PULL_REQUEST_TEMPLATE/'))
+  );
+}
+
+function hasGitLabMrTemplate(index: RepoFileIndex): boolean {
+  return (
+    index.dirs.has('.gitlab/merge_request_templates') ||
+    index.files.has('.gitlab/merge_request_template.md') ||
+    index.files.has('.gitlab/MERGE_REQUEST_TEMPLATE.md') ||
+    index.files.has('merge_request_template.md') ||
+    index.files.has('MERGE_REQUEST_TEMPLATE.md') ||
+    someFile(index, (rel) => rel.startsWith('.gitlab/merge_request_templates/'))
+  );
+}
+
+function templatePassNotes(hasGitHub: boolean, hasGitLab: boolean): string {
+  if (hasGitLab && !hasGitHub) {
+    return 'Issue and merge request templates are present under .gitlab/.';
   }
-  const missing = [issue ? '' : 'issue templates', pr ? '' : 'PR template'].filter(Boolean);
+  if (hasGitLab && hasGitHub) {
+    return 'Issue and pull/merge request templates are present under .github/ and .gitlab/.';
+  }
+  return 'Issue and pull request templates are present under .github/.';
+}
+
+function templates(index: RepoFileIndex): ReadinessCriterion {
+  const gitHubIssue = hasGitHubIssueTemplate(index);
+  const gitLabIssue = hasGitLabIssueTemplate(index);
+  const gitHubPr = hasGitHubPrTemplate(index);
+  const gitLabMr = hasGitLabMrTemplate(index);
+
+  const hasIssue = gitHubIssue || gitLabIssue;
+  const hasPr = gitHubPr || gitLabMr;
+
+  if (hasIssue && hasPr) {
+    const hasGitHub = gitHubIssue || gitHubPr;
+    const hasGitLab = gitLabIssue || gitLabMr;
+    return criterion('templates', 'pass', templatePassNotes(hasGitHub, hasGitLab));
+  }
+  const missing = [hasIssue ? '' : 'issue templates', hasPr ? '' : 'PR/MR template'].filter(
+    Boolean,
+  );
   return criterion('templates', 'fail', `Missing ${missing.join(' and ')}.`);
 }
 
