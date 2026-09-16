@@ -67,14 +67,16 @@ export default function AgentHero({
             aria-hidden
             style={{ background: `radial-gradient(circle, ${hue} 0%, transparent 68%)` }}
           />
-          <AgentMarkTrigger
-            name={agent.name}
-            emblem={agent.emblem}
-            color={agent.color}
-            size={PORTRAIT_SIZE}
-            ring={2}
-            onClick={onEditMark}
-          />
+          <span className={styles.mark}>
+            <AgentMarkTrigger
+              name={agent.name}
+              emblem={agent.emblem}
+              color={agent.color}
+              size={PORTRAIT_SIZE}
+              ring={2}
+              onClick={onEditMark}
+            />
+          </span>
           <ProviderBubble
             provider={provider}
             size={BUBBLE_SIZE}
