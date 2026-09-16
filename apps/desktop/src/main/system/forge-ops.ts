@@ -318,7 +318,7 @@ function gitlab(): ForgeProvider {
       ...labelFlags(i.labels, withLabels),
     ],
     issueUrlPattern: /\/issues\/(\d+)/,
-    listArgs: ['mr', 'list', '--state', 'opened', '--per-page', '50', '-F', 'json'],
+    listArgs: ['mr', 'list', '--per-page', '50', '-F', 'json'],
     parseList: (s) => {
       const rows = safeParse<Parameters<typeof mapGl>[0][]>(s);
       return rows ? rows.map(mapGl).filter((r): r is PullRequest => r !== null) : null;

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../helpers/tmp.js';
 import { makeFakeGlab } from '../../helpers/fake-glab.js';
-import { forgeOpen, forgeStatus } from '../../../src/main/system/forge-ops.js';
+import { forgeList, forgeOpen, forgeStatus } from '../../../src/main/system/forge-ops.js';
 import * as worktree from '../../../src/main/engine/worktree.js';
 
 const TOKEN_KEYS = ['GITLAB_TOKEN', 'GITLAB_ACCESS_TOKEN', 'OAUTH_TOKEN'] as const;
@@ -100,6 +100,35 @@ describe('forgeStatus (gitlab)', () => {
     const status = await forgeStatus('gitlab', repo, { bin: glab.bin });
     expect(status.available).toBe(true);
     expect(status.repo).toBe('group/project');
+  });
+});
+
+describe('forgeList (gitlab)', () => {
+  it('lists without --state: glab defaults to open MRs and rejects the flag', async () => {
+    clearGitlabTokens();
+    const { repo } = scratchRepoWithOrigin();
+    const glab = makeFakeGlab({
+      mrList: [
+        {
+          iid: 3,
+          web_url: 'https://gitlab.com/acme/widgets/-/merge_requests/3',
+          title: 'fix thing',
+          source_branch: 'fix-thing',
+          target_branch: 'main',
+          author: { username: 'sam' },
+          created_at: '2026-09-01T00:00:00Z',
+          detailed_merge_status: 'can_be_merged',
+        },
+      ],
+    });
+
+    const result = await forgeList('gitlab', repo, { bin: glab.bin });
+
+    expect(result.ok).toBe(true);
+    expect(result.prs).toHaveLength(1);
+    const list = glab.calls().find((argv) => argv[0] === 'mr' && argv[1] === 'list');
+    expect(list).toBeDefined();
+    expect(list).not.toContain('--state');
   });
 });
 
