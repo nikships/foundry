@@ -24,26 +24,30 @@
   justify-content: center;
 }
 
-/* Center with inset + margin:auto — Framer Motion / Playwright
-   animations:'disabled' clears transform, which broke translate(-50%,-50%). */
 .glow {
+  /* Center with calc — never transform. Framer Motion / Playwright
+     animations:'disabled' clear transforms; translate(-50%,-50%) used to
+     leave the radial's top-left on the mark center (bloom down-right).
+     Base opacity keeps the bloom soft when breath animation is cancelled. */
   position: absolute;
-  inset: 0;
+  left: calc(50% - 70px);
+  top: calc(50% - 70px);
   width: 140px;
   height: 140px;
-  margin: auto;
   border-radius: var(--r-full);
   pointer-events: none;
+  z-index: 0;
+  opacity: 0.1;
   animation: hero-breath 4.5s ease-in-out infinite;
 }
 
 @keyframes hero-breath {
   0%,
   100% {
-    opacity: 0.06;
+    opacity: 0.08;
   }
   50% {
-    opacity: 0.13;
+    opacity: 0.14;
   }
 }
 
