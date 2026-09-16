@@ -1,24 +1,22 @@
-/* The roster hero: one panel, portrait left, identity right. Hue arrives as
-   --hue from the agent's accent; everything colored hangs off it. */
+/* The roster hero: an open masthead, not a card. Portrait left, identity
+   right, separated from the sections below by the first section's hairline.
+   Hue arrives as --hue from the agent's accent; everything colored hangs
+   off it. */
 
 .hero {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s12);
-  margin-top: var(--s6);
-  padding: var(--s10) var(--s8);
-  border: 1px solid var(--line);
-  border-radius: var(--r-xl);
-  background: var(--bg-panel);
-  overflow: hidden;
+  gap: var(--s10);
+  margin-top: var(--s8);
+  padding: var(--s2) var(--s2) var(--s9);
 }
 
 .portrait {
   position: relative;
   flex: none;
-  width: 168px;
-  height: 168px;
+  width: 148px;
+  height: 148px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -28,8 +26,8 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 240px;
-  height: 240px;
+  width: 220px;
+  height: 220px;
   border-radius: var(--r-full);
   pointer-events: none;
   animation: hero-breath 4.5s ease-in-out infinite;
@@ -38,11 +36,11 @@
 @keyframes hero-breath {
   0%,
   100% {
-    opacity: 0.07;
+    opacity: 0.06;
     transform: translate(-50%, -50%) scale(0.96);
   }
   50% {
-    opacity: 0.16;
+    opacity: 0.13;
     transform: translate(-50%, -50%) scale(1.04);
   }
 }

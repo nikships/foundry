@@ -68,7 +68,7 @@ export default function AgentHero({
             name={agent.name}
             emblem={agent.emblem}
             color={agent.color}
-            size={168}
+            size={148}
             ring={2}
             onClick={onEditMark}
           />
