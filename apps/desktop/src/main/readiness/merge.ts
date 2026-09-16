@@ -20,7 +20,8 @@ export function mergeCheckFromView(view: PrMergeView | null): MergeCheck {
   if (!view) {
     return {
       merged: false,
-      detail: 'Could not confirm the pull request. It may still be open, or gh could not see it.',
+      detail:
+        'Could not confirm the pull/merge request. It may still be open, or the forge CLI could not see it.',
       pr: null,
     };
   }
@@ -33,7 +34,7 @@ export function mergeCheckFromView(view: PrMergeView | null): MergeCheck {
   }
   return {
     merged: false,
-    detail: `PR #${view.number} is still ${view.state || 'open'}. Merge it on GitHub, then confirm again.`,
+    detail: `PR #${view.number} is still ${view.state || 'open'}. Merge it on your git forge (GitHub or GitLab), then confirm again.`,
     pr: { ...view, merged: false },
   };
 }

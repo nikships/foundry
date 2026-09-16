@@ -422,7 +422,7 @@ export class ReadinessSession {
     this.push({ kind: 'note', text: 'Opening the readiness pull request…' });
     const openPr = this.deps.io?.openPr;
     if (!openPr) {
-      this.setPhase('failed', 'Cannot open a pull request: no GitHub helper is configured.');
+      this.setPhase('failed', 'Cannot open a pull request: no git forge helper is configured.');
       return;
     }
     const pr = await openPr(this.deps.project.path, {
@@ -645,7 +645,7 @@ function withResumeHint(phase: ReadinessPhase | undefined, detail: string): stri
   const text = detail.trim() || 'Something went wrong.';
   if (/continue|isolated branch|same branch|open pr again|check merge/i.test(text)) return text;
   if (phase === 'pr_ready') {
-    return `${text} The readiness branch is still here — Open PR again retries GitHub.`;
+    return `${text} The readiness branch is still here — Open PR again retries the forge.`;
   }
   if (phase === 'finalizing') {
     return `${text} Continue checks the base branch again. Isolated work was not discarded.`;

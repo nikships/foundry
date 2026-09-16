@@ -74,7 +74,39 @@ describe('language-aware readiness evaluation', () => {
     const root = scratch('foundry-ready-ci-');
     write(root, 'package.json', JSON.stringify({ scripts: { test: 'vitest', lint: 'eslint .' } }));
     write(root, '.github/workflows/ci.yml', 'run: npm test\nrun: npm run lint\n');
-    expect(byId(root, 'ci_parity')?.status).toBe('pass');
+    const crit = byId(root, 'ci_parity');
+    expect(crit?.status).toBe('pass');
+    expect(crit?.notes).toMatch(/GitHub Actions workflows mirror local checks/);
+  });
+
+  it('passes CI parity when .gitlab-ci.yml mentions local scripts', () => {
+    const root = scratch('foundry-ready-gitlab-ci-');
+    write(root, 'package.json', JSON.stringify({ scripts: { test: 'vitest', lint: 'eslint .' } }));
+    write(root, '.gitlab-ci.yml', 'test:\n  script:\n    - npm test\n    - npm run lint\n');
+    const crit = byId(root, 'ci_parity');
+    expect(crit?.status).toBe('pass');
+    expect(crit?.notes).toMatch(/GitLab CI configuration mirrors local checks/);
+  });
+
+  it('passes CI parity when .gitlab-ci.yaml mentions local scripts', () => {
+    const root = scratch('foundry-ready-gitlab-yaml-');
+    write(root, 'package.json', JSON.stringify({ scripts: { test: 'vitest', lint: 'eslint .' } }));
+    write(root, '.gitlab-ci.yaml', 'test:\n  script:\n    - npm test\n    - npm run lint\n');
+    const crit = byId(root, 'ci_parity');
+    expect(crit?.status).toBe('pass');
+    expect(crit?.notes).toMatch(/GitLab CI configuration mirrors local checks/);
+  });
+
+  it('passes CI parity when both GitHub Actions and GitLab CI exist', () => {
+    const root = scratch('foundry-ready-dual-ci-');
+    write(root, 'package.json', JSON.stringify({ scripts: { test: 'vitest', lint: 'eslint .' } }));
+    write(root, '.github/workflows/ci.yml', 'run: npm test\n');
+    write(root, '.gitlab-ci.yaml', 'script:\n  - npm run lint\n');
+    const crit = byId(root, 'ci_parity');
+    expect(crit?.status).toBe('pass');
+    expect(crit?.notes).toMatch(
+      /CI configurations \(GitHub Actions and GitLab CI\) mirror local checks/,
+    );
   });
 
   it('fails CI parity when workflows ignore documented local checks', () => {
@@ -82,6 +114,29 @@ describe('language-aware readiness evaluation', () => {
     write(root, 'package.json', JSON.stringify({ scripts: { test: 'vitest', lint: 'eslint .' } }));
     write(root, '.github/workflows/ci.yml', 'run: echo hello\n');
     expect(byId(root, 'ci_parity')?.status).toBe('fail');
+  });
+
+  it('fails CI parity when .gitlab-ci.yaml ignores documented local checks', () => {
+    const root = scratch('foundry-ready-gitlab-miss-');
+    write(root, 'package.json', JSON.stringify({ scripts: { test: 'vitest', lint: 'eslint .' } }));
+    write(root, '.gitlab-ci.yaml', 'job:\n  script:\n    - echo hello\n');
+    expect(byId(root, 'ci_parity')?.status).toBe('fail');
+  });
+
+  it('fails CI parity with descriptive message when neither GitHub nor GitLab CI exists', () => {
+    const root = scratch('foundry-ready-no-ci-');
+    const crit = byId(root, 'ci_parity');
+    expect(crit?.status).toBe('fail');
+    expect(crit?.notes).toMatch(/\.github\/workflows\/.*\.gitlab-ci\./);
+  });
+
+  it('passes templates when GitLab issue and merge request templates are present', () => {
+    const root = scratch('foundry-ready-gitlab-templates-');
+    write(root, '.gitlab/issue_templates/bug.md', 'Bug report\n');
+    write(root, '.gitlab/merge_request_templates/default.md', 'MR description\n');
+    const crit = byId(root, 'templates');
+    expect(crit?.status).toBe('pass');
+    expect(crit?.notes).toMatch(/\.gitlab\//);
   });
 
   it('treats coverage as n/a until tests exist, then requires a threshold', () => {
