@@ -18,8 +18,10 @@ export const SMITH_PROJECT_OPERATIONS = [
   'list',
   'show',
   'add',
+  'forge_account',
   'github_account',
   'choose_parent',
+  'create_repo',
   'create_github',
   'save',
   'remove',
@@ -78,8 +80,13 @@ const PROJECT_ID = [{ name: 'projectId', kind: 'string' }] as const satisfies re
 const ACTIONS: Partial<Record<ProjectOperation, ActionSpec>> = {
   add: { channel: IPC.projectsAdd, risk: 'write' },
   choose_parent: { channel: IPC.projectsChooseParentDir, risk: 'write' },
+  create_repo: {
+    channel: IPC.projectsCreateRepo,
+    risk: 'external',
+    args: [{ name: 'input', kind: 'object' }],
+  },
   create_github: {
-    channel: IPC.projectsCreateGithub,
+    channel: IPC.projectsCreateRepo,
     risk: 'external',
     args: [{ name: 'input', kind: 'object' }],
   },
@@ -155,7 +162,7 @@ export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_projects',
     label: 'Smith projects',
     description:
-      'Inspect and manage projects. Always supply projectId when an operation names it; this tool does not use the chat scope as a default. Read now: list, show(projectId), github_account, detection(detectionId), setup_get/setup_sniff(projectId), setup_progress(setupId), check/scope_copies/base_inspect(projectId). Approval: add opens a folder chooser; choose_parent opens a parent-folder chooser; create_github(input), save(project), remove/export(projectId), try_command(projectId,argv), sniff_commands/ask_commands(projectId), cancel_detection(detectionId), setup_save/setup_try(projectId,script), setup_ask(projectId), setup_cancel(setupId), base_sync(projectId), reveal(path). Read show before save and preserve other fields. Use returned detectionId/setupId to inspect progress, not to start the same work again.',
+      'Inspect and manage projects. Always supply projectId when an operation names it; this tool does not use the chat scope as a default. Read now: list, show(projectId), forge_account (alias github_account), detection(detectionId), setup_get/setup_sniff(projectId), setup_progress(setupId), check/scope_copies/base_inspect(projectId). Approval: add opens a folder chooser; choose_parent opens a parent-folder chooser; create_repo(input) (alias create_github), save(project), remove/export(projectId), try_command(projectId,argv), sniff_commands/ask_commands(projectId), cancel_detection(detectionId), setup_save/setup_try(projectId,script), setup_ask(projectId), setup_cancel(setupId), base_sync(projectId), reveal(path). Read show before save and preserve other fields. Use returned detectionId/setupId to inspect progress, not to start the same work again.',
     parameters: {
       type: 'object',
       properties: {
@@ -168,7 +175,7 @@ export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
         input: {
           type: 'object',
           description:
-            'For create_github: {name, visibility:"private"|"public", parentDir, owner?, description?}. Use github_account for owners and choose_parent for the parentDir. The new checkout is parentDir/name.',
+            'For create_repo / create_github: {name, visibility:"private"|"public", parentDir, owner?, description?}. Use forge_account for owners and choose_parent for the parentDir. The new checkout is parentDir/name. Honors Settings forgeProvider (Auto → GitHub).',
         },
         project: {
           type: 'object',
@@ -197,7 +204,9 @@ export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
       const op = parseOperation(params, SMITH_PROJECT_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
       if (op === 'list') return immediate(deps, IPC.projectsList);
-      if (op === 'github_account') return immediate(deps, IPC.projectsGithubAccount);
+      if (op === 'forge_account' || op === 'github_account') {
+        return immediate(deps, IPC.projectsForgeAccount);
+      }
       if (op === 'show') return showProject(deps, stringField(params, 'projectId'));
 
       const read = READS[op];

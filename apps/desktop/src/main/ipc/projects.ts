@@ -2,7 +2,7 @@ import { BrowserWindow, dialog, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname } from 'node:path';
-import type { GithubAccount, ProjectDef } from '@shared/types.js';
+import type { ForgeAccount, ProjectDef } from '@shared/types.js';
 import {
   IPC,
   type DetectCommandsResult,
@@ -18,7 +18,7 @@ import { sniffSetupScript } from '../engine/setup.js';
 import { inspectBase, syncBase } from '../engine/base-sync.js';
 import { currentBranch, isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
-import { createRepo, githubAccount } from '../system/gh.js';
+import { createForgeRepo, forgeAccount } from '../system/forge-create.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
@@ -95,7 +95,10 @@ export function register(ctx: Ctx, handle: Handle): void {
     return ctx.projects.get(project.id) ?? project;
   });
 
-  handle(IPC.projectsGithubAccount, (): Promise<GithubAccount> => githubAccount());
+  const accountHandler = (): Promise<ForgeAccount> => forgeAccount();
+  handle(IPC.projectsForgeAccount, accountHandler);
+  // Deprecated alias — same forge-preference dispatch as forgeAccount.
+  handle(IPC.projectsGithubAccount, accountHandler);
 
   handle(IPC.projectsChooseParentDir, async (): Promise<string | null> => {
     const window = BrowserWindow.getFocusedWindow() ?? ctx.window();
@@ -112,14 +115,15 @@ export function register(ctx: Ctx, handle: Handle): void {
   });
 
   /**
-   * Creates on GitHub through the operator's own gh, then registers the clone.
+   * Creates on the selected forge (gh or glab per Settings), then registers the
+   * clone. Auto defaults to GitHub for create.
    *
    * No manifest sniffing here, unlike `projects:add`: a repository created
    * moments ago has nothing to sniff, and the `scaffold` flag is what tells the
    * engine to skip command-shaped phases until the project grows one.
    */
-  handle(IPC.projectsCreateGithub, async (input: NewRepoInput): Promise<NewRepoResult> => {
-    const created = await createRepo(input);
+  const createHandler = async (input: NewRepoInput): Promise<NewRepoResult> => {
+    const created = await createForgeRepo(input);
     if (!created.ok || !created.path) return created;
 
     const path = created.path;
@@ -130,7 +134,10 @@ export function register(ctx: Ctx, handle: Handle): void {
     const project = ctx.projects.add(path, curBranch || undefined, { scaffold: true });
     notifySettings(ctx);
     return { ...created, project: ctx.projects.get(project.id) ?? project };
-  });
+  };
+  handle(IPC.projectsCreateRepo, createHandler);
+  // Deprecated alias — same forge-preference dispatch as createRepo.
+  handle(IPC.projectsCreateGithub, createHandler);
 
   handle(IPC.projectsSave, (project: ProjectDef): SaveResult<ProjectDef[]> => {
     const result = ctx.projects.save(project);

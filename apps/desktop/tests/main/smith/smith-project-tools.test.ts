@@ -63,6 +63,7 @@ describe('smith_projects', () => {
 
   it.each([
     ['show', 'projectId'],
+    ['create_repo', 'input'],
     ['create_github', 'input'],
     ['save', 'project'],
     ['remove', 'projectId'],
@@ -81,7 +82,8 @@ describe('smith_projects', () => {
 
   it.each([
     ['list', {}, IPC.projectsList, []],
-    ['github_account', {}, IPC.projectsGithubAccount, []],
+    ['forge_account', {}, IPC.projectsForgeAccount, []],
+    ['github_account', {}, IPC.projectsForgeAccount, []],
     ['detection', { detectionId: 'd1' }, IPC.projectsDetection, ['d1']],
     ['setup_get', { projectId: 'p1' }, IPC.projectsSetupScriptGet, ['p1']],
     ['check', { projectId: 'p1' }, IPC.projectsCheck, ['p1']],
@@ -103,7 +105,8 @@ describe('smith_projects', () => {
 
   it.each([
     ['add', {}, IPC.projectsAdd, []],
-    ['create_github', { input: { name: 'repo' } }, IPC.projectsCreateGithub, [{ name: 'repo' }]],
+    ['create_repo', { input: { name: 'repo' } }, IPC.projectsCreateRepo, [{ name: 'repo' }]],
+    ['create_github', { input: { name: 'repo' } }, IPC.projectsCreateRepo, [{ name: 'repo' }]],
     [
       'try_command',
       { projectId: 'p1', argv: ['npm', 'test'] },

@@ -37,7 +37,7 @@ describe('forge CLI empty-state copy', () => {
     ).toBe('GitLab CLI (glab) is not installed or not on PATH');
   });
 
-  it('points Auto-misclassified GitHub at Settings → Forge', () => {
+  it('points Auto-misclassified GitHub at Settings → Integrations', () => {
     const body = forgeCliNotReadyBody({
       cli: 'gh',
       detail: 'GitHub CLI (gh) is not installed or not on PATH',

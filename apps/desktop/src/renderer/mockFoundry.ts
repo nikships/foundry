@@ -401,11 +401,20 @@ export function createMockFoundryApi(): FoundryApi {
     projects: {
       list: async () => [...MOCK_PROJECTS],
       add: async () => null,
+      forgeAccount: async () => ({
+        available: false,
+        detail: 'creating a repository needs a forge CLI, which the web preview cannot reach',
+        provider: 'github' as const,
+        host: 'github.com',
+      }),
       githubAccount: async () => ({
         available: false,
-        detail: 'creating a repository needs the gh CLI, which the web preview cannot reach',
+        detail: 'creating a repository needs a forge CLI, which the web preview cannot reach',
+        provider: 'github' as const,
+        host: 'github.com',
       }),
       chooseParentDir: async () => null,
+      createRepo: async () => unavailable(),
       createGithub: async () => unavailable(),
       save: async (project): Promise<SaveResult<ProjectDef[]>> => {
         const idx = MOCK_PROJECTS.findIndex((p) => p.id === project.id);

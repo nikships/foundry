@@ -51,8 +51,10 @@ const api: FoundryApi = {
   projects: {
     list: () => call(IPC.projectsList),
     add: () => call(IPC.projectsAdd),
+    forgeAccount: () => call(IPC.projectsForgeAccount),
     githubAccount: () => call(IPC.projectsGithubAccount),
     chooseParentDir: () => call(IPC.projectsChooseParentDir),
+    createRepo: (input) => call(IPC.projectsCreateRepo, input),
     createGithub: (input) => call(IPC.projectsCreateGithub, input),
     save: (project) => call(IPC.projectsSave, project),
     remove: (id) => call(IPC.projectsRemove, id),
