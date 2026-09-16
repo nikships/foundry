@@ -56,24 +56,6 @@
   background: var(--text-faint);
 }
 
-.readiness-banner {
-  display: flex;
-  min-height: 32px;
-  align-items: center;
-  margin: 0 var(--s6) var(--s2);
-  padding: var(--s2) var(--s3);
-  border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
-  border-radius: var(--r-sm);
-  background: var(--amber-dim);
-  color: var(--amber);
-  font-size: var(--text-xs);
-}
-
-.readiness-banner p {
-  margin: 0;
-  line-height: var(--leading);
-}
-
 .composer-region {
   min-height: 0;
   flex: 1;
@@ -154,6 +136,34 @@
 
 .source-tab-active svg {
   color: var(--accent);
+}
+
+/* The Agent readiness tab glows red while the project is not agent-ready. */
+.source-tabs button[data-alert='true'] {
+  border: 1px solid color-mix(in srgb, var(--red) 55%, transparent);
+  color: var(--red);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--red) 45%, transparent);
+  animation: readiness-alert 1.6s var(--ease) infinite;
+}
+
+.source-tabs button[data-alert='true'] svg {
+  color: var(--red);
+}
+
+.source-tabs button[data-alert='true']:hover {
+  color: var(--red);
+}
+
+/* CSS Modules scopes animation names locally; the global tokens-base
+   @keyframes pulse is not visible here unless we declare it in-module. */
+@keyframes readiness-alert {
+  0%,
+  100% {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--red) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 14px color-mix(in srgb, var(--red) 70%, transparent);
+  }
 }
 
 .linear-connection {
@@ -294,11 +304,6 @@
   .head {
     padding-right: var(--s4);
     padding-left: var(--s4);
-  }
-
-  .readiness-banner {
-    margin-right: var(--s4);
-    margin-left: var(--s4);
   }
 
   .composer-column {

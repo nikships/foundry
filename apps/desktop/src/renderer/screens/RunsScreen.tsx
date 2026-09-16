@@ -1,5 +1,5 @@
-import { CircleDot, Sparkles, Workflow } from 'lucide-react';
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { CircleDot, ListChecks, Sparkles, Workflow } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { ReadinessInspectResult } from '@shared/types.js';
 import type { CompanionHostState } from '@shared/companion.js';
 import type { LinearConnectionState } from '@shared/ipc-contract.js';
@@ -19,18 +19,22 @@ import ManualComposer from '../components/run/ManualComposer.js';
 import ComposeAttachments from '../components/run/ComposeAttachments.js';
 import ComposePicker, { type ComposeChoice } from '../components/run/ComposePicker.js';
 import ProposalList from '../components/run/ProposalList.js';
+import ReadinessPanel from '../components/readiness/ReadinessPanel.js';
 import { Button } from '../components/ui/Button.js';
-import { readinessBanner, showReadinessOnRuns } from '../view-models/readiness-view.js';
+import { useReadinessSession } from '../hooks/useReadinessSession.js';
+import { readinessTab, showReadinessAlert } from '../view-models/readiness-view.js';
 import styles from './RunsScreen.module.css';
 
 const LinearComposer = lazy(() => import('../components/run/LinearComposer.js'));
 
 const MODE_KEY = 'foundry.runs.mode';
-type RunsMode = 'smith' | 'manual' | 'linear';
+type RunsMode = 'smith' | 'manual' | 'linear' | 'readiness';
 
 function loadMode(): RunsMode {
   const saved = safeGetItem(MODE_KEY);
-  if (saved === 'manual' || saved === 'linear' || saved === 'smith') return saved;
+  if (saved === 'manual' || saved === 'linear' || saved === 'smith' || saved === 'readiness') {
+    return saved;
+  }
   // M-06 renamed the persisted composer tab without stranding existing users.
   if (saved === 'orchestrator') return 'smith';
   return 'smith';
@@ -98,20 +102,30 @@ function RunsHeader({
 function SourceTabs({
   mode,
   linearConnection,
+  readinessAlert,
   onChange,
 }: {
   mode: RunsMode;
   linearConnection: LinearConnectionState | null;
+  /** True while the project is not agent-ready: the tab glows red. */
+  readinessAlert: boolean;
   onChange: (mode: RunsMode) => void;
 }): React.JSX.Element {
   const tabs: ReadonlyArray<{
     id: RunsMode;
     label: string;
     icon: React.JSX.Element;
+    alert?: boolean;
   }> = [
     { id: 'smith', label: 'Smith composes', icon: <Sparkles size={11} /> },
     { id: 'manual', label: 'Manual pipeline', icon: <Workflow size={11} /> },
     { id: 'linear', label: 'Linear issue', icon: <CircleDot size={11} /> },
+    {
+      id: 'readiness',
+      label: 'Agent readiness',
+      icon: <ListChecks size={11} />,
+      alert: readinessAlert,
+    },
   ];
   return (
     <div className={styles.composerHead}>
@@ -125,6 +139,7 @@ function SourceTabs({
             aria-selected={mode === tab.id}
             onClick={() => onChange(tab.id)}
             data-testid={`runs-source-${tab.id}`}
+            data-alert={tab.alert ? 'true' : undefined}
           >
             {tab.icon}
             {tab.label}
@@ -334,12 +349,16 @@ export default function RunsScreen({
   /** Sidebar proposal deep-link: scrolls to the proposal card once listed. */
   focusProposalId?: string | null;
 }): React.JSX.Element {
-  const { project, projectId } = useApp();
+  const { project, projectId, refreshAll } = useApp();
   const [mode, setMode] = useState<RunsMode>(loadMode);
   const [linearConnection, setLinearConnection] = useState<LinearConnectionState | null>(null);
   const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
+  const [readinessBusy, setReadinessBusy] = useState(false);
+  const [readinessError, setReadinessError] = useState('');
   const [baseSyncing, setBaseSyncing] = useState(false);
   const [companion, setCompanion] = useState<CompanionHostState | null>(null);
+  const { session: readinessSession, refresh: refreshReadinessSession } =
+    useReadinessSession(projectId);
 
   useEffect(() => {
     void api.companion.state().then(setCompanion);
@@ -362,27 +381,56 @@ export default function RunsScreen({
     };
   }, [projectId, project?.path, project?.readinessValidated, project?.readinessSkipped]);
 
-  const banner = useMemo(() => (readiness ? readinessBanner(readiness) : null), [readiness]);
+  const refreshReadiness = useCallback(async (): Promise<void> => {
+    if (!projectId) return;
+    try {
+      const next = await api.readiness.inspect(projectId);
+      setReadiness(next);
+    } catch {
+      // The tab keeps its last verdict; the panel surfaces action errors.
+    }
+    refreshReadinessSession();
+    await refreshAll();
+  }, [projectId, refreshAll, refreshReadinessSession]);
+
+  const runReadinessAction = useCallback(
+    async (action: () => Promise<unknown>): Promise<void> => {
+      if (readinessBusy) return;
+      setReadinessBusy(true);
+      setReadinessError('');
+      try {
+        const result = await action();
+        if (result != null && typeof result === 'object' && 'error' in result) {
+          setReadinessError(String((result as { error: unknown }).error));
+        }
+      } catch (error) {
+        setReadinessError((error as Error).message);
+      } finally {
+        setReadinessBusy(false);
+        await refreshReadiness();
+      }
+    },
+    [readinessBusy, refreshReadiness],
+  );
+
+  const tab = readiness ? readinessTab(readiness) : null;
+  const readinessAlert = tab != null && showReadinessAlert(tab);
   const switchMode = (next: RunsMode): void => {
     setMode(next);
     safeSetItem(MODE_KEY, next);
   };
-  const tabs = <SourceTabs mode={mode} linearConnection={linearConnection} onChange={switchMode} />;
+  const tabs = (
+    <SourceTabs
+      mode={mode}
+      linearConnection={linearConnection}
+      readinessAlert={readinessAlert}
+      onChange={switchMode}
+    />
+  );
 
   return (
     <div className={styles.screen} data-testid="runs-screen" data-runs-source={mode}>
       <RunsHeader companion={companion} onOpenSettings={onOpenSettings} />
-      {project && banner && showReadinessOnRuns(banner) && (
-        <div
-          className={styles.readinessBanner}
-          data-testid="readiness-banner"
-          data-ready="no"
-          role="status"
-          aria-live="polite"
-        >
-          <p>{banner.message}</p>
-        </div>
-      )}
       {project && (
         <BaseSyncBar
           projectId={project.id}
@@ -451,6 +499,31 @@ export default function RunsScreen({
                   baseSyncing={baseSyncing}
                 />
               </Suspense>
+            </div>
+          )}
+
+          {mode === 'readiness' && (
+            <div className={styles.modePanel}>
+              <ReadinessPanel
+                header={tabs}
+                projectId={projectId}
+                inspect={readiness}
+                session={readinessSession}
+                busy={readinessBusy}
+                error={readinessError}
+                onCheck={() => void runReadinessAction(() => api.readiness.evaluate(projectId))}
+                onFix={() => void runReadinessAction(() => api.readiness.makeReady(projectId))}
+                onRetry={() => void runReadinessAction(() => api.readiness.retry(projectId))}
+                onContinue={() => void runReadinessAction(() => api.readiness.makeReady(projectId))}
+                onConfirmMerge={() =>
+                  void runReadinessAction(() => api.readiness.confirmMerge(projectId))
+                }
+                onCancel={() =>
+                  void runReadinessAction(() => api.readiness.cancel(projectId).then(() => null))
+                }
+                onSkip={() => void runReadinessAction(() => api.readiness.skip(projectId))}
+                onOpenPr={(url) => void api.app.openExternal(url)}
+              />
             </div>
           )}
         </div>
