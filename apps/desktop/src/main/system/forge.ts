@@ -1,7 +1,7 @@
 /**
  * Pick GitHub (`gh`) or GitLab (`glab`) from the repo remote (or an explicit
  * Settings preference), then run the shared forge-ops surface. Callers stay
- * forge-agnostic; create-on-GitHub flows keep using system/gh.ts directly.
+ * forge-agnostic; create-project uses forge-create.ts (Auto → GitHub).
  */
 
 import type { GhStatus, PrMergeMethod } from '@shared/types.js';
@@ -93,10 +93,15 @@ export function setForgePreferenceProvider(getter: (() => ForgeProviderPreferenc
   preferenceProvider = getter;
 }
 
-function preferenceOf(opts: ForgeOptions): ForgeProviderPreference {
-  if (isForgeProviderPreference(opts.preference)) return opts.preference;
+/** Current app-level forge preference (Settings), or Auto when unset. */
+export function forgePreference(): ForgeProviderPreference {
   const fromApp = preferenceProvider?.();
   return isForgeProviderPreference(fromApp) ? fromApp : DEFAULT_FORGE_PROVIDER;
+}
+
+function preferenceOf(opts: ForgeOptions): ForgeProviderPreference {
+  if (isForgeProviderPreference(opts.preference)) return opts.preference;
+  return forgePreference();
 }
 
 /**

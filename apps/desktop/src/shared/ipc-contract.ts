@@ -25,6 +25,7 @@ import type {
   GateResultRow,
   GeneratedRunPlan,
   GhStatus,
+  ForgeAccount,
   GithubAccount,
   LinearIssueSnapshot,
   LinearWorkflowState,
@@ -392,7 +393,7 @@ export interface NewRepoInput {
 
 export interface NewRepoResult {
   ok: boolean;
-  /** gh's own words when it refused, so the reason is diagnosable. */
+  /** The forge CLI's own words when it refused, so the reason is diagnosable. */
   detail: string;
   /** Present only on success: the project is already registered. */
   project?: ProjectDef;
@@ -543,14 +544,21 @@ export interface FoundryApi {
   projects: {
     list(): Promise<ProjectDef[]>;
     add(): Promise<ProjectDef | null>;
-    /** Who gh is signed in as, so the create flow can name the owner up front. */
+    /**
+     * Who the selected forge CLI is signed in as (Settings → forgeProvider;
+     * Auto → GitHub for create). Names the owner up front.
+     */
+    forgeAccount(): Promise<ForgeAccount>;
+    /** @deprecated Prefer forgeAccount — same handler. */
     githubAccount(): Promise<GithubAccount>;
     /** Folder picker for where a new repo should be cloned. Null when cancelled. */
     chooseParentDir(): Promise<string | null>;
     /**
-     * Creates the repo on GitHub through the operator's own gh, clones it, and
-     * registers the clone as a project. Foundry holds no GitHub token.
+     * Creates the repo on the selected forge (gh or glab), clones it, and
+     * registers the clone as a project. Foundry holds no forge token.
      */
+    createRepo(input: NewRepoInput): Promise<NewRepoResult>;
+    /** @deprecated Prefer createRepo — same handler. */
     createGithub(input: NewRepoInput): Promise<NewRepoResult>;
     save(project: ProjectDef): Promise<SaveResult<ProjectDef[]>>;
     remove(id: string): Promise<ProjectDef[]>;
@@ -1009,8 +1017,10 @@ export const IPC = {
   fontsList: 'fonts:list',
   projectsList: 'projects:list',
   projectsAdd: 'projects:add',
+  projectsForgeAccount: 'projects:forgeAccount',
   projectsGithubAccount: 'projects:githubAccount',
   projectsChooseParentDir: 'projects:chooseParentDir',
+  projectsCreateRepo: 'projects:createRepo',
   projectsCreateGithub: 'projects:createGithub',
   projectsSave: 'projects:save',
   projectsRemove: 'projects:remove',

@@ -555,18 +555,25 @@ export interface GhStatus {
 }
 
 /**
- * Who gh is signed in as, asked without a repo in hand. Creating a repository
- * happens before any local checkout exists, which is the one question
- * `ghStatus` cannot answer: it resolves the repo of a directory.
+ * Who the forge CLI is signed in as, asked without a repo in hand. Creating a
+ * repository happens before any local checkout exists, which is the one
+ * question `scmStatus` cannot answer: it resolves the repo of a directory.
  */
-export interface GithubAccount {
+export interface ForgeAccount {
   available: boolean;
   detail: string;
   /** The authenticated login, which is also the default owner for a new repo. */
   login?: string;
-  /** Owners a repo can be created under: the login first, then its orgs. */
+  /** Owners a repo can be created under: the login first, then orgs/groups. */
   owners?: string[];
+  /** Which forge this probe targeted. */
+  provider?: 'github' | 'gitlab';
+  /** Host for preview / open URLs (github.com, gitlab.com, or GITLAB_HOST). */
+  host?: string;
 }
+
+/** @deprecated Prefer ForgeAccount — same shape; kept for existing imports. */
+export type GithubAccount = ForgeAccount;
 
 export interface ProjectCommand {
   name: string;

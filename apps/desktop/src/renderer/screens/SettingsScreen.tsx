@@ -235,15 +235,17 @@ const FORGE_PROVIDER_OPTIONS: {
   {
     value: 'auto',
     label: 'Auto (from git remote)',
-    description: 'Classifies GitHub vs GitLab from the project remote URL.',
+    description:
+      'For existing projects, classifies GitHub vs GitLab from the git remote. New project create defaults to GitHub.',
   },
   { value: 'github', label: 'GitHub (gh)' },
   { value: 'gitlab', label: 'GitLab (glab)' },
 ];
 
 /**
- * Which forge CLI the PRs tab, settle, and compose paths talk to. App-scoped
- * so a GitLab-only machine does not depend on remote-hostname heuristics.
+ * Which source control provider Foundry uses for creating repositories, PRs/MRs,
+ * settle, and compose. App-scoped so a GitLab-only machine does not depend on
+ * remote-hostname heuristics.
  */
 function ForgeProviderSection(): React.JSX.Element {
   const { settings, patchSettings } = useApp();
@@ -254,20 +256,25 @@ function ForgeProviderSection(): React.JSX.Element {
   };
 
   return (
-    <Section label="Source control" note="Which host Foundry talks to for pull and merge requests.">
+    <Section
+      label="Source control"
+      note="Provider for creating repositories, pull/merge requests, settle, and compose."
+    >
       <div className={styles.providerCard}>
         <div className={styles.providerHead}>
-          <h3>Pull requests host</h3>
+          <h3>Source control provider</h3>
         </div>
         <p className={styles.settingsLead}>
-          Auto classifies from the project git remote. Unknown hosts still count as GitHub, so a
-          GitLab-only machine or a self-hosted host Foundry does not recognize needs an explicit
-          choice.
+          This is Foundry&apos;s source control provider — not only the pull-request host. It
+          chooses which CLI creates repositories, opens PRs/MRs, and drives settle and compose. Auto
+          classifies from the project git remote for existing work; new project create defaults to
+          GitHub when Auto is selected. Unknown hosts still count as GitHub, so a GitLab-only
+          machine or an unrecognized self-hosted host needs an explicit choice.
         </p>
         <Field
-          label="Forge"
+          label="Provider"
           htmlFor="forge-provider"
-          hint="Auto uses the project remote. Pick GitLab if this machine only uses GitLab."
+          hint="Auto uses the project remote for existing projects; new creates default to GitHub. Pick GitLab if this machine only uses GitLab."
         >
           <Dropdown
             id="forge-provider"
@@ -276,7 +283,7 @@ function ForgeProviderSection(): React.JSX.Element {
             options={FORGE_PROVIDER_OPTIONS}
             onChange={(next) => void setProvider(next)}
             menuWidth="compact"
-            aria-label="Forge"
+            aria-label="Source control provider"
           />
         </Field>
       </div>

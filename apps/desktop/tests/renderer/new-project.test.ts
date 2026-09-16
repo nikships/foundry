@@ -54,6 +54,22 @@ describe('githubAccount', () => {
     expect(gh.calls().some((argv) => argv[0] === 'api')).toBe(false);
   });
 
+  it('calls api user when auth status fails but GH_TOKEN is set', async () => {
+    const gh = makeFakeGh({ authed: false, login: 'nik', orgs: ['acme'] });
+    const prev = process.env.GH_TOKEN;
+    process.env.GH_TOKEN = 'ghs_test_token_for_account';
+    try {
+      const account = await githubAccount({ bin: gh.bin });
+      expect(account.available).toBe(true);
+      expect(account.login).toBe('nik');
+      expect(account.owners).toEqual(['nik', 'acme']);
+      expect(gh.calls().some((argv) => argv[0] === 'api' && argv[1] === 'user')).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.GH_TOKEN;
+      else process.env.GH_TOKEN = prev;
+    }
+  });
+
   it('offers the login first, then its orgs', async () => {
     const gh = makeFakeGh({ login: 'nik', orgs: ['acme', 'widgets'] });
     const account = await githubAccount({ bin: gh.bin });

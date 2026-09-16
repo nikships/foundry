@@ -184,9 +184,9 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   {
     pane: 'integrations',
     label: 'Source control',
-    note: 'Which host Foundry talks to for pull and merge requests.',
+    note: 'Provider for creating repositories, pull/merge requests, settle, and compose.',
     keywords:
-      'forge github gitlab gh glab pull request merge request remote host scm source control',
+      'forge github gitlab gh glab pull request merge request remote host scm source control provider create repository',
   },
   {
     pane: 'integrations',

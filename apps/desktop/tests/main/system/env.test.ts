@@ -16,6 +16,8 @@ import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  importForgeTokensFromShell,
+  parseLoginShellStdoutForTest,
   resolveEnv,
   resolvedEnv,
   setResolvedEnvForTest,
@@ -140,5 +142,93 @@ describe('runCommand under the resolved PATH', () => {
     // failed"; the detection panel keys its PATH hint off exactly this.
     expect(result.exitCode).toBeNull();
     expect(result.outputTail).toMatch(/ENOENT|not found|No such file/i);
+  });
+});
+
+describe('forge token import from login shell', () => {
+  const tokenKeys = [
+    'GH_TOKEN',
+    'GITHUB_TOKEN',
+    'GH_ENTERPRISE_TOKEN',
+    'GITHUB_ENTERPRISE_TOKEN',
+    'GITLAB_TOKEN',
+    'GITLAB_ACCESS_TOKEN',
+    'OAUTH_TOKEN',
+  ] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  function clearTokens(): void {
+    for (const key of tokenKeys) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+  }
+
+  function restore(): void {
+    for (const key of tokenKeys) {
+      const value = saved[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
+  afterEach(restore);
+
+  it('parses fenced token values beside PATH without motd noise', () => {
+    const stdout = [
+      'Welcome to foundry-motd',
+      '__FOUNDRY_PATH_BEGIN__/custom/bin:/usr/bin__FOUNDRY_PATH_END__',
+      '__FOUNDRY_ENV_BEGIN__GH_TOKEN=ghs_from_shell__FOUNDRY_ENV_END__',
+      '__FOUNDRY_ENV_BEGIN__GITLAB_TOKEN=__FOUNDRY_ENV_END__',
+      '__FOUNDRY_ENV_BEGIN__GITHUB_TOKEN=ghs_second__FOUNDRY_ENV_END__',
+      'more noise',
+    ].join('');
+    const parsed = parseLoginShellStdoutForTest(stdout);
+    expect(parsed.path).toBe('/custom/bin:/usr/bin');
+    expect(parsed.tokens).toEqual({
+      GH_TOKEN: 'ghs_from_shell',
+      GITHUB_TOKEN: 'ghs_second',
+    });
+  });
+
+  it('imports non-empty tokens into process.env without clobbering existing', () => {
+    clearTokens();
+    process.env.GH_TOKEN = 'already-set';
+    const imported = importForgeTokensFromShell({
+      GH_TOKEN: 'from-shell',
+      GITHUB_TOKEN: 'github-from-shell',
+      GITLAB_TOKEN: 'gitlab-from-shell',
+    });
+    expect(process.env.GH_TOKEN).toBe('already-set');
+    expect(process.env.GITHUB_TOKEN).toBe('github-from-shell');
+    expect(process.env.GITLAB_TOKEN).toBe('gitlab-from-shell');
+    expect(imported).toEqual(['GITHUB_TOKEN', 'GITLAB_TOKEN']);
+  });
+
+  it('resolveEnv imports tokens from a fake login shell', async () => {
+    clearTokens();
+    const dir = tempDir('foundry-shell-token-');
+    const shell = join(dir, 'login-shell');
+    writeFileSync(
+      shell,
+      [
+        '#!/bin/sh',
+        "printf '%s' '__FOUNDRY_PATH_BEGIN__/usr/bin:/bin__FOUNDRY_PATH_END__'",
+        "printf '%s' '__FOUNDRY_ENV_BEGIN__GH_TOKEN=ghs_login_shell__FOUNDRY_ENV_END__'",
+        "printf '%s' '__FOUNDRY_ENV_BEGIN__GITLAB_TOKEN=glpat_login_shell__FOUNDRY_ENV_END__'",
+        '',
+      ].join('\n'),
+    );
+    chmodSync(shell, 0o755);
+    process.env.SHELL = shell;
+    process.env.PATH = '/usr/bin:/bin';
+
+    const env = await resolveEnv();
+
+    expect(env.via).toBe('login-shell');
+    expect(process.env.GH_TOKEN).toBe('ghs_login_shell');
+    expect(process.env.GITLAB_TOKEN).toBe('glpat_login_shell');
+    expect(env.importedTokenVars).toEqual(expect.arrayContaining(['GH_TOKEN', 'GITLAB_TOKEN']));
+    expect(spawnEnv().GH_TOKEN).toBe('ghs_login_shell');
   });
 });

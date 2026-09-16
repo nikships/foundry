@@ -29,6 +29,15 @@ export interface FakeGlabConfig {
   mrList?: unknown[];
   mergeError?: string;
   username?: string;
+  /** `glab api groups…` answer (full_path strings). */
+  groups?: string[];
+  /** `glab repo create` fails with this message when set. */
+  repoCreateError?: string;
+  /**
+   * `glab repo create --readme` exits 0 but leaves no directory, which is what a
+   * created project whose clone step failed looks like from the outside.
+   */
+  cloneSilentlyFails?: boolean;
 }
 
 const SCRIPT = String.raw`#!/usr/bin/env node
@@ -50,9 +59,34 @@ if (args[0] === 'auth' && args[1] === 'status') {
   process.stdout.write('Logged in to gitlab.com\n');
   process.exit(0);
 }
+if (args[0] === 'api' && typeof args[1] === 'string' && args[1].startsWith('groups')) {
+  process.stdout.write(JSON.stringify((cfg.groups ?? []).map((full_path) => ({ full_path, path: full_path }))) + '\n');
+  process.exit(0);
+}
 if (args[0] === 'api' && args[1] === 'user') {
   if (!cfg.username) die('401 Unauthorized');
   process.stdout.write(JSON.stringify({ username: cfg.username }) + '\n');
+  process.exit(0);
+}
+if (args[0] === 'repo' && args[1] === 'create') {
+  if (cfg.repoCreateError) die(cfg.repoCreateError);
+  const target = args[2];
+  const name = target.includes('/') ? target.split('/').pop() : target;
+  // --readme initializes README and clones so Foundry gets a commit/HEAD.
+  if (args.includes('--readme') && !cfg.cloneSilentlyFails) {
+    const dest = path.join(process.cwd(), name);
+    const { execFileSync } = require('node:child_process');
+    const run = (argv) => execFileSync(argv[0], argv.slice(1), { cwd: dest, stdio: 'ignore' });
+    fs.mkdirSync(dest, { recursive: true });
+    execFileSync('git', ['init', '-q', '-b', 'main', dest], { stdio: 'ignore' });
+    run(['git', 'config', 'user.email', 'test@foundry.local']);
+    run(['git', 'config', 'user.name', 'Foundry Test']);
+    fs.writeFileSync(path.join(dest, 'README.md'), '# ' + name + '\n');
+    run(['git', 'add', '-A']);
+    run(['git', 'commit', '-qm', 'Initial commit']);
+  }
+  const ns = target.includes('/') ? target : 'me/' + target;
+  process.stdout.write('https://gitlab.com/' + ns + '\n');
   process.exit(0);
 }
 if (args[0] === 'repo' && args[1] === 'view') {

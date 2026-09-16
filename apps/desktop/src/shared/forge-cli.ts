@@ -1,12 +1,19 @@
 /**
- * Shared forge CLI copy and the app-level host preference. Backend status
- * already carries `cli: 'gh' | 'glab'`; the renderer should not fork strings
- * ad hoc.
+ * Shared forge CLI copy and the app-level source control provider preference.
+ * Backend status already carries `cli: 'gh' | 'glab'`; the renderer should not
+ * fork strings ad hoc.
+ *
+ * The preference covers creating repositories, PRs/MRs, settle, and compose —
+ * not only the pull-request host.
  */
 
 export type ForgeCliName = 'gh' | 'glab';
 
-/** Which forge CLI Foundry uses for PRs/MRs. `auto` classifies from the project git remote. */
+/**
+ * Which forge CLI Foundry uses for source control. `auto` classifies from the
+ * project git remote for existing projects; new project create defaults to
+ * GitHub when Auto is selected.
+ */
 export type ForgeProviderPreference = 'auto' | 'github' | 'gitlab';
 export const FORGE_PROVIDER_SETTINGS = ['auto', 'github', 'gitlab'] as unknown as readonly [
   ForgeProviderPreference,
@@ -39,7 +46,7 @@ export function forgeCliNotReadyBody(input: {
     return detail;
   }
   const other = input.cli === 'glab' ? 'GitHub' : 'GitLab';
-  const hint = `Auto picked this host from the git remote. If this should be ${other}, set Forge in Settings → Integrations.`;
+  const hint = `Auto picked this host from the git remote. If this should be ${other}, set the source control provider in Settings → Integrations.`;
   return detail ? `${detail} ${hint}` : hint;
 }
 
