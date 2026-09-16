@@ -1237,6 +1237,7 @@ export default function SettingsScreen({
                           title="Environment checks"
                           onRecheck={() => void api.doctor.run().then(setChecks)}
                           onOpenSettings={(next) => setPaneLive(normalizePane(next))}
+                          collapsible
                         />
                       </Section>
                     </>

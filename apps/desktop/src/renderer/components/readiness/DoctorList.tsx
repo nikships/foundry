@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { DoctorCheck } from '@shared/types.js';
 import { api } from '../../api.js';
 import { Button } from '../ui/Button.js';
@@ -64,6 +64,7 @@ export default function DoctorList({
   hideHeader = false,
   animate = true,
   checking = false,
+  collapsible = false,
 }: {
   checks: DoctorCheck[];
   onRecheck: () => void;
@@ -76,7 +77,29 @@ export default function DoctorList({
   animate?: boolean;
   /** Whether a recheck is currently in progress. */
   checking?: boolean;
+  /** Whether checks are collapsible. When true, all checks default to collapsed. */
+  collapsible?: boolean;
 }): React.JSX.Element {
+  const [expandedChecks, setExpandedChecks] = useState<Record<string, boolean>>({});
+
+  const toggleCheck = (id: string): void => {
+    setExpandedChecks((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const anyExpanded = checks.some((c) => expandedChecks[c.id]);
+
+  const toggleAll = (): void => {
+    if (anyExpanded) {
+      setExpandedChecks({});
+    } else {
+      const all: Record<string, boolean> = {};
+      for (const check of checks) {
+        all[check.id] = true;
+      }
+      setExpandedChecks(all);
+    }
+  };
+
   const openFix = (fix: NonNullable<DoctorCheck['fix']>): void => {
     if (fix.kind === 'open-url') {
       void api.app.openExternal(fix.value);
@@ -93,15 +116,68 @@ export default function DoctorList({
       {!hideHeader && (
         <div className={`spread ${styles.head}`}>
           <h3>{title}</h3>
-          <Button variant="ghost" size="sm" onClick={onRecheck} disabled={checking}>
-            Re-check
-          </Button>
+          <div className={styles.headActions}>
+            {collapsible && checks.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={toggleAll}>
+                {anyExpanded ? 'Collapse all' : 'Expand all'}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onRecheck} disabled={checking}>
+              Re-check
+            </Button>
+          </div>
         </div>
       )}
       <ul>
         {checks.map((check, idx) => {
           const fix = check.ok ? undefined : check.fix;
           const showFix = fix && (fix.kind === 'open-url' || Boolean(onOpenSettings));
+          const isOpen = Boolean(expandedChecks[check.id]);
+
+          if (collapsible) {
+            return (
+              <li
+                key={check.id}
+                className={cx(styles.collapsibleItem, check.ok ? '' : styles.bad)}
+                data-testid={`doctor-check-${check.id}`}
+              >
+                <button
+                  type="button"
+                  className={styles.checkHeadButton}
+                  aria-expanded={isOpen}
+                  aria-controls={`doctor-check-detail-${check.id}`}
+                  onClick={() => toggleCheck(check.id)}
+                >
+                  <DoctorCheckbox ok={check.ok} index={idx} animate={animate} checking={checking} />
+                  <strong className={styles.checkLabel}>{check.label}</strong>
+                  <span
+                    className={cx(styles.chevron, isOpen && styles.chevronOpen)}
+                    aria-hidden="true"
+                  >
+                    ▾
+                  </span>
+                </button>
+                <div
+                  id={`doctor-check-detail-${check.id}`}
+                  className={cx(styles.collapse, isOpen && styles.collapseOpen)}
+                >
+                  <div className={styles.collapseInner}>
+                    <div className={styles.collapseBody}>
+                      <em className="faint">{check.detail}</em>
+                      {showFix && (
+                        <div className={styles.fixAction}>
+                          <Button size="sm" onClick={() => openFix(fix)}>
+                            {fix.kind === 'open-url' ? 'Open docs' : 'Fix'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </li>
+            );
+          }
+
           return (
             <li
               key={check.id}
