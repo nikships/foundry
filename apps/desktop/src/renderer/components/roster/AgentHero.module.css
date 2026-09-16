@@ -1,22 +1,26 @@
-/* The roster hero: an open masthead, not a card. Portrait left, identity
-   right, separated from the sections below by the first section's hairline.
+/* Roster banner masthead: compact mark | name+meta+purpose | actions column.
+   Open masthead — no card border, panel fill, or chrome (builds on #411).
    Hue arrives as --hue from the agent's accent; everything colored hangs
    off it. */
 
 .hero {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: var(--s8);
+  row-gap: var(--s3);
   align-items: center;
-  gap: var(--s10);
   margin-top: var(--s8);
   padding: var(--s2) var(--s2) var(--s9);
 }
 
 .portrait {
   position: relative;
-  flex: none;
-  width: 148px;
-  height: 148px;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 104px;
+  height: 104px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -26,8 +30,8 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 220px;
-  height: 220px;
+  width: 160px;
+  height: 160px;
   border-radius: var(--r-full);
   pointer-events: none;
   animation: hero-breath 4.5s ease-in-out infinite;
@@ -47,21 +51,30 @@
 
 .portraitBubble {
   position: absolute;
-  right: 2px;
-  bottom: 2px;
+  right: 0;
+  bottom: 0;
 }
 
-.body {
+.main {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   min-width: 0;
-  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: var(--s3);
+  align-self: center;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
 }
 
 .name {
   font-family: var(--font-mono);
-  font-size: 52px;
+  font-size: 40px;
   font-weight: 400;
   line-height: 1;
   letter-spacing: -0.01em;
@@ -69,11 +82,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin: 0;
 }
 
 .meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 9px;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -102,22 +117,27 @@
 }
 
 .purpose {
-  max-width: 58ch;
+  margin: 0;
   font-size: var(--text-sm);
   line-height: var(--leading-loose);
   color: var(--text-dim);
 }
 
 .actions {
+  grid-column: 3;
+  grid-row: 1 / span 2;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding-top: var(--s1);
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  align-self: stretch;
 }
 
 .action {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   height: 32px;
   padding: 0 var(--s3);
   border: 1px solid var(--line-strong);
@@ -150,12 +170,33 @@
 
 @media (max-width: 900px) {
   .hero {
-    flex-direction: column;
-    align-items: flex-start;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    align-items: start;
     gap: var(--s6);
   }
+
+  .portrait,
+  .main,
+  .actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .portrait {
+    width: 96px;
+    height: 96px;
+  }
+
   .name {
     font-size: var(--text-3xl);
+  }
+
+  .actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
   }
 }
 

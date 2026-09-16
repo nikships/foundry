@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="320" viewBox="0 0 1100 320">
+  <rect width="1100" height="320" fill="#08090b"/>
+  <rect x="40" y="30" width="1020" height="260" rx="12" fill="#0e0f12" stroke="#1c1f26"/>
+  <text x="60" y="58" fill="#6b7382" font-family="ui-monospace, Menlo, monospace" font-size="11" letter-spacing="1.2">ROSTER · SELECTED AGENT · CONCEPT B BANNER (NO CARD CHROME)</text>
+  <defs>
+    <radialGradient id="g" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#7c6cff" stop-opacity="0.28"/><stop offset="100%" stop-color="#7c6cff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <circle cx="120" cy="155" r="80" fill="url(#g)"/>
+  <rect x="68" y="103" width="104" height="104" rx="22" fill="#1a1830" stroke="#8a7cff" stroke-width="2"/>
+  <text x="102" y="168" fill="#eceef2" font-family="ui-monospace, Menlo, monospace" font-size="38">R</text>
+  <circle cx="164" cy="199" r="14" fill="#111" stroke="#0e0f12" stroke-width="2"/>
+  <text x="158" y="203" fill="#eceef2" font-size="12">✦</text>
+  <text x="200" y="132" fill="#eceef2" font-family="ui-monospace, Menlo, monospace" font-size="40">reviewer</text>
+  <text x="200" y="164" fill="#9aa3b2" font-family="ui-monospace, Menlo, monospace" font-size="12" letter-spacing="1">CLAUDE-OPUS-4.6  ·  RETURNS REVIEW</text>
+  <text x="200" y="198" fill="#9aa3b2" font-family="Inter, system-ui, sans-serif" font-size="14">Reads the diff and leaves a structured review. Catches regressions, missing tests,</text>
+  <text x="200" y="218" fill="#9aa3b2" font-family="Inter, system-ui, sans-serif" font-size="14">and API breaks before merge. Purpose uses the full middle column instead of a 58ch cap.</text>
+  <rect x="880" y="110" width="150" height="32" rx="6" fill="none" stroke="#3a404c"/>
+  <text x="905" y="130" fill="#9aa3b2" font-family="ui-monospace, Menlo, monospace" font-size="10" letter-spacing="1">PREVIEW PROMPT</text>
+  <rect x="880" y="150" width="150" height="32" rx="6" fill="none" stroke="#3a404c"/>
+  <text x="922" y="170" fill="#9aa3b2" font-family="ui-monospace, Menlo, monospace" font-size="10" letter-spacing="1">DUPLICATE</text>
+  <rect x="880" y="190" width="150" height="32" rx="6" fill="none" stroke="#3a404c"/>
+  <text x="935" y="210" fill="#d88a94" font-family="ui-monospace, Menlo, monospace" font-size="10" letter-spacing="1">DELETE</text>
+  <line x1="60" y1="260" x2="1040" y2="260" stroke="#2a2e37"/>
+  <text x="60" y="282" fill="#6b7382" font-family="ui-monospace, Menlo, monospace" font-size="11" letter-spacing="1.2">PROMPT · MODEL · TOOLS · …</text>
+</svg>
