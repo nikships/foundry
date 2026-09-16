@@ -1,18 +1,23 @@
 /**
- * Readiness derivation for the Runs banner.
+ * Readiness derivation for the Runs screen.
  *
- * The banner and the readiness modal read different things: the modal renders
- * the live session, the banner renders `readiness:inspect` (the marker as
- * committed on the project's base ref). They only agree if the banner
+ * The tab and the readiness panel read different things: the panel renders
+ * the live session, the tab glow renders `readiness:inspect` (the marker as
+ * committed on the project's base ref). They only agree if the panel
  * re-inspects when a session reaches a terminal phase, so the rules for "is
- * this session still moving" and "what should the banner say" live here, where
+ * this session still moving" and "what should the tab show" live here, where
  * they can be tested without a DOM.
  */
 
-import type { ReadinessInspectResult, ReadinessPhase, ReadinessState } from '@shared/types.js';
+import type {
+  ReadinessCriterion,
+  ReadinessInspectResult,
+  ReadinessPhase,
+  ReadinessState,
+} from '@shared/types.js';
 
 /**
- * In-flight work. `ReadinessFlow` and the Runs banner share this set.
+ * In-flight work. `ReadinessPanel` and the Runs tab share this set.
  * `pr_ready` and `awaiting_merge` wait on the operator to merge, not on work
  * in flight — calling those "checking" would claim progress for unbounded
  * wall-clock time while hiding the button that starts a check.
@@ -33,12 +38,12 @@ export function isReadinessNeedsContinue(phase: ReadinessPhase): boolean {
   return phase === 'needs_continue';
 }
 
-/** A session that has not settled yet, so the banner shows progress not a verdict. */
+/** A session that has not settled yet, so the tab shows progress not a verdict. */
 export function isReadinessLive(phase: ReadinessPhase): boolean {
   return LIVE_PHASES.has(phase);
 }
 
-/** A settled session: the banner must re-inspect rather than trust its old answer. */
+/** A settled session: the tab must re-inspect rather than trust its old answer. */
 export function isReadinessTerminal(phase: ReadinessPhase): boolean {
   return TERMINAL_PHASES.has(phase);
 }
@@ -64,19 +69,22 @@ export function readinessExitAction(phase: ReadinessPhase): ReadinessExitAction 
  * confirmed. A session can also end `failed` because the operator cancelled or
  * the remediating agent gave up; neither says anything about the repository, and
  * `cancel()` sets the detail to the bare word "cancelled", which would otherwise
- * become the banner's entire message.
+ * become the panel's entire message.
  */
 const VALIDATION_PHASES = new Set<ReadinessPhase>(['verifying', 'finalizing']);
 
-/** The banner note for a settled session, or '' when it has nothing to add. */
+/** The tab note for a settled session, or '' when it has nothing to add. */
 export function readinessFailureNote(state: ReadinessState): string {
   if (state.phase === 'needs_continue') return state.detail;
   const explains = state.failedPhase != null && VALIDATION_PHASES.has(state.failedPhase);
   return state.phase === 'failed' && explains ? state.detail : '';
 }
 
-export interface ReadinessBanner {
-  tone: 'ready' | 'warn';
+export interface ReadinessTab {
+  /** True once the marker is valid on the base ref: no glow needed. */
+  ready: boolean;
+  /** True while a check is running: re-triggering it would be noise. */
+  checking: boolean;
   message: string;
   /** Null while a check is running: re-triggering it would be noise. */
   action: string | null;
@@ -84,40 +92,83 @@ export interface ReadinessBanner {
 
 export const READINESS_CHECKING_MESSAGE = 'Checking whether this repository is agent-ready…';
 
-const NOT_READY_MESSAGE =
+export const READINESS_NOT_READY_MESSAGE =
   'This project is not agent-ready. Pipeline runs may fail mid-flight until the checklist is green.';
 
 /**
  * `note` carries the failure detail from a terminal `failed` session so the
- * banner can say why validation could not be confirmed rather than repeating
+ * tab can say why validation could not be confirmed rather than repeating
  * the generic not-ready copy.
  */
-export function readinessBanner(
+export function readinessTab(
   inspect: ReadinessInspectResult,
   opts: { checking?: boolean; note?: string } = {},
-): ReadinessBanner {
+): ReadinessTab {
   if (opts.checking) {
-    return { tone: 'warn', message: READINESS_CHECKING_MESSAGE, action: null };
+    return {
+      ready: false,
+      checking: true,
+      message: READINESS_CHECKING_MESSAGE,
+      action: null,
+    };
   }
   if (inspect.ready) {
     return {
-      tone: 'ready',
+      ready: true,
+      checking: false,
       message: inspect.marker?.summary || 'This project is agent-ready.',
       action: null,
     };
   }
   return {
-    tone: 'warn',
-    message: opts.note?.trim() || NOT_READY_MESSAGE,
+    ready: false,
+    checking: false,
+    message: opts.note?.trim() || READINESS_NOT_READY_MESSAGE,
     action: inspect.skipped ? 'Re-run readiness' : 'Check readiness',
   };
 }
 
 /**
- * The Runs banner is exception-only. A green "this project is agent-ready"
- * line states the normal case on every visit and pushes the composer down, so
- * only a verdict the operator has to act on is worth the space.
+ * The Runs tab glows red only for a verdict the operator has to act on.
+ * A ready project is the normal case and earns no glow; an in-flight check
+ * is progress, not a problem.
  */
-export function showReadinessOnRuns(banner: ReadinessBanner): boolean {
-  return banner.tone !== 'ready';
+export function showReadinessAlert(tab: ReadinessTab): boolean {
+  return !tab.ready && !tab.checking;
+}
+
+/** Human label for each checklist criterion id, falling back to the raw id. */
+export const READINESS_CRITERION_LABELS: Record<string, string> = {
+  lint_format: 'Lint & format',
+  typecheck: 'Typecheck',
+  tests: 'Tests',
+  build: 'Build',
+  setup: 'Setup',
+  agents_md: 'AGENTS.md',
+  env_example: 'Env example',
+  ci_parity: 'CI parity',
+  templates: 'Templates',
+  precommit: 'Pre-commit',
+  coverage: 'Coverage',
+};
+
+export interface ReadinessScore {
+  pass: number;
+  fail: number;
+  total: number;
+  /** Null until a session or marker produces a checklist to count. */
+  percent: number | null;
+}
+
+/** Counts pass and N/A as green: N/A is a recorded adaptation, not a gap. */
+export function readinessScore(criteria: ReadonlyArray<ReadinessCriterion>): ReadinessScore {
+  const pass = criteria.filter((c) => c.status === 'pass' || c.status === 'n/a').length;
+  const fail = criteria.filter((c) => c.status === 'fail').length;
+  const total = criteria.length;
+  return {
+    pass,
+    fail,
+    total,
+    percent: total === 0 ? null : Math.round((pass / total) * 100),
+  };
 }

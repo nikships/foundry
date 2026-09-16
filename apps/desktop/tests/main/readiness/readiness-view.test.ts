@@ -11,10 +11,11 @@ import {
   isReadinessLive,
   isReadinessNeedsContinue,
   isReadinessTerminal,
-  readinessBanner,
   readinessExitAction,
   readinessFailureNote,
-  showReadinessOnRuns,
+  readinessScore,
+  readinessTab,
+  showReadinessAlert,
 } from '@renderer/view-models/readiness-view.js';
 
 function marker(summary: string): AgentReadyMarker {
@@ -215,67 +216,85 @@ describe('readinessFailureNote', () => {
   });
 });
 
-describe('readinessBanner', () => {
+describe('readinessTab', () => {
   it('shows the marker summary and offers no action when ready', () => {
-    const banner = readinessBanner(
+    const tab = readinessTab(
       inspect({ ready: true, markerValid: true, marker: marker('Swift package is ready.') }),
     );
-    expect(banner.tone).toBe('ready');
-    expect(banner.message).toBe('Swift package is ready.');
-    expect(banner.action).toBeNull();
+    expect(tab.ready).toBe(true);
+    expect(tab.checking).toBe(false);
+    expect(tab.message).toBe('Swift package is ready.');
+    expect(tab.action).toBeNull();
   });
 
   it('falls back to generic ready copy when the marker has no summary', () => {
     const bare = { ...marker('x'), summary: '' } as AgentReadyMarker;
-    const banner = readinessBanner(inspect({ ready: true, markerValid: true, marker: bare }));
-    expect(banner.message).toBe('This project is agent-ready.');
+    const tab = readinessTab(inspect({ ready: true, markerValid: true, marker: bare }));
+    expect(tab.message).toBe('This project is agent-ready.');
   });
 
   it('offers Check readiness when not ready', () => {
-    const banner = readinessBanner(inspect());
-    expect(banner.tone).toBe('warn');
-    expect(banner.action).toBe('Check readiness');
-    expect(banner.message).toMatch(/not agent-ready/);
+    const tab = readinessTab(inspect());
+    expect(tab.ready).toBe(false);
+    expect(tab.checking).toBe(false);
+    expect(tab.action).toBe('Check readiness');
+    expect(tab.message).toMatch(/not agent-ready/);
   });
 
   it('offers Re-run readiness once the project was skipped', () => {
-    expect(readinessBanner(inspect({ skipped: true })).action).toBe('Re-run readiness');
+    expect(readinessTab(inspect({ skipped: true })).action).toBe('Re-run readiness');
   });
 
   it('holds a checking state that outranks a stale ready verdict', () => {
-    const banner = readinessBanner(
+    const tab = readinessTab(
       inspect({ ready: true, markerValid: true, marker: marker('Ready.') }),
       { checking: true },
     );
-    expect(banner.message).toBe(READINESS_CHECKING_MESSAGE);
-    expect(banner.tone).toBe('warn');
-    expect(banner.action).toBeNull();
+    expect(tab.message).toBe(READINESS_CHECKING_MESSAGE);
+    expect(tab.ready).toBe(false);
+    expect(tab.checking).toBe(true);
+    expect(tab.action).toBeNull();
   });
 
   it('surfaces the failure detail from a failed session instead of generic copy', () => {
-    const banner = readinessBanner(inspect(), {
+    const tab = readinessTab(inspect(), {
       note: '.agents/agent-ready.json is not committed on main',
     });
-    expect(banner.message).toBe('.agents/agent-ready.json is not committed on main');
-    expect(banner.action).toBe('Check readiness');
+    expect(tab.message).toBe('.agents/agent-ready.json is not committed on main');
+    expect(tab.action).toBe('Check readiness');
   });
 
   it('ignores a blank note', () => {
-    expect(readinessBanner(inspect(), { note: '   ' }).message).toMatch(/not agent-ready/);
+    expect(readinessTab(inspect(), { note: '   ' }).message).toMatch(/not agent-ready/);
   });
 });
 
-describe('showReadinessOnRuns', () => {
-  it('hides a ready project', () => {
+describe('showReadinessAlert', () => {
+  it('stays quiet for a ready project', () => {
     expect(
-      showReadinessOnRuns(
-        readinessBanner(inspect({ ready: true, markerValid: true, marker: marker('Ready.') })),
+      showReadinessAlert(
+        readinessTab(inspect({ ready: true, markerValid: true, marker: marker('Ready.') })),
       ),
     ).toBe(false);
   });
 
-  it('shows a not-ready verdict and an in-flight check', () => {
-    expect(showReadinessOnRuns(readinessBanner(inspect()))).toBe(true);
-    expect(showReadinessOnRuns(readinessBanner(inspect(), { checking: true }))).toBe(true);
+  it('alerts on a not-ready verdict but not on an in-flight check', () => {
+    expect(showReadinessAlert(readinessTab(inspect()))).toBe(true);
+    expect(showReadinessAlert(readinessTab(inspect(), { checking: true }))).toBe(false);
+  });
+});
+
+describe('readinessScore', () => {
+  it('counts pass and N/A as green and reports a percent', () => {
+    const score = readinessScore([
+      { id: 'tests', status: 'pass', notes: 'ok' },
+      { id: 'build', status: 'n/a', notes: 'no build step' },
+      { id: 'lint_format', status: 'fail', notes: 'no linter' },
+    ]);
+    expect(score).toEqual({ pass: 2, fail: 1, total: 3, percent: 67 });
+  });
+
+  it('reports a null percent until a checklist exists', () => {
+    expect(readinessScore([])).toEqual({ pass: 0, fail: 0, total: 0, percent: null });
   });
 });
