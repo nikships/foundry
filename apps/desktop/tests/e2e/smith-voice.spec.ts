@@ -181,13 +181,14 @@ test('voice: captions, playback, mute, navigation, interruption, disconnect and 
   }
 });
 
-test('voice: tool calls, missed-call nudge, cancellation, and caption spacing', async () => {
+test('voice: tool calls, missed-call recovery, cancellation, and caption spacing', async () => {
   const { app, window } = await launchFoundry(seedOnboardedFixture().userDataDir);
   try {
     await expect(window.getByTestId('run-composer')).toBeVisible();
     await app.evaluate(({ ipcMain }) => {
-      const target = globalThis as unknown as { voiceCancelCount: number };
+      const target = globalThis as unknown as { voiceCancelCount: number; voiceSendCount: number };
       target.voiceCancelCount = 0;
+      target.voiceSendCount = 0;
       ipcMain.removeHandler('gemini-live:mintToken');
       ipcMain.handle('gemini-live:mintToken', () => ({
         token: 'test-token',
@@ -195,16 +196,19 @@ test('voice: tool calls, missed-call nudge, cancellation, and caption spacing', 
         systemInstruction: 'Test voice.',
       }));
       ipcMain.removeHandler('smith:send');
-      ipcMain.handle('smith:send', (_event, _projectId: unknown, text: string) => ({
-        model: 'inherit',
-        activeModel: 'inherit',
-        reasoningEffort: 'medium',
-        activeReasoningEffort: 'medium',
-        permissionMode: 'ask',
-        running: true,
-        error: null,
-        transcript: [{ id: 't1', kind: 'text', source: 'operator', text, at: 0 }],
-      }));
+      ipcMain.handle('smith:send', (_event, _projectId: unknown, text: string) => {
+        target.voiceSendCount += 1;
+        return {
+          model: 'inherit',
+          activeModel: 'inherit',
+          reasoningEffort: 'medium',
+          activeReasoningEffort: 'medium',
+          permissionMode: 'ask',
+          running: true,
+          error: null,
+          transcript: [{ id: 't1', kind: 'text', source: 'operator', text, at: 0 }],
+        };
+      });
       ipcMain.removeHandler('smith:cancel');
       ipcMain.handle('smith:cancel', () => {
         target.voiceCancelCount += 1;
@@ -219,19 +223,23 @@ test('voice: tool calls, missed-call nudge, cancellation, and caption spacing', 
     await window.getByTestId('smith-voice-start').click();
     await expect(window.getByTestId('smith-voice-status')).toHaveText('I’m listening');
 
-    // A turn that ends on a spoken promise with no tool call earns one text
-    // nudge to make the smith_work call late.
+    // Extended Thinking: a filler's turnComplete with IN_PROGRESS is not a
+    // missed call — the tool call is still coming. Do not dispatch or nudge.
+    await emit(window, { inputTranscription: { text: 'check my runs' } });
     await emit(window, {
       outputTranscription: { text: 'Let me check on that.' },
       turnComplete: true,
+      interactionStatus: 'IN_PROGRESS',
     });
-    await expect
-      .poll(async () =>
-        (await sentMessages(window)).some((message) =>
-          message.includes('no tool call went through'),
-        ),
-      )
-      .toBe(true);
+    await window.waitForTimeout(1500);
+    expect(
+      await app.evaluate(
+        () => (globalThis as unknown as { voiceSendCount: number }).voiceSendCount,
+      ),
+    ).toBe(0);
+    expect(
+      (await sentMessages(window)).some((message) => message.includes('no tool call went through')),
+    ).toBe(false);
 
     // A smith_work call dispatches the send and answers SILENT so the model
     // never repeats the acknowledgment for the receipt.
@@ -250,6 +258,11 @@ test('voice: tool calls, missed-call nudge, cancellation, and caption spacing', 
     );
     expect(workResponse).toContain('"scheduling":"SILENT"');
     expect(workResponse).toContain('"started":true');
+    await expect
+      .poll(async () =>
+        app.evaluate(() => (globalThis as unknown as { voiceSendCount: number }).voiceSendCount),
+      )
+      .toBe(1);
 
     // A second overlapping work call is refused while the first still runs.
     await emitRaw(window, {
@@ -282,6 +295,21 @@ test('voice: tool calls, missed-call nudge, cancellation, and caption spacing', 
         ),
       )
       .toBe(1);
+
+    // After the cancelled turn, a filler that goes IDLE with no tool call is
+    // recovered by sending smith_work from the operator utterance.
+    await emit(window, { inputTranscription: { text: 'what is running' } });
+    await emit(window, {
+      outputTranscription: { text: "I'm looking something up." },
+      turnComplete: true,
+      interactionStatus: 'IN_PROGRESS',
+    });
+    await emitRaw(window, { interactionStatus: 'IDLE' });
+    await expect
+      .poll(async () =>
+        app.evaluate(() => (globalThis as unknown as { voiceSendCount: number }).voiceSendCount),
+      )
+      .toBe(2);
 
     // Sentence-boundary chunks join with the space the wire leaves out.
     await emit(window, { outputTranscription: { text: 'First sentence.' } });

@@ -11,7 +11,7 @@
 import type { SmithChatState } from '@shared/ipc-contract.js';
 import type { SmithProposal } from '@shared/types.js';
 
-import { FunctionResponseScheduling, Type } from '@google/genai';
+import { Behavior, FunctionResponseScheduling, InteractionStatus, Type } from '@google/genai';
 import type { FunctionDeclaration } from '@google/genai';
 
 /** Chars that hug the text before them — a chunk starting with one joins flush. */
@@ -50,16 +50,18 @@ export const VOICE_TOOL_NAMES = {
  * JSON-schema function declarations for the live session, in the shape
  * `@google/genai`'s `tools` config expects.
  *
- * `gemini-3.8-live-extended-thinking` supports async function calling only
- * (`NON_BLOCKING`); setting `BLOCKING` hard-errors. Leave `behavior` unset so
- * the default async path applies. `smith_work` still returns a short "working"
- * payload immediately; the long Smith turn settles later over `smith-progress`
- * and is injected back into the live session.
+ * `gemini-3.8-live-extended-thinking` supports async function calling only.
+ * Every declaration must set `behavior: NON_BLOCKING`; `BLOCKING` hard-errors
+ * and leaving it unset lets the model speak a filler without ever emitting
+ * the call. `smith_work` still returns a short "working" payload immediately;
+ * the long Smith turn settles later over `smith-progress` and is injected
+ * back into the live session.
  */
 export function voiceToolDeclarations(): FunctionDeclaration[] {
   return [
     {
       name: VOICE_TOOL_NAMES.work,
+      behavior: Behavior.NON_BLOCKING,
       description:
         'Continue your work as Smith using the operator-selected model. Use for anything that reads or changes Foundry: runs, pipelines, agents, projects, files, settings, run-plan composition prompts, assigned Linear tickets and their status, saved pipeline runs, project context refreshes, the Live Voice key state, or questions about app state. Begins the work and returns a working status; wait for the completion result before stating an outcome. When the result names a Smith run plan ID, narrate the ID and offer to check its status. Never speak a secret aloud: a proposal that needs a key is completed in the masked card in the app.',
       parameters: {
@@ -76,6 +78,7 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
     },
     {
       name: VOICE_TOOL_NAMES.cancel,
+      behavior: Behavior.NON_BLOCKING,
       description: 'Stop the Smith turn that is currently running, if any.',
       parameters: {
         type: Type.OBJECT,
@@ -84,6 +87,7 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
     },
     {
       name: VOICE_TOOL_NAMES.proposalRead,
+      behavior: Behavior.NON_BLOCKING,
       description:
         'Read the one proposal card waiting for the operator, if any. Call when the operator asks what is pending or wants to decide by voice.',
       parameters: {
@@ -93,6 +97,7 @@ export function voiceToolDeclarations(): FunctionDeclaration[] {
     },
     {
       name: VOICE_TOOL_NAMES.proposalAnswer,
+      behavior: Behavior.NON_BLOCKING,
       description:
         'Approve or reject the proposal you just read with smith_proposal_read. Read it aloud first, then wait for the operator to explicitly approve or reject that proposal. Never answer a different or unread proposal.',
       parameters: {
@@ -220,29 +225,68 @@ export function settledWorkPrompt(result: string): string {
 }
 
 /**
- * A spoken phrase that tells the operator a check is coming. When a turn ends
- * on one of these without any tool call, the model announced work it never
- * started — the classic missed-call failure the nudge exists to recover.
+ * A spoken phrase that tells the operator a check is coming. When an
+ * interaction goes idle on one of these without any tool call, the model
+ * announced work it never started — recover by sending `smith_work` ourselves
+ * from the operator's last utterance rather than nudging the model (a text
+ * nudge interrupts Extended Thinking mid-tool-call).
  */
 const WORK_COMING =
-  /\b(?:let me|i['’]?ll|i will|i['’]?m (?:going to|gonna)|let['’]?s|one (?:moment|sec(?:ond)?)|hang on|bear with me|give me a (?:moment|sec(?:ond)?))\b[^.!?]{0,60}\b(?:check|look|see|find|pull|fetch|verif|review|inspect|dig|figure|confirm|think|ask|get|grab)\b|\bchecking (?:on|into|up on|the)\b/i;
+  /\b(?:let me|i['’]?ll|i will|i['’]?m (?:going to|gonna|looking|checking|running|searching|querying|pulling|fetching)|let['’]?s|one (?:moment|sec(?:ond)?)|hang on|bear with me|give me a (?:moment|sec(?:ond)?))\b[^.!?]{0,80}\b(?:check|look|see|find|pull|fetch|verif|review|inspect|dig|figure|confirm|think|ask|get|grab|quer(?:y|ies)|search|run)\b|\b(?:checking (?:on|into|up on|the)|looking (?:that|it|this|something) up|running a (?:query|check|search))\b/i;
 
 /** True when the model's spoken output promised a lookup or action. */
 export function soundsLikeWorkComing(output: string): boolean {
   return WORK_COMING.test(output);
 }
 
+export type VoiceInteractionStatus = 'IN_PROGRESS' | 'IDLE';
+
 /**
- * The text injected when a turn ends with a spoken promise but no tool call.
- * Scoped so small talk passes through — only a genuine Foundry request should
- * turn into a late `smith_work` call.
+ * Extended Thinking reports session lifecycle on `interactionStatus`, not
+ * `turnComplete`. `@google/genai` 2.17+ types the field on `LiveServerContent`;
+ * the wire can still put it on the message root, and older sessions send the
+ * deprecated `REQUIRES_ACTION` name for what is now `IDLE`.
  */
-export function missedWorkNudge(): string {
-  return [
-    'Internal reminder: you just told the operator you would check on something, but no tool call went through.',
-    'If the request needs Foundry state, call smith_work now with a faithful statement of the request.',
-    'If it was small talk or you already answered, continue naturally.',
-  ].join(' ');
+export function voiceInteractionStatus(message: {
+  interactionStatus?: string;
+  interaction_status?: string;
+  serverContent?: { interactionStatus?: string; interaction_status?: string };
+}): VoiceInteractionStatus | null {
+  const raw =
+    message.interactionStatus ??
+    message.interaction_status ??
+    message.serverContent?.interactionStatus ??
+    message.serverContent?.interaction_status;
+  if (raw === InteractionStatus.IN_PROGRESS) return 'IN_PROGRESS';
+  if (raw === InteractionStatus.IDLE || raw === InteractionStatus.REQUIRES_ACTION) return 'IDLE';
+  return null;
+}
+
+/** Per-turn bookkeeping the hook keeps for missed-call recovery. */
+export interface VoiceTurnWatch {
+  output: string;
+  sawToolCall: boolean;
+  armed: boolean;
+}
+
+/**
+ * True when the voice layer should start `smith_work` itself: the model
+ * promised a lookup, no function call arrived, and we still have the
+ * operator's request. Evaluated when the interaction is idle, not on
+ * `turnComplete` — that signal only ends a filler utterance.
+ */
+export function shouldRecoverMissedWork(
+  turn: VoiceTurnWatch,
+  operatorText: string,
+  delegated: boolean,
+): boolean {
+  return (
+    turn.armed &&
+    !turn.sawToolCall &&
+    !delegated &&
+    soundsLikeWorkComing(turn.output) &&
+    operatorText.trim().length > 0
+  );
 }
 
 /**

@@ -11,6 +11,7 @@ internal object SmithVoiceProtocol {
         buildJsonObject {
             put("name", name)
             put("description", description)
+            put("behavior", "NON_BLOCKING")
             putJsonObject("parameters") {
                 put("type", "OBJECT")
                 put("properties", properties)

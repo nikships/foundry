@@ -69,7 +69,8 @@ describe('GeminiLiveService', () => {
     const instruction = voiceSystemInstruction();
     expect(instruction).toContain('You are Smith');
     expect(instruction).toContain('one identity and one continuous first-person conversation');
-    expect(instruction).toContain('briefly say something natural');
+    expect(instruction).toContain('Emit the smith_work function call in the same generation');
+    expect(instruction).toContain('stay silent until the settled result arrives');
     expect(instruction).toContain('Never say you need to delegate, ask Smith, hand this off');
     expect(instruction).not.toContain('front-end over the real Smith');
     expect(instruction).not.toContain('You do not do the work yourself');

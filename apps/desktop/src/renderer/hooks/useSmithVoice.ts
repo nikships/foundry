@@ -12,19 +12,24 @@
  * response goes back `SILENT` so the model never re-acknowledges the receipt,
  * and the settled answer arrives later over `smith-progress`, gets folded into
  * a short text, and is injected back into the live session so the voice model
- * narrates it. A turn that ends on a spoken "let me check" with no tool call
- * gets one text nudge to call `smith_work` late; a tool call the server
- * retracts (`toolCallCancellation`, i.e. the operator barged in mid-call)
- * cancels the delegated turn it started. The socket carries session-resumption
- * handles so a dropped connection or a GoAway resumes in place once instead of
- * ending the session. Speaker voice comes from Settings (`smithLiveVoice`);
- * Random is resolved once per session start. Full user-level access (compose
- * prompts, assigned Linear work + status, saved pipeline runs, context
- * refresh, voice-key state) needs no new voice tool: the operator asks aloud,
- * the model calls `smith_work` with the same capability phrasing as the text
- * chips, and the one proposal queue confirms every privileged step. A proposal
- * that needs a secret is never approved by voice — the masked desktop card
- * owns the key.
+ * narrates it. Extended Thinking treats `turnComplete` as the end of a filler
+ * utterance, not the end of the interaction — tool calls arrive while
+ * `interactionStatus` is `IN_PROGRESS`. A spoken "let me check" that goes
+ * `IDLE` with no tool call is recovered by sending `smith_work` from the
+ * operator's last utterance, not by injecting a text nudge (that interrupt
+ * is what used to kill the pending call). A tool call the server retracts
+ * (`toolCallCancellation`, i.e. the operator barged in mid-call) cancels the
+ * delegated turn it started. Mic chunks are held while the speaker is playing
+ * so the model's own voice cannot barge in between a filler and its tool call.
+ * The socket carries session-resumption handles so a dropped connection or a
+ * GoAway resumes in place once instead of ending the session. Speaker voice
+ * comes from Settings (`smithLiveVoice`); Random is resolved once per session
+ * start. Full user-level access (compose prompts, assigned Linear work +
+ * status, saved pipeline runs, context refresh, voice-key state) needs no new
+ * voice tool: the operator asks aloud, the model calls `smith_work` with the
+ * same capability phrasing as the text chips, and the one proposal queue
+ * confirms every privileged step. A proposal that needs a secret is never
+ * approved by voice — the masked desktop card owns the key.
  *
  * All state is refs inside one `useRef` bundle plus `useState` only for what
  * the overlay renders, so reconnects and view changes never remount the
@@ -50,17 +55,18 @@ import {
   EMPTY_SETTLE_WATCH,
   foldSettleWatch,
   friendlyVoiceError,
-  missedWorkNudge,
   proposalSummary,
   settledAnswerText,
   settledWorkPrompt,
-  soundsLikeWorkComing,
+  shouldRecoverMissedWork,
+  voiceInteractionStatus,
   voiceSecretRefusal,
   VOICE_TOOL_NAMES,
   voiceToolDeclarations,
   voiceToolResponseScheduling,
   workDelegated,
   workStartedResult,
+  type VoiceTurnWatch,
 } from '../view-models/smith-voice-view.js';
 
 export type VoiceStatus = 'idle' | 'connecting' | 'live' | 'error';
@@ -102,18 +108,22 @@ type Session = {
 type ToolResult = { output?: Record<string, unknown>; error?: string };
 
 const MAX_TRANSCRIPT_CHARS = 200;
-/** Wait after a turn's spoken promise before reminding the model no call landed. */
-const MISSED_CALL_NUDGE_MS = 1200;
+/** Full operator utterance kept for a client-side `smith_work` recovery. */
+const MAX_OPERATOR_WORK_CHARS = 2000;
+/** After IDLE, wait this long for a straggler tool call before recovering. */
+const STRAGGLER_TOOL_CALL_MS = 400;
+/**
+ * If the server never sends `interactionStatus`, wait this long after a
+ * filler's `turnComplete` before treating the call as missed. Shorter than
+ * this interrupts Extended Thinking while the tool call is still in flight.
+ */
+const FALLBACK_RECOVERY_MS = 2500;
+/** Keep the mic gated this long after the last speaker chunk so a network
+ * gap between audio frames cannot leak echo into VAD. */
+const PLAYBACK_HOLD_MS = 250;
 
 function errorMessage(e: unknown): string {
   return friendlyVoiceError(e);
-}
-
-/** Per-turn bookkeeping for the missed-call nudge: model output so far, whether any tool call landed, and whether a nudge is still allowed. */
-interface VoiceTurnWatch {
-  output: string;
-  sawToolCall: boolean;
-  armed: boolean;
 }
 
 const FRESH_TURN_WATCH: VoiceTurnWatch = { output: '', sawToolCall: false, armed: true };
@@ -155,6 +165,13 @@ export function useSmithVoice(): {
   const readProposalRef = useRef<string | null>(null);
   const timeoutRef = useRef<number | undefined>(undefined);
   const nudgeTimerRef = useRef<number | undefined>(undefined);
+  const holdTimerRef = useRef<number | undefined>(undefined);
+  /** Drop mic chunks while the speaker is playing so echo cannot barge in. */
+  const playbackHoldRef = useRef(false);
+  /** Last operator utterance for a client-side smith_work recovery. */
+  const operatorWorkRef = useRef('');
+  /** Extended Thinking lifecycle; null until the server reports one. */
+  const interactionRef = useRef<'in_progress' | 'idle' | null>(null);
   /** Live call id → tool name, kept until the session ends so a late server retraction still resolves. */
   const inflightRef = useRef(new Map<string, string>());
   /** The tool call id that started the current delegated turn, so only its retraction cancels it. */
@@ -174,8 +191,12 @@ export function useSmithVoice(): {
     generationRef.current++;
     window.clearTimeout(timeoutRef.current);
     window.clearTimeout(nudgeTimerRef.current);
+    window.clearTimeout(holdTimerRef.current);
     aliveRef.current = false;
     mutedRef.current = false;
+    playbackHoldRef.current = false;
+    operatorWorkRef.current = '';
+    interactionRef.current = null;
     reconnectingRef.current = false;
     reconnectAttemptsRef.current = 0;
     reconnectRef.current = null;
@@ -365,33 +386,42 @@ export function useSmithVoice(): {
   );
 
   /**
-   * A model turn ended on a spoken "let me check" without a tool call. Give a
-   * straggler call one beat to land, then remind the model once — per fresh
-   * operator turn — so the promise becomes the `smith_work` call it described.
+   * The model promised a lookup and the interaction is idle with no tool call.
+   * Start `smith_work` from the operator's last utterance instead of injecting
+   * a text nudge — `sendRealtimeInput` interrupts Extended Thinking and is
+   * what used to strand the session on "I'm looking that up" with no query.
    */
-  const maybeNudgeMissedCall = useCallback((): void => {
-    const turn = turnRef.current;
-    const promised =
-      turn.armed &&
-      !turn.sawToolCall &&
-      !settleWatchRef.current.delegated &&
-      soundsLikeWorkComing(turn.output);
-    turn.output = '';
-    turn.sawToolCall = false;
-    if (!promised) return;
-    turn.armed = false;
-    const generation = generationRef.current;
-    window.clearTimeout(nudgeTimerRef.current);
-    nudgeTimerRef.current = window.setTimeout(() => {
-      if (generation !== generationRef.current || !aliveRef.current) return;
-      if (reconnectingRef.current || turnRef.current.sawToolCall) return;
-      if (settleWatchRef.current.delegated) return;
-      try {
-        sessionRef.current?.sendRealtimeInput({ text: missedWorkNudge() });
-      } catch {
-        // The socket is gone; there is nothing to nudge.
-      }
-    }, MISSED_CALL_NUDGE_MS);
+  const recoverMissedWork = useCallback((): void => {
+    const operatorText = operatorWorkRef.current.trim();
+    if (!shouldRecoverMissedWork(turnRef.current, operatorText, settleWatchRef.current.delegated))
+      return;
+    turnRef.current.armed = false;
+    void dispatchTool(VOICE_TOOL_NAMES.work, { text: operatorText }).catch(() => undefined);
+  }, [dispatchTool]);
+
+  const scheduleMissedWorkRecovery = useCallback(
+    (delayMs: number): void => {
+      window.clearTimeout(nudgeTimerRef.current);
+      const generation = generationRef.current;
+      nudgeTimerRef.current = window.setTimeout(() => {
+        if (generation !== generationRef.current || !aliveRef.current) return;
+        if (reconnectingRef.current || turnRef.current.sawToolCall) return;
+        if (settleWatchRef.current.delegated) return;
+        recoverMissedWork();
+      }, delayMs);
+    },
+    [recoverMissedWork],
+  );
+
+  const holdMicForPlayback = useCallback((speaking: boolean): void => {
+    window.clearTimeout(holdTimerRef.current);
+    if (speaking) {
+      playbackHoldRef.current = true;
+      return;
+    }
+    holdTimerRef.current = window.setTimeout(() => {
+      playbackHoldRef.current = false;
+    }, PLAYBACK_HOLD_MS);
   }, []);
 
   /** One server message: audio out, transcriptions, interruptions, tool calls. */
@@ -403,6 +433,8 @@ export function useSmithVoice(): {
         outputTranscription?: { text?: string };
         interrupted?: boolean;
         turnComplete?: boolean;
+        interactionStatus?: string;
+        interaction_status?: string;
       };
       toolCall?: {
         functionCalls?: { id?: string; name?: string; args?: Record<string, unknown> }[];
@@ -410,8 +442,11 @@ export function useSmithVoice(): {
       toolCallCancellation?: { ids?: string[] };
       sessionResumptionUpdate?: { newHandle?: string };
       goAway?: unknown;
+      interactionStatus?: string;
+      interaction_status?: string;
     }): void => {
       const content = message.serverContent;
+      const status = voiceInteractionStatus(message);
       try {
         if (content?.interrupted) speakerRef.current?.clear();
         if (content?.modelTurn?.parts) {
@@ -426,14 +461,19 @@ export function useSmithVoice(): {
       if (content?.inputTranscription?.text) {
         if (transcriptRef.current.finished) {
           transcriptRef.current = { input: '', output: '', finished: false };
+          operatorWorkRef.current = '';
           patch({ outputText: '' });
-          // A fresh operator turn earns one more reminder if a promise slips again.
-          turnRef.current.armed = true;
+          // A fresh operator turn earns one more recovery if a promise slips again.
+          turnRef.current = { ...FRESH_TURN_WATCH };
         }
         transcriptRef.current.input = appendTranscript(
           transcriptRef.current.input,
           content.inputTranscription.text,
         ).slice(-MAX_TRANSCRIPT_CHARS);
+        operatorWorkRef.current = appendTranscript(
+          operatorWorkRef.current,
+          content.inputTranscription.text,
+        ).slice(-MAX_OPERATOR_WORK_CHARS);
         patch({ inputText: transcriptRef.current.input });
       }
       if (content?.outputTranscription?.text) {
@@ -450,6 +490,11 @@ export function useSmithVoice(): {
       if (message.toolCallCancellation?.ids?.length) {
         cancelVoiceToolCalls(message.toolCallCancellation.ids);
       }
+      if (status === 'IN_PROGRESS') {
+        // Filler finished; the tool call is still coming. Do not recover yet.
+        interactionRef.current = 'in_progress';
+        window.clearTimeout(nudgeTimerRef.current);
+      }
       if (message.toolCall?.functionCalls?.length) {
         turnRef.current.sawToolCall = true;
         window.clearTimeout(nudgeTimerRef.current);
@@ -462,7 +507,16 @@ export function useSmithVoice(): {
       }
       if (content?.turnComplete) {
         transcriptRef.current.finished = true;
-        maybeNudgeMissedCall();
+        // `turnComplete` only ends an utterance. Recover from a missed call
+        // only when the server never reported IN_PROGRESS — otherwise wait
+        // for IDLE so we do not interrupt a pending tool call.
+        if (interactionRef.current !== 'in_progress') {
+          scheduleMissedWorkRecovery(FALLBACK_RECOVERY_MS);
+        }
+      }
+      if (status === 'IDLE') {
+        interactionRef.current = 'idle';
+        scheduleMissedWorkRecovery(STRAGGLER_TOOL_CALL_MS);
       }
       if (message.goAway) {
         // The server is about to close the socket; reconnect before it drops.
@@ -471,7 +525,7 @@ export function useSmithVoice(): {
         );
       }
     },
-    [answerToolCalls, cancelVoiceToolCalls, maybeNudgeMissedCall, patch],
+    [answerToolCalls, cancelVoiceToolCalls, patch, scheduleMissedWorkRecovery],
   );
 
   /** One smith-progress push: settle detection plus running/proposal pills. */
@@ -527,6 +581,9 @@ export function useSmithVoice(): {
     aliveRef.current = true;
     transcriptRef.current = { input: '', output: '', finished: true };
     turnRef.current = { ...FRESH_TURN_WATCH };
+    operatorWorkRef.current = '';
+    interactionRef.current = null;
+    playbackHoldRef.current = false;
     resumeHandleRef.current = null;
     reconnectingRef.current = false;
     reconnectAttemptsRef.current = 0;
@@ -557,7 +614,7 @@ export function useSmithVoice(): {
       };
       micRef.current = mic;
       await mic.start((chunk) => {
-        if (!current() || mutedRef.current) return;
+        if (!current() || mutedRef.current || playbackHoldRef.current) return;
         const session = sessionRef.current;
         try {
           if (session && setup.complete)
@@ -572,13 +629,15 @@ export function useSmithVoice(): {
       });
       if (!current()) return;
       speakerRef.current = new SpeakerQueue((speaking) => {
+        holdMicForPlayback(speaking);
         if (current()) patch({ speaking });
       });
       const settings = await api.settings.get().catch(() => null);
       if (!current()) return;
       // Resolve Random once per start so every utterance in this session shares a voice.
       const voiceName = resolveSmithLiveVoice(settings?.smithLiveVoice ?? DEFAULT_SMITH_LIVE_VOICE);
-      const { GoogleGenAI, Modality, ThinkingLevel } = await import('@google/genai');
+      const { GoogleGenAI, Modality, StartSensitivity, ThinkingLevel } =
+        await import('@google/genai');
       if (!current()) return;
 
       /**
@@ -644,6 +703,12 @@ export function useSmithVoice(): {
             outputAudioTranscription: {},
             contextWindowCompression: { slidingWindow: {} },
             sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
+            realtimeInputConfig: {
+              automaticActivityDetection: {
+                startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+                prefixPaddingMs: 200,
+              },
+            },
             tools: [{ functionDeclarations: voiceToolDeclarations() }],
           },
         });
@@ -705,7 +770,7 @@ export function useSmithVoice(): {
     } catch (error) {
       fail(error);
     }
-  }, [absorb, patch, failSession, scopeId]);
+  }, [absorb, holdMicForPlayback, patch, failSession, scopeId]);
 
   /** The overlay owns what the operator is looking at, pushed per delegation. */
   const setScreenContext = useCallback((screen: SmithScreenContext) => {

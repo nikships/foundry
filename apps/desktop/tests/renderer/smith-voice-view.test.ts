@@ -4,20 +4,21 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { FunctionResponseScheduling } from '@google/genai';
+import { Behavior, FunctionResponseScheduling, InteractionStatus } from '@google/genai';
 import type { SmithChatState, SmithTranscriptEntry } from '../../src/shared/ipc-contract.js';
 import {
   appendTranscript,
   EMPTY_SETTLE_WATCH,
   foldSettleWatch,
   friendlyVoiceError,
-  missedWorkNudge,
   proposalSummary,
   settledAnswerText,
   settledWorkPrompt,
+  shouldRecoverMissedWork,
   SMITH_VOICE_CAPABILITY_PROMPTS,
   soundsLikeWorkComing,
   voiceCapabilityWorkText,
+  voiceInteractionStatus,
   VOICE_SECRET_REDIRECT,
   voiceSecretRefusal,
   VOICE_TOOL_NAMES,
@@ -161,6 +162,9 @@ describe('soundsLikeWorkComing', () => {
       "I'm checking on that now.",
       'One moment while I check.',
       'Let me see what is running.',
+      "I'm looking something up.",
+      "I'm running a query.",
+      'Looking that up now.',
     ]) {
       expect(soundsLikeWorkComing(said)).toBe(true);
     }
@@ -178,12 +182,44 @@ describe('soundsLikeWorkComing', () => {
   });
 });
 
-describe('missedWorkNudge', () => {
-  it('reminds the model to make the call or move on', () => {
-    const nudge = missedWorkNudge();
-    expect(nudge).toContain('no tool call went through');
-    expect(nudge).toContain('smith_work');
-    expect(nudge).toContain('small talk');
+describe('shouldRecoverMissedWork', () => {
+  const promised = { output: 'Let me check on that.', sawToolCall: false, armed: true };
+
+  it('recovers a promised lookup that never emitted a tool call', () => {
+    expect(shouldRecoverMissedWork(promised, 'check my runs', false)).toBe(true);
+  });
+
+  it('does not recover small talk, in-flight calls, or empty operator text', () => {
+    expect(
+      shouldRecoverMissedWork({ ...promised, output: 'Sure, sounds good.' }, 'hi', false),
+    ).toBe(false);
+    expect(
+      shouldRecoverMissedWork({ ...promised, sawToolCall: true }, 'check my runs', false),
+    ).toBe(false);
+    expect(shouldRecoverMissedWork(promised, 'check my runs', true)).toBe(false);
+    expect(shouldRecoverMissedWork(promised, '   ', false)).toBe(false);
+    expect(shouldRecoverMissedWork({ ...promised, armed: false }, 'check my runs', false)).toBe(
+      false,
+    );
+  });
+});
+
+describe('voiceInteractionStatus', () => {
+  it('reads IDLE and IN_PROGRESS from the message root or serverContent', () => {
+    expect(voiceInteractionStatus({ interactionStatus: InteractionStatus.IDLE })).toBe('IDLE');
+    expect(
+      voiceInteractionStatus({
+        serverContent: { interactionStatus: InteractionStatus.IN_PROGRESS },
+      }),
+    ).toBe('IN_PROGRESS');
+    expect(voiceInteractionStatus({ interaction_status: 'IDLE' })).toBe('IDLE');
+    expect(voiceInteractionStatus({ serverContent: {} })).toBe(null);
+  });
+
+  it('treats the deprecated REQUIRES_ACTION name as IDLE', () => {
+    expect(voiceInteractionStatus({ interactionStatus: InteractionStatus.REQUIRES_ACTION })).toBe(
+      'IDLE',
+    );
   });
 });
 
@@ -319,9 +355,9 @@ describe('voiceToolDeclarations', () => {
     expect(delegate.parameters?.required).toEqual(['text']);
   });
 
-  it('leaves tool behavior unset so Extended Thinking keeps async-only calling', () => {
+  it('declares every tool NON_BLOCKING so Extended Thinking can call them', () => {
     const declarations = voiceToolDeclarations();
-    expect(declarations.every((d) => d.behavior == null)).toBe(true);
+    expect(declarations.every((d) => d.behavior === Behavior.NON_BLOCKING)).toBe(true);
   });
 
   it('describes work as Smith without exposing a separate agent', () => {

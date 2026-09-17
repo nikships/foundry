@@ -123,6 +123,8 @@ class SmithVoiceToolsTest {
         val declarations = setup.getValue("tools").jsonArray.single().jsonObject.getValue("functionDeclarations").jsonArray
         assertEquals(setOf("smith_delegate", "smith_cancel", "smith_proposal_read", "smith_proposal_answer"),
             declarations.map { it.jsonObject.getValue("name").jsonPrimitive.content }.toSet())
+        assertEquals(setOf("NON_BLOCKING"),
+            declarations.map { it.jsonObject.getValue("behavior").jsonPrimitive.content }.toSet())
         val error = SmithVoiceProtocol.reply("call", "smith_cancel", voiceObject("error" to voiceText("failed")))
         assertEquals("failed", error.getValue("toolResponse").jsonObject.getValue("functionResponses")
             .jsonArray.single().jsonObject.getValue("response").jsonObject.getValue("error").jsonPrimitive.content)
