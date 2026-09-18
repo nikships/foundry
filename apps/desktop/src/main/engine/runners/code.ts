@@ -18,7 +18,11 @@ import { snapshot } from '../boundary.js';
 import { BUILTIN_ARGV, runCommand } from '../commands.js';
 import { resolveRefCommand, sniffCommands } from '../detect.js';
 import { feedbackEnvelope } from '../envelopes.js';
-import { feedbackWidenPlan, widenWriteBoundary } from '../feedback-widen.js';
+import {
+  feedbackWidenPlan,
+  widenWriteBoundary,
+  type FeedbackWidenPlan,
+} from '../feedback-widen.js';
 import { changedPaths } from '../git.js';
 import {
   heal,
@@ -132,68 +136,69 @@ export class CodePhaseRunner implements PhaseRunner {
       return { kind: 'abort', detail: 'the run was cancelled' };
     }
 
-    // Build-test repair loop: wrap the failure as an envelope and hand it back
-    // to the phase that owns the fix. If the log names paths outside that
-    // owner's allowlist, widen for the re-entry; a read-only owner skips the
-    // loop so healer/replan can take over.
-    if (phase.feedbackTo) {
-      const widened = this.widenOwnerForFeedback(phase, ctx, result.outputTail);
-      if (widened?.skip) {
-        tracer.event({
-          runId,
-          phaseId,
-          type: 'log',
-          name: 'feedback skipped',
-          payload: { owner: phase.feedbackTo, reason: widened.reason },
-        });
-        const detail = `exit ${result.exitCode}: ${widened.reason}`;
-        tracer.closePhase(phaseId, 'fail', detail);
-        return { kind: 'abort', detail };
-      }
-      const budget = phase.feedbackRetries ?? 1;
-      const used = this.feedbackUsed.get(phase.name) ?? 0;
-      if (used < budget) {
-        this.feedbackUsed.set(phase.name, used + 1);
-        const fb = feedbackEnvelope({
-          phase: phase.name,
-          command: result.command,
-          exitCode: result.exitCode,
-          outputTail: result.outputTail,
-        });
-        const widenNote = widened?.extra.length
-          ? `\n\nWrite boundary update: you may now also write ${widened.extra.join(', ')} so this proof can pass.`
-          : '';
-        ctx.feedback.set(
-          phase.feedbackTo,
-          `${fb.summary}\n\n${fb.notes_for_next_agent}${widenNote}`,
-        );
-        tracer.event({
-          runId,
-          phaseId,
-          type: 'correction',
-          name: `feedback to ${phase.feedbackTo}`,
-          payload: { attempt: used + 1, budget, exitCode: result.exitCode },
-        });
-        tracer.closePhase(
-          phaseId,
-          'fail',
-          `exit ${result.exitCode}: sent back to ${phase.feedbackTo}`,
-        );
-        return { kind: 'goto', phase: phase.feedbackTo };
-      }
-      tracer.closePhase(
-        phaseId,
-        'fail',
-        `exit ${result.exitCode} after ${budget} repair attempt(s)`,
-      );
-      return {
-        kind: 'abort',
-        detail: `${phase.name} still fails after ${budget} repair attempt(s)`,
-      };
-    }
+    if (phase.feedbackTo) return this.feedbackOrAbort(phase, ctx, result);
 
     tracer.closePhase(phaseId, 'fail', `exit ${result.exitCode}`);
     return { kind: 'abort', detail: `${phase.name} exited ${result.exitCode}` };
+  }
+
+  /**
+   * Build-test repair loop: wrap the failure as an envelope and hand it back
+   * to the phase that owns the fix. If the log names paths outside that
+   * owner's allowlist, widen for the re-entry; a read-only owner skips the
+   * loop so healer/replan can take over.
+   */
+  private feedbackOrAbort(phase: PhaseDef, ctx: RunContext, result: CommandResult): PhaseJump {
+    const { tracer, runId } = ctx;
+    const phaseId = ctx.phaseId(phase.name);
+    const owner = phase.feedbackTo;
+    if (!owner) {
+      tracer.closePhase(phaseId, 'fail', `exit ${result.exitCode}`);
+      return { kind: 'abort', detail: `${phase.name} exited ${result.exitCode}` };
+    }
+    const widened = this.widenOwnerForFeedback(phase, ctx, result.outputTail);
+    if (widened?.action === 'skip') {
+      tracer.event({
+        runId,
+        phaseId,
+        type: 'log',
+        name: 'feedback skipped',
+        payload: { owner, reason: widened.reason },
+      });
+      const detail = `exit ${result.exitCode}: ${widened.reason}`;
+      tracer.closePhase(phaseId, 'fail', detail);
+      return { kind: 'abort', detail };
+    }
+    const budget = phase.feedbackRetries ?? 1;
+    const used = this.feedbackUsed.get(phase.name) ?? 0;
+    if (used < budget) {
+      this.feedbackUsed.set(phase.name, used + 1);
+      const fb = feedbackEnvelope({
+        phase: phase.name,
+        command: result.command,
+        exitCode: result.exitCode,
+        outputTail: result.outputTail,
+      });
+      const extra = widened?.extra ?? [];
+      const widenNote = extra.length
+        ? `\n\nWrite boundary update: you may now also write ${extra.join(', ')} so this proof can pass.`
+        : '';
+      ctx.feedback.set(owner, `${fb.summary}\n\n${fb.notes_for_next_agent}${widenNote}`);
+      tracer.event({
+        runId,
+        phaseId,
+        type: 'correction',
+        name: `feedback to ${owner}`,
+        payload: { attempt: used + 1, budget, exitCode: result.exitCode },
+      });
+      tracer.closePhase(phaseId, 'fail', `exit ${result.exitCode}: sent back to ${owner}`);
+      return { kind: 'goto', phase: owner };
+    }
+    tracer.closePhase(phaseId, 'fail', `exit ${result.exitCode} after ${budget} repair attempt(s)`);
+    return {
+      kind: 'abort',
+      detail: `${phase.name} still fails after ${budget} repair attempt(s)`,
+    };
   }
 
   /**
@@ -204,7 +209,7 @@ export class CodePhaseRunner implements PhaseRunner {
     phase: PhaseDef,
     ctx: RunContext,
     log: string,
-  ): { skip: true; reason: string } | { extra: string[] } | undefined {
+  ): FeedbackWidenPlan | undefined {
     if (!phase.feedbackTo) return undefined;
     const ownerPhase = ctx.pipeline.phases.find((candidate) => candidate.name === phase.feedbackTo);
     const owner = ownerPhase?.agent
@@ -217,7 +222,7 @@ export class CodePhaseRunner implements PhaseRunner {
       protectedPaths: ctx.project.protectedPaths,
       cwd: ctx.cwd,
     });
-    if (plan.action === 'skip') return { skip: true, reason: plan.reason };
+    if (plan.action === 'skip') return plan;
     if (plan.extra.length) {
       ctx.setAgentWrites(owner.name, widenWriteBoundary(owner.writes, plan.extra));
       ctx.tracer.event({
@@ -228,7 +233,7 @@ export class CodePhaseRunner implements PhaseRunner {
         payload: { owner: owner.name, extra: plan.extra },
       });
     }
-    return { extra: plan.extra };
+    return plan;
   }
 
   /** One run of the phase's frozen argv, traced as its own tool call. */
