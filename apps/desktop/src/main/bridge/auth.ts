@@ -23,6 +23,7 @@ import { isAlive, killTree } from '../system/procs.js';
 import {
   BRIDGE_PROVIDERS,
   bridgeProvider,
+  isBridgeProvider,
   providerForAuthType,
   type BridgeProviderId,
   type SubscriptionProviderId,
@@ -151,7 +152,8 @@ export function providerStatuses(
 export function authenticatedProviders(authDir: string): BridgeProviderId[] {
   return providerStatuses(authDir)
     .filter((status) => status.authenticated)
-    .map((status) => status.id);
+    .map((status) => status.id)
+    .filter(isBridgeProvider);
 }
 
 /**

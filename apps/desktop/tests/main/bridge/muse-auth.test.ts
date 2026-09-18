@@ -77,10 +77,17 @@ function asResponse(spec: Json | { status: number; body: Json }): {
   status: number;
   json: () => Promise<unknown>;
 } {
-  if ('status' in spec && 'body' in spec && typeof spec.status === 'number') {
-    return jsonResponse(spec.status, spec.body);
-  }
+  if (isScriptedHttp(spec)) return jsonResponse(spec.status, spec.body);
   return jsonResponse(200, spec);
+}
+
+function isScriptedHttp(spec: Json | { status: number; body: Json }): spec is {
+  status: number;
+  body: Json;
+} {
+  if (!('status' in spec && 'body' in spec && typeof spec.status === 'number')) return false;
+  const body = spec.body;
+  return !!body && typeof body === 'object' && !Array.isArray(body);
 }
 
 async function waitFor(probe: () => boolean, timeoutMs = 1_000): Promise<void> {
