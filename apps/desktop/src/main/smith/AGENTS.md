@@ -12,7 +12,7 @@ Smith is the native operator agent. It exposes typed app capabilities. Normal mo
 
 ## Composition turns
 
-- `compose/session.ts` owns `ComposeSession`: a bounded, read-only one-shot at the project checkout, with no worktree or write tools. Schema-bound `submit_result` output must pass composition rails within the envelope correction budget.
+- `compose/session.ts` owns `ComposeSession`: a bounded, read-only one-shot at the project checkout, with no worktree or write tools. Schema-bound `submit_result` output must pass composition rails within the envelope correction budget. Rails reject a path-bounded implementer followed by a project test command unless `writes` includes test/fixture globs or is unrestricted; later agent phases must consume an earlier envelope via `prompt.inputs`. Write-capable reviewers get a fix constitution, not "do not fix".
 - `compose/model.ts` resolves chat, compose, and repair choices: explicit override → Smith → Agent Defaults → `inherit`. Effort follows the selected settings tier unless overridden. Composition and repair permit `inherit`; chat retains the transport's `requireModel` guard.
 - `compose/proposals.ts` owns durable run proposals through `Tracer`, distinct from Smith's action `ProposalQueue`. Accept remains exactly-once through `accepted_run_id` and re-validates with `startRun(plan)`.
 - `compose-tools.ts` is the in-process `smith_compose` tool for project and global Smith chats only, never run sessions. `compose`/`revise`/`get`/`list` are immediate; `accept`/`discard`/`cancel` stay approval-gated. It calls `ProposalStore` directly, not the IPC invoker. Soft cap: 3 generating rows per chat. An expired composition session refuses revision rather than replacing the row.

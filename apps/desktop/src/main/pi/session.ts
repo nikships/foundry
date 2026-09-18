@@ -11,7 +11,13 @@
  */
 
 import { parseModelFallbackWarning } from '@shared/model-fallback.js';
-import type { AgentDef, ContextBreakdown, ReasoningEffort, UsageBreakdown } from '@shared/types.js';
+import type {
+  AgentDef,
+  ContextBreakdown,
+  ReasoningEffort,
+  UsageBreakdown,
+  WriteBoundary,
+} from '@shared/types.js';
 import type { CompactionFacts } from '../engine/compaction.js';
 import {
   pendingPhaseMessages,
@@ -130,6 +136,14 @@ export class AgentSession {
     private readonly deps: AgentSessionDeps,
   ) {
     this.agentSessionId = deps.existingSessionId ?? null;
+  }
+
+  /**
+   * Live write allowlist. A proof `feedbackTo` re-entry may widen this after
+   * the session opened so in-turn policy matches post-call enforce.
+   */
+  setWrites(writes: WriteBoundary): void {
+    this.agent.writes = writes;
   }
 
   get currentMode(): Mode {

@@ -20,7 +20,11 @@ import {
   type Harness,
   type RunInput,
 } from './executor-harness.js';
-import type { EnvelopeDef, PipelineDef } from '../../../src/shared/types.js';
+import {
+  FIXED_ENGINE_DEFAULTS,
+  type EnvelopeDef,
+  type PipelineDef,
+} from '../../../src/shared/types.js';
 
 let h: Harness;
 
@@ -596,6 +600,26 @@ describe('agent phases', () => {
     );
     expect(correction).toBeDefined();
   });
+
+  it('uses Settings check retries when a phase omits retries', async () => {
+    const phase = agentPhase('build', {
+      description: 'Prove omitted retries is not zero.',
+      gates: ['artifacts_exist'],
+    });
+    delete phase.retries;
+    const scripted = scriptedAgent([buildEnvelope({ artifacts: ['ghost.txt'] })]);
+    const outcome = await run({
+      scripted,
+      pipeline: pipe([phase], {
+        description: 'omitted retries uses the engine default',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
+    });
+    expect(outcome.status).toBe('rejected');
+    const gates = h.tracer.gateResults(outcome.runId);
+    expect(gates).toHaveLength(FIXED_ENGINE_DEFAULTS.gateRetries + 1);
+    expect(gates.every((g) => !g.passed)).toBe(true);
+  });
 });
 
 describe('the repair loop', () => {
@@ -679,6 +703,81 @@ describe('the repair loop', () => {
     expect(outcome.status).toBe('rejected');
     expect(h.tracer.phases(outcome.runId).find((p) => p.name === 'test')!.error).toContain(
       'repair attempt',
+    );
+  });
+
+  it('widens a tight owner when the proof log names a path outside writes', async () => {
+    installCheck(
+      '#!/bin/sh\nif test -f tests/foo.test.ts; then exit 0; fi\necho FAIL tests/foo.test.ts\nexit 1\n',
+    );
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    const scripted = scriptedAgent([envelope, envelope], [null, 'tests/foo.test.ts']);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ writes: ['src/**'] })],
+      project: { commands: [{ name: 'test', argv: ['./check.sh'] }] },
+      pipeline: pipe(
+        [
+          agentPhase('build', { description: 'Implement inside a tight writes slice.' }),
+          codePhase(
+            'test',
+            { ref: 'test' },
+            {
+              description: 'Run the project check and hand any failure back to the builder.',
+              feedbackTo: 'build',
+              feedbackRetries: 1,
+              flakeRerun: 0,
+              heal: false,
+            },
+          ),
+        ],
+        {
+          description: 'tight build whose proof names a test path',
+          acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+        },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(events(outcome.runId).some((e) => e.name === 'write boundary widened')).toBe(true);
+    expect(events(outcome.runId).some((e) => e.name === 'feedback to build')).toBe(true);
+    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
+    expect(existsSync(join(worktree, 'tests/foo.test.ts'))).toBe(true);
+  });
+
+  it('skips feedbackTo when the owner is read-only and the log names files', async () => {
+    installCheck('#!/bin/sh\necho FAIL tests/foo.test.ts\nexit 1\n');
+    const envelope = buildEnvelope({ summary: 'judged', commit_message: 'x' });
+    const scripted = scriptedAgent([envelope]);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ writes: [], toolProfile: 'read-only' })],
+      project: { commands: [{ name: 'test', argv: ['./check.sh'] }] },
+      pipeline: pipe(
+        [
+          agentPhase('build', { description: 'A read-only owner cannot write the proof files.' }),
+          codePhase(
+            'test',
+            { ref: 'test' },
+            {
+              description: 'Fail with a path the owner cannot write.',
+              feedbackTo: 'build',
+              feedbackRetries: 1,
+              flakeRerun: 0,
+              heal: false,
+            },
+          ),
+        ],
+        {
+          description: 'read-only owner skips the feedback loop',
+          acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+        },
+      ),
+    });
+    expect(outcome.status).toBe('rejected');
+    expect(events(outcome.runId).some((e) => e.name === 'feedback skipped')).toBe(true);
+    expect(events(outcome.runId).some((e) => e.name === 'feedback to build')).toBe(false);
+    expect(h.tracer.phases(outcome.runId).find((p) => p.name === 'test')!.error).toContain(
+      'read-only',
     );
   });
 });

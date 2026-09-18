@@ -19,7 +19,9 @@ New phase kinds or gates require shared types, registry/schema/check wiring, run
 
 ## Invariants
 
-- **A phase starts failed.** It succeeds only after clean exit, valid envelope, and passing gates. Envelope correction and gate feedback have separate budgets.
+- **A phase starts failed.** It succeeds only after clean exit, valid envelope, and passing gates. Envelope correction and gate feedback have separate budgets. Omitting `retries` on an agent phase uses `FIXED_ENGINE_DEFAULTS.gateRetries` (Settings "Check retries"); explicit `0` opts out.
+- **Scout findings are the payload.** `findings_exist` requires at least one finding; dummy artifacts do not stand in.
+- **`feedbackTo` must be able to write the proof.** When a failing `{ref}` log names paths outside the owner's allowlist, the engine widens that re-entry (and the live session). A read-only owner skips the loop so healer/replan can take over.
 - **Envelope parsing and validation share one budget.** Structured output remains a candidate until domain validation passes.
 - **Boundaries are enforced after each call with `git diff`.** `null` permits writes except protected paths; `[]` is read-only; allowlists support `*` and `**`. Revert violations and fail the phase.
 - **Compaction occurs only between phases.** Foundry supplies the summary

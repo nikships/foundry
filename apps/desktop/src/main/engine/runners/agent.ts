@@ -5,7 +5,13 @@
 
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentDef, EnvelopeDef, PhaseDef, PipelineDef } from '@shared/types.js';
+import {
+  gateRetryCount,
+  type AgentDef,
+  type EnvelopeDef,
+  type PhaseDef,
+  type PipelineDef,
+} from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
 import { KILLED_DETAIL, type AgentSession } from '../../pi/session.js';
 import * as boundary from '../boundary.js';
@@ -114,7 +120,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     const session = await this.deps.sessionFor(agent, phase.model, phase.reasoningEffort);
     const envelopeKind = phase.envelope ?? agent.envelope;
     const rewinder = await PhaseRewinder.create(ctx.cwd, session, this.deps.rewindAfterCorrections);
-    const maxGateAttempts = (phase.retries ?? 0) + 1;
+    const maxGateAttempts = gateRetryCount(phase) + 1;
     // One running count across envelope/boundary/gate so a trace can answer
     // "which correction attempt index succeeded" without kind-local indexes.
     let correctionIndex = 0;

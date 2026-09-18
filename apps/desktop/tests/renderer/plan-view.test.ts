@@ -168,7 +168,7 @@ describe('plan-view', () => {
       gates: ['boundary_respected'],
       command: null,
       inputs: [],
-      retries: 0,
+      retries: 2,
       feedbackTo: null,
       feedbackRetries: null,
       optional: false,

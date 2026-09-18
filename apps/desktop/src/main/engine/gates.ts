@@ -201,10 +201,31 @@ const commandPasses: GateFn = async (_envelope, ctx, config) => {
   ];
 };
 
+/** Scout (and similar) envelopes: findings are the payload, not dummy artifacts. */
+const findingsExist: GateFn = async (envelope) => {
+  const findings = envelope.findings;
+  const count = Array.isArray(findings)
+    ? findings.filter((entry) =>
+        typeof entry === 'string' ? entry.trim().length > 0 : Boolean(entry),
+      ).length
+    : 0;
+  if (count > 0) {
+    return [{ item: 'findings', ok: true, note: `${count} finding(s)` }];
+  }
+  return [
+    {
+      item: 'findings',
+      ok: false,
+      note: 'findings are the payload — declare at least one path + symbol + observation',
+    },
+  ];
+};
+
 export const GATES: Record<string, GateFn> = {
   artifacts_exist: artifactsExist,
   files_non_empty: filesNonEmpty,
   json_parses: jsonParses,
+  findings_exist: findingsExist,
   verdict_consistent: verdictConsistent,
   disapproval_halts: disapprovalHalts,
   command_passes: commandPasses,
@@ -214,6 +235,7 @@ export const GATE_DESCRIPTIONS: Record<string, string> = {
   artifacts_exist: 'Every path the envelope declares as an artifact exists on disk.',
   files_non_empty: 'Declared artifacts have content, not just a name.',
   json_parses: 'Declared .json artifacts actually parse.',
+  findings_exist: 'The envelope declares at least one finding; findings are the payload.',
   verdict_consistent:
     'A review cannot approve while it lists blocking items, unmet requirements, or no findings.',
   disapproval_halts:

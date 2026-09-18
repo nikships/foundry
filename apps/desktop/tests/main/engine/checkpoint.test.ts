@@ -78,6 +78,7 @@ function agentPhase(name: string, over: Partial<PhaseDef> = {}): PhaseDef {
     description: over.description ?? name,
     envelope: 'build',
     prompt: { inputs: ['request'] },
+    retries: 0,
     ...over,
   };
 }

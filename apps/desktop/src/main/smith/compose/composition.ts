@@ -159,6 +159,53 @@ function writesWorktree(agent: AgentDef | undefined): boolean {
 }
 
 /**
+ * Extra globs a path-bounded implementer must include when the next phase is
+ * a project test command, so tests, snapshots, and fixtures stay writable.
+ */
+export const PROOF_TEST_WRITE_GLOBS: readonly string[] = [
+  'tests/**',
+  'test/**',
+  '**/*.test.*',
+  '**/*.spec.*',
+  '**/__tests__/**',
+  '**/__snapshots__/**',
+  '**/fixtures/**',
+];
+
+function isProjectCommandProof(
+  next: PhaseDef | undefined,
+  commandNames: readonly string[],
+): boolean {
+  if (next?.kind !== 'code' || !next.command || !('ref' in next.command)) return false;
+  return commandNames.includes(next.command.ref);
+}
+
+function isTestOrFixtureWritePattern(pattern: string): boolean {
+  const normalised = pattern.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (normalised === '**' || normalised === '*' || normalised === '**/*') return true;
+  const haystack = `${normalised}/`;
+  return (
+    /(?:^|\/)(?:__)?tests?\//i.test(haystack) ||
+    /(?:^|\/)__snapshots__\//i.test(haystack) ||
+    /(?:^|\/)fixtures?\//i.test(haystack) ||
+    /(?:^|\/)e2e\//i.test(haystack) ||
+    /\.(?:test|spec)\./i.test(normalised) ||
+    /\.snap$/i.test(normalised)
+  );
+}
+
+function writesCoverProofTests(writes: AgentDef['writes'] | undefined): boolean {
+  if (writes === null) return true;
+  if (!writes || writes.length === 0) return false;
+  return writes.some(isTestOrFixtureWritePattern);
+}
+
+function consumesPhaseEnvelope(inputs: readonly string[] | undefined, phaseName: string): boolean {
+  const prefix = `envelope:${phaseName}`;
+  return (inputs ?? []).some((input) => input === prefix || input.startsWith(`${prefix}.`));
+}
+
+/**
  * A write-capable review can fix as well as judge. Generated plans that then
  * open a PR still need a later read-only reviewer.
  */
@@ -213,6 +260,35 @@ function proofRuleIssues(ctx: CompositionContext): ValidationIssue[] {
         scaffold: ctx.scaffold,
       }),
     );
+    const next = ctx.pipeline.phases[index + 1];
+    if (agent && isProjectCommandProof(next, ctx.commandNames) && !writesCoverProofTests(writes)) {
+      issues.push({
+        level: 'error',
+        where: `agents.${agent.name}.writes`,
+        message:
+          'an implementation phase followed by a project test command must include test/fixture globs in writes, or use unrestricted writes (roster builder)',
+      });
+    }
+  }
+  return issues;
+}
+
+function laterEnvelopeIssues(ctx: CompositionContext): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const earlier: string[] = [];
+  for (const [index, phase] of ctx.pipeline.phases.entries()) {
+    if (phase.kind !== 'agent') continue;
+    if (earlier.length) {
+      const needed = earlier[earlier.length - 1]!;
+      if (!earlier.some((name) => consumesPhaseEnvelope(phase.prompt?.inputs, name))) {
+        issues.push({
+          level: 'error',
+          where: phaseWhere(phase, index, ctx.indexOffset),
+          message: `a later agent phase must consume an earlier envelope — add envelope:${needed} (or another earlier agent envelope) to prompt.inputs`,
+        });
+      }
+    }
+    earlier.push(phase.name);
   }
   return issues;
 }
@@ -234,7 +310,7 @@ function synthesizedReviewerIssues(ctx: CompositionContext): ValidationIssue[] {
         message: 'a synthesized judge-only reviewer must use the read-only tool profile',
       });
     }
-    const authored = authoredSystemPrompt(agent.systemPrompt, agent.envelope);
+    const authored = authoredSystemPrompt(agent.systemPrompt, agent.envelope, agent.writes);
     if (!/(read-only|git_diff)/i.test(authored)) {
       issues.push({
         level: 'error',
@@ -315,7 +391,7 @@ function mentionsEnvelopeFields(agent: AgentDef, prompt: string): boolean {
 function synthesizedPromptIssues(ctx: CompositionContext): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const agent of ctx.synthesizedAgents) {
-    const prompt = authoredSystemPrompt(agent.systemPrompt, agent.envelope);
+    const prompt = authoredSystemPrompt(agent.systemPrompt, agent.envelope, agent.writes);
     if (!mentionsPurpose(prompt, agent.purpose)) {
       issues.push({
         level: 'error',
@@ -432,11 +508,13 @@ const ENVELOPE_CONSTITUTIONS: Record<string, string> = {
     '## Envelope constitution (build)',
     'Implement the plan or request exactly. Make the smallest change that satisfies it.',
     'Fill commit_message, artifacts, status, and summary. Stay inside the write boundary.',
+    'If the following proof is a project test command, also write or update the tests, fixtures, and snapshots that command needs.',
   ].join('\n'),
   scout: [
     '## Envelope constitution (scout)',
     'You are read-only. Cite concrete paths and symbols.',
-    'Fill findings, status, and summary. A finding without a location is a guess.',
+    'Findings are the payload. Fill findings, status, and summary. Do not invent artifacts.',
+    'A finding without a location is a guess.',
   ].join('\n'),
   review: [
     '## Envelope constitution (review)',
@@ -464,20 +542,44 @@ const ENVELOPE_CONSTITUTIONS: Record<string, string> = {
   ].join('\n'),
 };
 
-export function envelopeConstitution(envelope: string): string {
+const REVIEW_FIX_CONSTITUTION = [
+  '## Envelope constitution (review)',
+  'Call git_diff for the patch of what this run changed.',
+  'Fix the gaps you find in this phase. Fill approved, findings, blocking, status, and summary.',
+].join('\n');
+
+export function envelopeConstitution(envelope: string, writes?: AgentDef['writes']): string {
+  if (envelope === 'review' && (writes === null || (writes?.length ?? 0) > 0)) {
+    return REVIEW_FIX_CONSTITUTION;
+  }
   return ENVELOPE_CONSTITUTIONS[envelope] ?? ENVELOPE_CONSTITUTIONS.generic!;
 }
 
-/** The prompt Smith authored, without the constitution Foundry appends. */
-export function authoredSystemPrompt(systemPrompt: string, envelope: string): string {
-  const constitution = envelopeConstitution(envelope);
-  const idx = systemPrompt.lastIndexOf(constitution);
-  if (idx === -1) return systemPrompt;
-  return systemPrompt.slice(0, idx).trimEnd();
+function reviewConstitutions(): string[] {
+  return [REVIEW_FIX_CONSTITUTION, ENVELOPE_CONSTITUTIONS.review!];
 }
 
-export function injectEnvelopeConstitution(systemPrompt: string, envelope: string): string {
-  const constitution = envelopeConstitution(envelope);
+/** The prompt Smith authored, without the constitution Foundry appends. */
+export function authoredSystemPrompt(
+  systemPrompt: string,
+  envelope: string,
+  writes?: AgentDef['writes'],
+): string {
+  const candidates =
+    envelope === 'review' ? reviewConstitutions() : [envelopeConstitution(envelope, writes)];
+  for (const constitution of candidates) {
+    const idx = systemPrompt.lastIndexOf(constitution);
+    if (idx !== -1) return systemPrompt.slice(0, idx).trimEnd();
+  }
+  return systemPrompt;
+}
+
+export function injectEnvelopeConstitution(
+  systemPrompt: string,
+  envelope: string,
+  writes?: AgentDef['writes'],
+): string {
+  const constitution = envelopeConstitution(envelope, writes);
   if (systemPrompt.includes(constitution)) return systemPrompt;
   return `${systemPrompt.trimEnd()}\n\n${constitution}`;
 }
@@ -496,14 +598,14 @@ export const COMPOSITION_RULES: CompositionRule[] = [
   {
     id: 'proof',
     bullet:
-      'Every implementation phase using a build envelope, and every write-capable review phase, is proven before any commit. When Project commands are listed, immediately follow the agent with a code phase using one {"ref": ...} and set "feedbackTo" to the phase that owns a failure. When no Project command exists, put a configured "command_passes" gate on the agent instead. A new scaffold with no command yet is the only exception. When the pipeline has two or more implementation phases, each one gets its own immediately-following proof phase subject to the same rule.',
+      'Every implementation phase using a build envelope, and every write-capable review phase, is proven before any commit. When Project commands are listed, immediately follow the agent with a code phase using one {"ref": ...} and set "feedbackTo" to the phase that owns a failure. When that proof is a project test command, the implementation agent\'s writes must be unrestricted or include test/fixture globs (tests/, **/*.test.*, snapshots, fixtures) so the proof can be made to pass. When no Project command exists, put a configured "command_passes" gate on the agent instead. A new scaffold with no command yet is the only exception. When the pipeline has two or more implementation phases, each one gets its own immediately-following proof phase subject to the same rule.',
     check: proofRuleIssues,
   },
   {
     id: 'scaling',
     bullet:
-      'Scale the pipeline to the request. For a small request propose the smallest pipeline that fulfils it, typically one build phase plus its proof. For a larger task split the work across two or more build phases or agents rather than forcing all work into a single build: give each build a tight disjoint "writes" slice, its own immediately-following proof phase with "feedbackTo" naming its owner, and sequence the builds so later ones consume earlier envelopes. Each build is proven before anything is recorded; a rejection still halts the run.',
-    check: () => [],
+      'Scale the pipeline to the request. For a small request propose the smallest pipeline that fulfils it, typically one build phase plus its proof. For a larger task split the work across two or more build phases or agents rather than forcing all work into a single build: give each build a tight disjoint "writes" slice, its own immediately-following proof phase with "feedbackTo" naming its owner, and sequence the builds so later agent phases consume earlier envelopes via prompt.inputs (`envelope:<phase>`). Each build is proven before anything is recorded; a rejection still halts the run.',
+    check: laterEnvelopeIssues,
   },
   {
     id: 'review-gates',
@@ -549,13 +651,13 @@ export const COMPOSITION_RULES: CompositionRule[] = [
   {
     id: 'prefer-roster',
     bullet:
-      'Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile all fit. Do not assume capabilities that are not in their summary. Unrestricted roster writes (shown as "unrestricted") do not fit a path-bounded request — do not appoint that agent just because its purpose is "implement".',
+      'Prefer roster agents when the supplied purpose, envelope, write boundary, and tool profile all fit. Do not assume capabilities that are not in their summary. Unrestricted roster writes (shown as "unrestricted") do not fit a path-bounded request unless the next phase is a project test command — then appoint unrestricted builder, or give the synthesized implementer test/fixture globs in writes so the proof can pass. Do not appoint an unrestricted agent just because its purpose is "implement".',
     check: () => [],
   },
   {
     id: 'synthesized-agent',
     bullet:
-      'A synthesized agent gets a one-line purpose, a tight "writes" boundary containing only paths its phase must touch, and never the name of a roster agent. When the request names the files or directories to touch, synthesize the implementation agent rather than using an unrestricted roster builder. A synthesized judge-only reviewer uses "writes":[] and "toolProfile":"read-only". Use the build envelope for implementation agents. Foundry appends the canonical envelope constitution to the synthesized systemPrompt after you submit.',
+      'A synthesized agent gets a one-line purpose, a tight "writes" boundary containing only paths its phase must touch, and never the name of a roster agent. When the request names the files or directories to touch, synthesize the implementation agent rather than using an unrestricted roster builder — except that a build followed by a project test command must also include test/fixture globs in writes, or appoint unrestricted builder. A synthesized judge-only reviewer uses "writes":[] and "toolProfile":"read-only". Use the build envelope for implementation agents. Foundry appends the canonical envelope constitution to the synthesized systemPrompt after you submit.',
     check: synthesizedReviewerIssues,
   },
   {
