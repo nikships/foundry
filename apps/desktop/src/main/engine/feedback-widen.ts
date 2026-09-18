@@ -8,7 +8,7 @@
 import type { WriteBoundary } from '@shared/types.js';
 import { isAllowed, isProtected } from './boundary.js';
 
-const ANSI = /\x1b\[[0-9;]*m/g;
+const ANSI = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, 'g');
 const RELATIVE_PATH =
   /(?<![A-Za-z0-9_./])((?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]{1,8})(?::\d+(?::\d+)?)?/g;
 
