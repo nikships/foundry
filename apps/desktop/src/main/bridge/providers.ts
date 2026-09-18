@@ -11,10 +11,24 @@
  * Copilot login flow — CLIProxyAPI serves Copilot from a second, separate
  * gateway process — so listing it here would offer a login that cannot happen.
  * Copilot arrives with that gateway or not at all.
+ *
+ * Meta Muse is also absent: there is no `-<provider>-login` flag. Sign-in is
+ * an in-process device-code flow (`muse-auth.ts`) that mints a Model API key
+ * into pi's existing `meta` provider.
  */
 
 /** Providers Foundry can authenticate through the Bridge. */
 export type BridgeProviderId = 'claude' | 'codex' | 'gemini' | 'kimi' | 'grok';
+
+/**
+ * Meta Muse is a subscription provider that does not use a CLIProxyAPI login
+ * flag. The device-code flow lives in `muse-auth.ts` and the minted key is
+ * stored on pi's existing `meta` provider.
+ */
+export const MUSE_PROVIDER_ID = 'muse' as const;
+
+/** Every provider Settings can Connect, including in-process Muse. */
+export type SubscriptionProviderId = BridgeProviderId | typeof MUSE_PROVIDER_ID;
 
 /** pi's API kinds, named here so `models.ts` never spells one wrong. */
 export type BridgeApi = 'anthropic-messages' | 'openai-responses';
@@ -115,6 +129,11 @@ export function bridgeProvider(id: string): BridgeProviderDef | undefined {
  */
 export function isBridgeProvider(id: string): id is BridgeProviderId {
   return bridgeProvider(id) !== undefined;
+}
+
+/** True for a Connect target, including the in-process Muse device-code flow. */
+export function isSubscriptionProvider(id: string): id is SubscriptionProviderId {
+  return isBridgeProvider(id) || id === MUSE_PROVIDER_ID;
 }
 
 /** The provider that claims this auth file's `type`, or undefined. */

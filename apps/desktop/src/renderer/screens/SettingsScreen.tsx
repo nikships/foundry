@@ -124,8 +124,9 @@ const COMPACTION_PERCENT = { min: 50, max: 95 } as const;
  * already has a stored key still gets a row, so nothing is unreachable.
  *
  * The providers Foundry registers itself are appended rather than spelled out
- * again: a key row is the only way to reach one, so a provider added to that
- * table without a row here would be unusable.
+ * again so a pasted key still reaches them. Meta Muse also has a subscription
+ * Connect on this pane; the key row remains for operators who hold a Model API
+ * key rather than a Muse plan.
  */
 const KEY_PROVIDERS: { id: string; label: string; icon: string }[] = [
   { id: 'anthropic', label: 'Anthropic', icon: 'anthropic' },
@@ -1549,8 +1550,9 @@ export default function SettingsScreen({
                         <p className={styles.settingsLead}>
                           Foundry runs every agent phase in-process on pi, and a model reaches the
                           pickers only once pi can reach its provider. Connect a subscription
-                          through the Bridge, or store a direct API key. Keys live in pi&rsquo;s own
-                          credential store on this Mac, never in Foundry&rsquo;s settings file.
+                          through the Bridge or Meta Muse, or store a direct API key. Keys live in
+                          pi&rsquo;s own credential store on this Mac, never in Foundry&rsquo;s
+                          settings file.
                         </p>
                         <div className={styles.settingsSubrow}>
                           <span
@@ -1616,7 +1618,24 @@ export default function SettingsScreen({
                                   <h3>{provider.label}</h3>
                                   <span className={`${styles.settingsPill} ${tone}`}>{status}</span>
                                 </div>
-                                {provider.accounts.length > 0 ? (
+                                {provider.loginPrompt ? (
+                                  <p className={styles.hint}>
+                                    Complete Meta sign-in with this device code:{' '}
+                                    <span className="mono">{provider.loginPrompt.userCode}</span>
+                                    {'. '}
+                                    <button
+                                      type="button"
+                                      className={styles.inlineLink}
+                                      onClick={() =>
+                                        void api.app.openExternal(
+                                          provider.loginPrompt!.verificationUri,
+                                        )
+                                      }
+                                    >
+                                      Open Meta
+                                    </button>
+                                  </p>
+                                ) : provider.accounts.length > 0 ? (
                                   <ul className={styles.providerAccounts}>
                                     {provider.accounts.map((account) => (
                                       <li key={account.id}>
@@ -1638,6 +1657,9 @@ export default function SettingsScreen({
                                     lands here on its own once you finish signing in.
                                   </p>
                                 )}
+                                {provider.loginError && (
+                                  <p className={styles.settingsWarn}>{provider.loginError}</p>
+                                )}
                                 <div className={styles.settingsBtnrow}>
                                   {provider.loginInFlight ? (
                                     <Button
@@ -1650,9 +1672,12 @@ export default function SettingsScreen({
                                     <Button
                                       size="sm"
                                       variant={provider.authenticated ? undefined : 'primary'}
-                                      disabled={!!providerBusy || !bridge?.running}
+                                      disabled={
+                                        !!providerBusy ||
+                                        (provider.bridgeRequired !== false && !bridge?.running)
+                                      }
                                       title={
-                                        bridge?.running
+                                        provider.bridgeRequired === false || bridge?.running
                                           ? undefined
                                           : 'The Bridge did not start with Foundry. Relaunch to retry.'
                                       }

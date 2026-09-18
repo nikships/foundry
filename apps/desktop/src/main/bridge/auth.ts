@@ -25,13 +25,14 @@ import {
   bridgeProvider,
   providerForAuthType,
   type BridgeProviderId,
+  type SubscriptionProviderId,
 } from './providers.js';
 
 /** One authenticated account, with nothing secret in it. */
 export interface BridgeAccount {
   /** The auth file's name. Identifies the account without naming the operator. */
   id: string;
-  provider: BridgeProviderId;
+  provider: SubscriptionProviderId;
   /** Whatever the provider called the account: an email, a login, or the id. */
   label: string;
   /** ISO expiry when the file states one. */
@@ -40,8 +41,13 @@ export interface BridgeAccount {
   disabled: boolean;
 }
 
+export interface BridgeLoginPrompt {
+  userCode: string;
+  verificationUri: string;
+}
+
 export interface BridgeProviderStatus {
-  id: BridgeProviderId;
+  id: SubscriptionProviderId;
   label: string;
   icon: string;
   /** At least one account that is neither disabled nor expired. */
@@ -49,6 +55,15 @@ export interface BridgeProviderStatus {
   accounts: BridgeAccount[];
   /** True while a login child for this provider is running. */
   loginInFlight: boolean;
+  /** Device-code prompt while an in-process sign-in is waiting. */
+  loginPrompt?: BridgeLoginPrompt;
+  /**
+   * When false, Connect does not need the CLIProxyAPI child. Muse is the
+   * current case: its device-code flow is in-process.
+   */
+  bridgeRequired?: boolean;
+  /** Operator-facing failure from an in-process login, never a token. */
+  loginError?: string;
 }
 
 export interface BridgeLoginResult {

@@ -128,7 +128,8 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     pane: 'providers',
     label: 'Subscriptions',
     note: 'Sign in with a plan you already pay for.',
-    keywords: 'anthropic openai connect account oauth sign in claude login disconnect',
+    keywords:
+      'anthropic openai connect account oauth sign in claude login disconnect muse meta spark',
   },
   {
     pane: 'providers',

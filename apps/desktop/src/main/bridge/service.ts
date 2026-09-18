@@ -27,6 +27,13 @@ import {
   type BridgeLoginResult,
   type BridgeProviderStatus,
 } from './auth.js';
+import { MuseAuthController, type MuseFetch } from './muse-auth.js';
+import { MuseCredentialStore, museStoreDir } from './muse-credentials.js';
+import {
+  MUSE_PROVIDER_ID,
+  type BridgeProviderId,
+  type SubscriptionProviderId,
+} from './providers.js';
 import {
   BridgeManager,
   BRIDGE_PROCESS_NAME,
@@ -36,7 +43,6 @@ import {
 } from './manager.js';
 import { regenerateModels } from './models.js';
 import { bridgeConfigPath } from './paths.js';
-import type { BridgeProviderId } from './providers.js';
 
 export interface BridgeServiceOptions {
   supportDir: string;
@@ -55,6 +61,15 @@ export interface BridgeServiceOptions {
   loginSpawn?: Parameters<typeof startLogin>[0]['spawn'];
   /** Test seam: replace `modelRuntime.refresh()`. */
   refreshModels?: (supportDir: string) => Promise<void>;
+  /** Opens the Muse verification URL. Production passes `shell.openExternal`. */
+  openExternal?: (url: string) => void;
+  /**
+   * Writes the minted Muse key into pi's `meta` slot. Tests inject a recorder;
+   * production stores the key through `setProviderApiKey`.
+   */
+  applyMuseApiKey?: (apiKey: string | null) => Promise<void>;
+  /** Test seam: replace Muse HTTPS. Never used in production. */
+  museFetch?: MuseFetch;
 }
 
 export interface BridgeSnapshot {
@@ -120,6 +135,7 @@ export async function shutdownBridgeService(): Promise<void> {
 export class BridgeService {
   private readonly manager: BridgeManager;
   private readonly logins = new Map<BridgeProviderId, ChildProcess>();
+  private readonly muse: MuseAuthController;
   private unwatch: (() => void) | null = null;
   /** The id of the open `processes` row, so shutdown can close that exact row. */
   private processRowId: number | null = null;
@@ -152,6 +168,13 @@ export class BridgeService {
         );
       },
     });
+    this.muse = new MuseAuthController({
+      store: new MuseCredentialStore(museStoreDir(opts.supportDir)),
+      ...(opts.openExternal ? { openUrl: opts.openExternal } : {}),
+      ...(opts.museFetch ? { fetch: opts.museFetch } : {}),
+      applyApiKey: opts.applyMuseApiKey ?? defaultApplyMuseApiKey(opts.supportDir),
+      onChange: () => opts.onModelsChanged?.(),
+    });
   }
 
   get authDir(): string {
@@ -167,6 +190,7 @@ export class BridgeService {
    * wrote would leave exactly the orphan it is meant to catch.
    */
   async ensure(): Promise<BridgeEnsureResult> {
+    void this.muse.refreshIfNeeded();
     const result = await this.manager.ensure();
     if (result.ok) {
       this.startWatching();
@@ -179,7 +203,10 @@ export class BridgeService {
   snapshot(): BridgeSnapshot {
     return {
       status: this.manager.status(),
-      providers: providerStatuses(this.authDir, new Set(this.logins.keys())),
+      providers: [
+        ...providerStatuses(this.authDir, new Set(this.logins.keys())),
+        this.muse.status(),
+      ],
       baseUrl: this.manager.baseUrl,
     };
   }
@@ -187,11 +214,13 @@ export class BridgeService {
   /**
    * Begins a provider's OAuth flow.
    *
-   * The Bridge has to be up first: the login child writes into the same auth
-   * directory the running Bridge hot-reloads, and starting one without the
-   * other produces an account nothing serves.
+   * Muse is in-process and does not need the Bridge child. Every other
+   * provider writes into the auth directory the running Bridge hot-reloads,
+   * so starting one without the other produces an account nothing serves.
    */
-  async connect(provider: BridgeProviderId): Promise<BridgeLoginResult> {
+  async connect(provider: SubscriptionProviderId): Promise<BridgeLoginResult> {
+    if (provider === MUSE_PROVIDER_ID) return this.muse.connect();
+
     const started = await this.ensure();
     if (!started.ok) {
       return { ok: false, detail: `the Bridge is unavailable: ${started.detail}` };
@@ -223,7 +252,8 @@ export class BridgeService {
   }
 
   /** Removes a provider's accounts and drops its models from the catalog. */
-  async disconnect(provider: BridgeProviderId): Promise<{ ok: boolean; detail: string }> {
+  async disconnect(provider: SubscriptionProviderId): Promise<{ ok: boolean; detail: string }> {
+    if (provider === MUSE_PROVIDER_ID) return this.muse.disconnect();
     this.cancel(provider);
     const removed = logoutProvider(this.authDir, provider);
     await this.regenerate();
@@ -233,7 +263,8 @@ export class BridgeService {
   }
 
   /** SIGTERMs an in-flight login. Returns false when there was nothing to cancel. */
-  cancel(provider: BridgeProviderId): boolean {
+  cancel(provider: SubscriptionProviderId): boolean {
+    if (provider === MUSE_PROVIDER_ID) return this.muse.cancel();
     const child = this.logins.get(provider);
     if (!child) return false;
     this.logins.delete(provider);
@@ -255,6 +286,7 @@ export class BridgeService {
   async shutdown(): Promise<void> {
     this.unwatch?.();
     this.unwatch = null;
+    this.muse.cancel();
     for (const provider of [...this.logins.keys()]) this.cancel(provider);
     await this.manager.shutdown();
   }
@@ -334,6 +366,14 @@ export class BridgeService {
 async function defaultRefresh(supportDir: string): Promise<void> {
   const { refreshCatalog } = await import('../pi/catalog.js');
   await refreshCatalog(supportDir);
+}
+
+function defaultApplyMuseApiKey(supportDir: string): (apiKey: string | null) => Promise<void> {
+  return async (apiKey) => {
+    const { clearProviderApiKey, setProviderApiKey } = await import('../pi/catalog.js');
+    if (apiKey) await setProviderApiKey(supportDir, 'meta', apiKey);
+    else await clearProviderApiKey(supportDir, 'meta');
+  };
 }
 
 function message(error: unknown): string {

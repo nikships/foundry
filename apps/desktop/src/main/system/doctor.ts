@@ -57,7 +57,7 @@ export async function checkProviders(deps: ProviderDoctorDeps): Promise<DoctorCh
     ok: bridge.ok,
     detail: bridge.ok
       ? bridge.detail
-      : `${bridge.reason ? BRIDGE_UNAVAILABLE_COPY[bridge.reason] : 'the Bridge is unavailable'}: ${bridge.detail}. Subscription logins are unavailable; direct API keys still work.`,
+      : `${bridge.reason ? BRIDGE_UNAVAILABLE_COPY[bridge.reason] : 'the Bridge is unavailable'}: ${bridge.detail}. Bridge subscription logins are unavailable; Meta Muse sign-in and direct API keys still work.`,
     fix: bridge.ok ? undefined : PROVIDERS_PANE,
   });
 

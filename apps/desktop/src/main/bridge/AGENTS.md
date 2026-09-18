@@ -6,7 +6,7 @@ The Bridge runs a vendored CLIProxyAPI child that exposes an operator’s provid
 
 - `paths.ts` resolves the packaged or development binary.
 - `config.ts` emits stable localhost-only configuration.
-- `providers.ts` is the provider/login/API-kind table.
+- `providers.ts` is the provider/login/API-kind table. Meta Muse is not in it: its device-code flow lives in `muse-auth.ts` / `muse-credentials.ts` and the minted key is stored on pi's `meta` provider.
 - `catalog.ts` filters the vendored model catalog by authenticated providers.
 - `model-denylist.ts` contains exact model IDs the operator does not want offered.
 - `manager.ts` owns child startup, health, supervised respawn, and termination.
@@ -20,7 +20,7 @@ The Bridge runs a vendored CLIProxyAPI child that exposes an operator’s provid
 
 - **Localhost only.** Bind `127.0.0.1`, disable remote management, and never expose subscription credentials to the LAN.
 - **Never use `~/.cli-proxy-api`.** Config and auth live under Foundry Application Support.
-- **No token leaves `auth.ts`.** Expose only non-secret account metadata. Never echo login-child output, which may contain OAuth callback codes.
+- **No token leaves `auth.ts` or the Muse store.** Expose only non-secret account metadata. Never echo login-child output, which may contain OAuth callback codes. Muse identity tokens and minted keys stay in `muse-credentials.ts` (mode 0600 under Application Support) and are written into pi's credential store through `setProviderApiKey`, never across IPC.
 - **Merge `models.json`; never overwrite it.** Replace only `bridge-*` providers so user-added providers and unknown fields survive.
 - Refresh pi exactly once per committed model-file write; skip byte-identical writes.
 - Only authenticated providers enter the generated catalog.
@@ -38,9 +38,11 @@ Provider IDs use a `bridge-` prefix so they cannot override pi’s built-in prov
 
 ## Tests
 
-Tests use a scripted child and fixtures, never the real vendored binary or an account. Serialized account assertions must prove tokens do not escape.
+Tests use a scripted child and fixtures, never the real vendored binary or an account. Serialized account assertions must prove tokens do not escape. Muse tests mock HTTPS and never call Meta.
 
 ```bash
 pnpm exec vitest run -t "bridge"
 pnpm exec vitest run apps/desktop/tests/main/bridge/bridge-process-row.test.ts
+pnpm exec vitest run apps/desktop/tests/main/bridge/muse-credentials.test.ts
+pnpm exec vitest run apps/desktop/tests/main/bridge/muse-auth.test.ts
 ```

@@ -5,7 +5,7 @@
  * a half-inherited roster makes a pipeline's agent reference ambiguous.
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import { existsSync, mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -151,6 +151,9 @@ export class AppContext {
       supportDir,
       port: DEFAULT_BRIDGE_PORT,
       onModelsChanged: () => this.broadcast(IPC.eventBridgeChanged),
+      openExternal: (url) => {
+        void shell.openExternal(url);
+      },
       // Resolved per call rather than captured: the registry is built further
       // down this constructor, and the app trace it owns opens on first use.
       trace: () => this.registry.bridgeTrace(),

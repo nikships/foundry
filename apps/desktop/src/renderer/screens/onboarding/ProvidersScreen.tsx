@@ -29,8 +29,8 @@ const KEY_PROVIDERS: { id: string; label: string }[] = [
   { id: 'openrouter', label: 'OpenRouter' },
   { id: 'xai', label: 'xAI' },
   // The providers Foundry registers itself, appended rather than spelled out
-  // again: a key is the only way to reach one, so leaving it out of this list
-  // would make it unreachable during onboarding.
+  // again so a pasted key still reaches them. Meta Muse also has a subscription
+  // Connect above; this row remains for a Model API key.
   ...DIRECT_PROVIDERS.map((provider) => ({ id: provider.id, label: provider.label })),
 ];
 
@@ -84,8 +84,8 @@ export default function ProvidersScreen(): React.JSX.Element {
         <h1 className="ob-title">Give the factory a model</h1>
         <p className="ob-lead">
           Foundry runs every agent phase in-process on pi. Sign in with a subscription you already
-          pay for, or store a provider API key. Keys are held by pi on this Mac, never in
-          Foundry&rsquo;s settings.
+          pay for — including Meta Muse — or store a provider API key. Keys are held by pi on this
+          Mac, never in Foundry&rsquo;s settings.
         </p>
       </header>
 
@@ -138,6 +138,14 @@ export default function ProvidersScreen(): React.JSX.Element {
                           </span>
                         )}
                       </span>
+                      {provider.loginPrompt && (
+                        <span className={styles.obHint}>
+                          Device code <span className="mono">{provider.loginPrompt.userCode}</span>
+                        </span>
+                      )}
+                      {provider.loginError && (
+                        <span className={styles.obHint}>{provider.loginError}</span>
+                      )}
                     </span>
 
                     <span className={styles.obProviderTail}>
@@ -154,9 +162,11 @@ export default function ProvidersScreen(): React.JSX.Element {
                           type="button"
                           size="sm"
                           variant={connected ? undefined : 'primary'}
-                          disabled={!!providerBusy || !bridgeReady}
+                          disabled={
+                            !!providerBusy || (provider.bridgeRequired !== false && !bridgeReady)
+                          }
                           title={
-                            bridgeReady
+                            provider.bridgeRequired === false || bridgeReady
                               ? undefined
                               : 'The bridge did not start with Foundry. Relaunch to retry.'
                           }
@@ -305,7 +315,7 @@ function bridgeNotice(bridge: BridgeState | null): string {
     ? BRIDGE_UNAVAILABLE_COPY[bridge.reason]
     : 'the bridge is not serving';
   const detail = bridge.detail ? `: ${bridge.detail}` : '';
-  return `${reason}${detail}. Subscription logins need it; API keys do not.`;
+  return `${reason}${detail}. Bridge subscription logins need it; Meta Muse sign-in and API keys do not.`;
 }
 
 /** `ok` → `Ok`, so a tone maps onto its CSS-module dot class. */
