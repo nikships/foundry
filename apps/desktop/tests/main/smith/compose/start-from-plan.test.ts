@@ -106,7 +106,7 @@ function generatedPipeline(planId: string): PipelineDef {
         reasoningEffort: 'low',
         description: 'Verify the change meets the refined request.',
         envelope: 'review',
-        prompt: { inputs: ['request'] },
+        prompt: { inputs: ['request', 'envelope:build'] },
         gates: ['verdict_consistent', 'disapproval_halts'],
       },
     ],

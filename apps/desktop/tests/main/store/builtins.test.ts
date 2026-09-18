@@ -216,13 +216,23 @@ describe('builtin prompt contracts', () => {
       ## Instructions
 
       - You are read-only. Do not create, edit, or delete any file.
-      - Each \`findings\` entry is one concrete observation in the form \`path + symbol + observation\`. A finding without a location is a guess.
+      - Findings are the payload. Each \`findings\` entry is one concrete observation in the form \`path + symbol + observation\`. A finding without a location is a guess.
+      - Do not invent artifact paths; this phase does not require artifacts.
       - Report what is actually there. If the tree contradicts the premise of the question, say so as a finding.
       - If blocked, fail closed: report \`status: fail\`, put the blocker in \`summary\` and \`notes_for_next_agent\`, and do not invent success."
     `);
     expect(scout.userPrompt).toContain('path + symbol + observation');
     expect(scout.userPrompt).toMatch(/disagrees with the question's premise|contradict/i);
     expect(scout.userPrompt).not.toMatch(/handoff/i);
+  });
+
+  it('gates scout findings instead of dummy artifacts', () => {
+    for (const pipeline of BUILTIN_PIPELINES) {
+      for (const phase of pipeline.phases) {
+        if (phase.kind !== 'agent' || phase.agent !== 'scout') continue;
+        expect(phase.gates, `${pipeline.id}/${phase.name}`).toEqual(['findings_exist']);
+      }
+    }
   });
 
   it('puts a fail-closed contract on every shipped systemPrompt', () => {

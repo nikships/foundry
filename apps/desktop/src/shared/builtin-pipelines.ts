@@ -188,7 +188,7 @@ function scoutPhase(name: string, description: string): PhaseDef {
     agent: 'scout',
     retries: 2,
     description,
-    gates: ['artifacts_exist'],
+    gates: ['findings_exist'],
     prompt: { inputs: ['request'] },
   };
 }

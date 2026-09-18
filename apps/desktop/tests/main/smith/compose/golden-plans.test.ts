@@ -16,6 +16,7 @@ import {
 } from '../../../../src/main/smith/compose/plan.js';
 import { scriptedOneShots } from '../../../helpers/scripted-oneshot.js';
 import type { AgentDef, ModelInfo, ProjectCommand } from '../../../../src/shared/types.js';
+import { PROOF_TEST_WRITE_GLOBS } from '../../../../src/main/smith/compose/composition.js';
 
 const model = (id: string, displayName: string): ModelInfo => ({
   id,
@@ -182,7 +183,7 @@ const GOLDENS: Golden[] = [
             reasoningEffort: 'high',
             description: 'Judge the result against the request.',
             envelope: 'review',
-            prompt: { inputs: ['request'] },
+            prompt: { inputs: ['request', 'envelope:build'] },
             gates: ['verdict_consistent', 'disapproval_halts'],
           },
         ],
@@ -240,7 +241,7 @@ const GOLDENS: Golden[] = [
           purpose: 'write one document',
           systemPrompt: DOC_PROMPT,
           userPrompt: 'Write: {{request}}',
-          writes: ['docs/**'],
+          writes: ['docs/**', ...PROOF_TEST_WRITE_GLOBS],
           envelope: 'build',
         },
       ],
@@ -503,7 +504,7 @@ const GOLDENS: Golden[] = [
           purpose: 'implement CSV export',
           systemPrompt: CSV_PROMPT,
           userPrompt: 'Implement CSV export: {{request}}',
-          writes: ['reports/csv/**'],
+          writes: ['reports/csv/**', ...PROOF_TEST_WRITE_GLOBS],
           envelope: 'build',
         },
         {
@@ -511,7 +512,53 @@ const GOLDENS: Golden[] = [
           purpose: 'implement PDF export',
           systemPrompt: PDF_PROMPT,
           userPrompt: 'Implement PDF export: {{request}}',
-          writes: ['reports/pdf/**'],
+          writes: ['reports/pdf/**', ...PROOF_TEST_WRITE_GLOBS],
+          envelope: 'build',
+        },
+      ],
+    },
+  },
+  {
+    id: 'tight-build-without-test-writes',
+    expect: 'reject',
+    request: 'add CSV export to the reports page',
+    commands: TEST_CMD,
+    models: POOL,
+    roster: [builder()],
+    reply: {
+      refinedRequest: 'Add CSV export to the reports page, proven by the project tests.',
+      rationale: 'One build followed by proof.',
+      pipeline: {
+        name: 'CSV export',
+        description: 'Build CSV export then prove it.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'build_csv',
+            kind: 'agent',
+            agent: 'csv_builder',
+            model: 'anthropic/claude-opus-4',
+            reasoningEffort: 'high',
+            description: 'Implement CSV export inside its boundary.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test_csv',
+            kind: 'code',
+            description: 'Prove CSV export with the project tests.',
+            command: { ref: 'test' },
+            feedbackTo: 'build_csv',
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'csv_builder',
+          purpose: 'implement CSV export',
+          systemPrompt: CSV_PROMPT,
+          userPrompt: 'Implement CSV export: {{request}}',
+          writes: ['reports/csv/**'],
           envelope: 'build',
         },
       ],

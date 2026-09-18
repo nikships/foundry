@@ -18,6 +18,7 @@ import { snapshot } from '../boundary.js';
 import { BUILTIN_ARGV, runCommand } from '../commands.js';
 import { resolveRefCommand, sniffCommands } from '../detect.js';
 import { feedbackEnvelope } from '../envelopes.js';
+import { feedbackWidenPlan, widenWriteBoundary } from '../feedback-widen.js';
 import { changedPaths } from '../git.js';
 import {
   heal,
@@ -132,8 +133,23 @@ export class CodePhaseRunner implements PhaseRunner {
     }
 
     // Build-test repair loop: wrap the failure as an envelope and hand it back
-    // to the phase that owns the fix.
+    // to the phase that owns the fix. If the log names paths outside that
+    // owner's allowlist, widen for the re-entry; a read-only owner skips the
+    // loop so healer/replan can take over.
     if (phase.feedbackTo) {
+      const widened = this.widenOwnerForFeedback(phase, ctx, result.outputTail);
+      if (widened?.skip) {
+        tracer.event({
+          runId,
+          phaseId,
+          type: 'log',
+          name: 'feedback skipped',
+          payload: { owner: phase.feedbackTo, reason: widened.reason },
+        });
+        const detail = `exit ${result.exitCode}: ${widened.reason}`;
+        tracer.closePhase(phaseId, 'fail', detail);
+        return { kind: 'abort', detail };
+      }
       const budget = phase.feedbackRetries ?? 1;
       const used = this.feedbackUsed.get(phase.name) ?? 0;
       if (used < budget) {
@@ -144,7 +160,13 @@ export class CodePhaseRunner implements PhaseRunner {
           exitCode: result.exitCode,
           outputTail: result.outputTail,
         });
-        ctx.feedback.set(phase.feedbackTo, `${fb.summary}\n\n${fb.notes_for_next_agent}`);
+        const widenNote = widened?.extra.length
+          ? `\n\nWrite boundary update: you may now also write ${widened.extra.join(', ')} so this proof can pass.`
+          : '';
+        ctx.feedback.set(
+          phase.feedbackTo,
+          `${fb.summary}\n\n${fb.notes_for_next_agent}${widenNote}`,
+        );
         tracer.event({
           runId,
           phaseId,
@@ -172,6 +194,41 @@ export class CodePhaseRunner implements PhaseRunner {
 
     tracer.closePhase(phaseId, 'fail', `exit ${result.exitCode}`);
     return { kind: 'abort', detail: `${phase.name} exited ${result.exitCode}` };
+  }
+
+  /**
+   * Widen a tight owner so `feedbackTo` can write paths the proof log named.
+   * Returns skip when the owner is read-only; undefined when there is no owner.
+   */
+  private widenOwnerForFeedback(
+    phase: PhaseDef,
+    ctx: RunContext,
+    log: string,
+  ): { skip: true; reason: string } | { extra: string[] } | undefined {
+    if (!phase.feedbackTo) return undefined;
+    const ownerPhase = ctx.pipeline.phases.find((candidate) => candidate.name === phase.feedbackTo);
+    const owner = ownerPhase?.agent
+      ? ctx.agents.find((agent) => agent.name === ownerPhase.agent)
+      : undefined;
+    if (!owner) return undefined;
+    const plan = feedbackWidenPlan({
+      writes: owner.writes,
+      log,
+      protectedPaths: ctx.project.protectedPaths,
+      cwd: ctx.cwd,
+    });
+    if (plan.action === 'skip') return { skip: true, reason: plan.reason };
+    if (plan.extra.length) {
+      ctx.setAgentWrites(owner.name, widenWriteBoundary(owner.writes, plan.extra));
+      ctx.tracer.event({
+        runId: ctx.runId,
+        phaseId: ctx.phaseId(phase.name),
+        type: 'log',
+        name: 'write boundary widened',
+        payload: { owner: owner.name, extra: plan.extra },
+      });
+    }
+    return { extra: plan.extra };
   }
 
   /** One run of the phase's frozen argv, traced as its own tool call. */

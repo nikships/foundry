@@ -103,6 +103,11 @@ export interface PhaseDef {
   gates?: (string | GateSpec)[];
   prompt?: PromptSpec;
   command?: CommandSpec;
+  /**
+   * Agent phases: gate/boundary corrections after the first attempt.
+   * Explicit `0` opts out. Omitting it uses Settings "Check retries"
+   * (`FIXED_ENGINE_DEFAULTS.gateRetries`), not zero.
+   */
   retries?: number;
   /** On failure, hand the evidence back to this earlier agent phase. */
   feedbackTo?: string;
@@ -511,6 +516,15 @@ export function flakeRerunCount(
   if (typeof phase.flakeRerun === 'number') return Math.max(0, phase.flakeRerun);
   if (phase.command && 'ref' in phase.command) return FIXED_ENGINE_DEFAULTS.flakeReruns;
   return 0;
+}
+
+/**
+ * Gate/boundary corrections an agent phase gets. Explicit `retries` wins,
+ * including `0`. Omitting it uses Settings "Check retries"
+ * (`FIXED_ENGINE_DEFAULTS.gateRetries`), not zero.
+ */
+export function gateRetryCount(phase: Pick<PhaseDef, 'retries'>): number {
+  return phase.retries ?? FIXED_ENGINE_DEFAULTS.gateRetries;
 }
 
 export type MergePolicy = 'auto' | 'ask' | 'never';

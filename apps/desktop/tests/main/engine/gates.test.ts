@@ -44,6 +44,24 @@ describe('artifacts_exist', () => {
   });
 });
 
+describe('findings_exist', () => {
+  it('passes when the envelope declares at least one non-empty finding', async () => {
+    const checks = await GATES.findings_exist!(
+      { ...base, findings: ['src/parser.ts + parse() + handles empty input'] },
+      ctx(),
+    );
+    expect(checks[0]!.ok).toBe(true);
+    expect(checks[0]!.note).toContain('1 finding');
+  });
+
+  it('fails when findings are missing or blank', async () => {
+    expect((await GATES.findings_exist!(base, ctx()))[0]!.ok).toBe(false);
+    expect((await GATES.findings_exist!({ ...base, findings: ['  ', ''] }, ctx()))[0]!.ok).toBe(
+      false,
+    );
+  });
+});
+
 describe('files_non_empty', () => {
   it('catches an artifact that exists but is empty', async () => {
     const checks = await GATES.files_non_empty!(

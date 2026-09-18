@@ -21,6 +21,7 @@ import type { ComposeState } from '../../../../src/shared/ipc-contract.js';
 import { SMITH_COMPOSE_PROMPT } from '../../../../src/main/smith/compose/plan.js';
 import { ComposeSession } from '../../../../src/main/smith/compose/session.js';
 import { generatedCompositionIssues } from '../../../../src/main/smith/compose/plan.js';
+import { PROOF_TEST_WRITE_GLOBS } from '../../../../src/main/smith/compose/composition.js';
 import { BUILTIN_AGENTS } from '../../../../src/shared/builtin-agents.js';
 import { BUILTIN_PIPELINES } from '../../../../src/shared/builtin-pipelines.js';
 import { scriptedOneShots, type ScriptedTurn } from '../../../helpers/scripted-oneshot.js';
@@ -677,7 +678,7 @@ describe('ComposeSession', () => {
           purpose: 'write one document',
           systemPrompt: BUILD_PROMPT,
           userPrompt: 'Write: {{request}}',
-          writes: ['docs/**'],
+          writes: ['docs/**', ...PROOF_TEST_WRITE_GLOBS],
           envelope: 'build',
           toolProfile: 'full',
         },
@@ -690,7 +691,7 @@ describe('ComposeSession', () => {
     expect(agent.name).toBe('doc_writer');
     expect(agent.model).toBe('inherit');
     expect(agent.reasoningEffort).toBe('medium');
-    expect(agent.writes).toEqual(['docs/**']);
+    expect(agent.writes).toEqual(['docs/**', ...PROOF_TEST_WRITE_GLOBS]);
     expect(agent.toolProfile).toBe('full');
     expect(agent.color).toMatch(/^#[0-9a-f]{6}$/i);
   });
@@ -752,7 +753,7 @@ describe('ComposeSession', () => {
             ['status', 'summary', 'commit_message', 'artifacts'],
           ),
           userPrompt: 'Implement CSV export: {{request}}',
-          writes: ['docs/csv/**'],
+          writes: ['docs/csv/**', ...PROOF_TEST_WRITE_GLOBS],
           envelope: 'build',
         },
         {
@@ -764,7 +765,7 @@ describe('ComposeSession', () => {
             ['status', 'summary', 'commit_message', 'artifacts'],
           ),
           userPrompt: 'Implement PDF export: {{request}}',
-          writes: ['docs/pdf/**'],
+          writes: ['docs/pdf/**', ...PROOF_TEST_WRITE_GLOBS],
           envelope: 'build',
         },
       ],
@@ -834,7 +835,7 @@ describe('ComposeSession', () => {
             reasoningEffort: 'high',
             description: 'Judge the result against the request.',
             envelope: 'review',
-            prompt: { inputs: ['request'] },
+            prompt: { inputs: ['request', 'envelope:build'] },
             gates: ['verdict_consistent', 'disapproval_halts'],
           },
         ],
@@ -893,7 +894,7 @@ describe('ComposeSession', () => {
             reasoningEffort: 'high',
             description: 'Judge the result against the request.',
             envelope: 'review',
-            prompt: { inputs: ['request'] },
+            prompt: { inputs: ['request', 'envelope:build'] },
             gates: ['verdict_consistent', 'disapproval_halts'],
           },
         ],
@@ -953,7 +954,7 @@ describe('ComposeSession', () => {
             reasoningEffort: 'high',
             description: 'Judge the result against the request.',
             envelope: 'review',
-            prompt: { inputs: ['request'] },
+            prompt: { inputs: ['request', 'envelope:build'] },
             gates: ['verdict_consistent', 'disapproval_halts'],
           },
         ],
@@ -1061,6 +1062,159 @@ describe('ComposeSession', () => {
     expect(state.plan!.agents[0]!.name).toBe('judge');
     expect(state.plan!.agents[0]!.systemPrompt).toContain('Envelope constitution (review)');
     expect(state.plan!.agents[0]!.systemPrompt).toContain('git_diff');
+    expect(state.plan!.agents[0]!.systemPrompt).toContain('Do not fix what you find');
+  });
+
+  it('stamps a write-capable reviewer with a fix constitution, not do-not-fix', async () => {
+    const finisher = validReply({
+      pipeline: {
+        name: 'Finish',
+        description: 'A write-capable reviewer closes the gaps it finds, then proves the fix.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'finish',
+            kind: 'agent',
+            agent: 'closer',
+            model: 'anthropic/claude-opus-4',
+            reasoningEffort: 'high',
+            description: 'Fix the gaps found against the request.',
+            envelope: 'review',
+            prompt: { inputs: ['request'] },
+            gates: ['verdict_consistent', 'disapproval_halts'],
+          },
+          {
+            name: 'test',
+            kind: 'code',
+            description: 'Prove the finisher repairs with the project tests.',
+            command: { ref: 'test' },
+            feedbackTo: 'finish',
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'closer',
+          purpose: 'close the gaps found in review',
+          systemPrompt: synthPrompt(
+            'close the gaps found in review',
+            'Write boundary: unrestricted.',
+            ['approved', 'findings', 'blocking', 'status'],
+          ),
+          userPrompt: 'Finish: {{request}}',
+          writes: null,
+          envelope: 'review',
+        },
+      ],
+    });
+    const { state } = await run({ turns: [submitted(finisher)] });
+
+    expect(state.status).toBe('done');
+    expect(state.plan!.agents[0]!.systemPrompt).toContain('Fix the gaps you find');
+    expect(state.plan!.agents[0]!.systemPrompt).not.toContain('Do not fix what you find');
+  });
+
+  it('rejects a later review that does not consume an earlier envelope', async () => {
+    const isolated = validReply({
+      pipeline: {
+        name: 'Build then review',
+        description: 'Build, prove, then review without reading the build envelope.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'build',
+            kind: 'agent',
+            agent: 'builder',
+            model: 'anthropic/claude-haiku-4',
+            reasoningEffort: 'low',
+            description: 'Make the requested change inside the worktree.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test',
+            kind: 'code',
+            description: 'Run the project test command as proof of the change.',
+            command: { ref: 'test' },
+            feedbackTo: 'build',
+          },
+          {
+            name: 'review',
+            kind: 'agent',
+            agent: 'judge',
+            model: 'openai/gpt-5',
+            reasoningEffort: 'high',
+            description: 'Judge the result against the request.',
+            envelope: 'review',
+            prompt: { inputs: ['request'] },
+            gates: ['verdict_consistent', 'disapproval_halts'],
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'judge',
+          purpose: 'judge the result without editing it',
+          systemPrompt: REVIEW_PROMPT,
+          userPrompt: 'Review: {{request}}',
+          writes: [],
+          envelope: 'review',
+          toolProfile: 'read-only',
+        },
+      ],
+    });
+    const { state } = await run({
+      turns: [submitted(isolated), submitted(validReply())],
+      models: [...enabled, model('openai/gpt-5', 'GPT 5')],
+    });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((entry) => entry.text.includes('consume an earlier envelope'))).toBe(
+      true,
+    );
+  });
+
+  it('rejects a tight implementer followed by project tests without test/fixture writes', async () => {
+    const tight = validReply({
+      pipeline: {
+        name: 'Docs',
+        description: 'Write the doc with a synthesized writer, then prove it.',
+        acceptance: { kind: 'all_phases_pass' },
+        phases: [
+          {
+            name: 'write_doc',
+            kind: 'agent',
+            agent: 'doc_writer',
+            model: 'anthropic/claude-haiku-4',
+            reasoningEffort: 'low',
+            description: 'Write the requested document into docs/.',
+            envelope: 'build',
+            prompt: { inputs: ['request'] },
+          },
+          {
+            name: 'test',
+            kind: 'code',
+            description: 'Run the project test command as proof of the change.',
+            command: { ref: 'test' },
+            feedbackTo: 'write_doc',
+          },
+        ],
+      },
+      agents: [
+        {
+          name: 'doc_writer',
+          purpose: 'write one document',
+          systemPrompt: BUILD_PROMPT,
+          userPrompt: 'Write: {{request}}',
+          writes: ['docs/**'],
+          envelope: 'build',
+        },
+      ],
+    });
+    const { state } = await run({ turns: [submitted(tight), submitted(validReply())] });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((entry) => entry.text.includes('test/fixture globs'))).toBe(true);
   });
 
   it('cancels the turn in flight and settles cancelled', async () => {

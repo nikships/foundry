@@ -6,6 +6,7 @@
 
 import {
   healingEligible,
+  gateRetryCount,
   type CommandSpec,
   type GeneratedRunPlan,
   type PhaseDef,
@@ -232,7 +233,7 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
     gates: gateNamesOf(phase),
     command: phase.kind === 'code' ? commandNote(phase.command) : null,
     inputs: phase.kind === 'agent' ? (phase.prompt?.inputs ?? []) : [],
-    retries: phase.retries ?? 0,
+    retries: gateRetryCount(phase),
     feedbackTo: phase.feedbackTo ?? null,
     feedbackRetries: phase.feedbackTo ? (phase.feedbackRetries ?? 1) : null,
     envelope: phase.envelope ?? null,

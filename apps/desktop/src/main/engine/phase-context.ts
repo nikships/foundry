@@ -4,7 +4,15 @@
  * worktree handle or finish().
  */
 
-import type { CommandResult, PhaseDef, PhaseKind, PipelineDef, ProjectDef } from '@shared/types.js';
+import type {
+  AgentDef,
+  CommandResult,
+  PhaseDef,
+  PhaseKind,
+  PipelineDef,
+  ProjectDef,
+  WriteBoundary,
+} from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { Envelope } from './envelopes.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
@@ -54,6 +62,16 @@ export interface RunContext {
    */
   readonly healing: HealingSupport | null;
 
+  /**
+   * Roster this run holds. Code phases look up a `feedbackTo` owner here
+   * before widening that agent's writes for re-entry.
+   */
+  readonly agents: readonly AgentDef[];
+  /**
+   * Apply a widened write boundary to the roster object and any already-open
+   * session, so in-turn policy and post-call enforce see the same allowlist.
+   */
+  setAgentWrites(agentName: string, writes: WriteBoundary): void;
   /** True once cancel() ran; runners must bail at their next await point. */
   cancelled(): boolean;
   /**

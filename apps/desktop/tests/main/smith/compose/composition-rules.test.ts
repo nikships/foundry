@@ -12,7 +12,9 @@ import {
 } from '../../../../src/main/smith/compose/plan.js';
 import {
   COMPOSITION_RULES,
+  PROOF_TEST_WRITE_GLOBS,
   compositionRuleBullets,
+  envelopeConstitution,
   generatedCompositionIssues,
 } from '../../../../src/main/smith/compose/composition.js';
 import type { AgentDef, ModelInfo, PhaseDef } from '../../../../src/shared/types.js';
@@ -212,5 +214,141 @@ describe('compose composition rules', () => {
     expect(prompt).toContain('anthropic/claude-haiku-4');
     expect(prompt).not.toContain('$3/M');
     expect(prompt).not.toContain('cacheWrite');
+  });
+
+  it('rejects a tight implementer followed by a project test without test/fixture writes', () => {
+    const writer: AgentDef = {
+      name: 'doc_writer',
+      purpose: 'write one document',
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      systemPrompt: 'You write docs.',
+      userPrompt: 'Write: {{request}}',
+      writes: ['docs/**'],
+      envelope: 'build',
+      color: '#5ad2dd',
+    };
+    const phases: PhaseDef[] = [
+      {
+        name: 'write_doc',
+        kind: 'agent',
+        agent: 'doc_writer',
+        model: 'anthropic/claude-haiku-4',
+        reasoningEffort: 'low',
+        description: 'Write the requested document into docs/.',
+        envelope: 'build',
+        prompt: { inputs: ['request'] },
+      },
+      {
+        name: 'test',
+        kind: 'code',
+        description: 'Prove the document with the project tests.',
+        command: { ref: 'test' },
+        feedbackTo: 'write_doc',
+      },
+    ];
+    const issues = generatedCompositionIssues({ phases }, [], [writer], ['test']);
+    expect(issues.some((issue) => issue.message.includes('test/fixture globs'))).toBe(true);
+  });
+
+  it('accepts a tight implementer that includes test/fixture globs before a project test', () => {
+    const writer: AgentDef = {
+      name: 'doc_writer',
+      purpose: 'write one document',
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      systemPrompt: 'You write docs.',
+      userPrompt: 'Write: {{request}}',
+      writes: ['docs/**', ...PROOF_TEST_WRITE_GLOBS],
+      envelope: 'build',
+      color: '#5ad2dd',
+    };
+    const phases: PhaseDef[] = [
+      {
+        name: 'write_doc',
+        kind: 'agent',
+        agent: 'doc_writer',
+        model: 'anthropic/claude-haiku-4',
+        reasoningEffort: 'low',
+        description: 'Write the requested document into docs/.',
+        envelope: 'build',
+        prompt: { inputs: ['request'] },
+      },
+      {
+        name: 'test',
+        kind: 'code',
+        description: 'Prove the document with the project tests.',
+        command: { ref: 'test' },
+        feedbackTo: 'write_doc',
+      },
+    ];
+    expect(generatedCompositionIssues({ phases }, [], [writer], ['test'])).toEqual([]);
+  });
+
+  it('rejects a later agent that does not consume an earlier envelope', () => {
+    const builder: AgentDef = {
+      name: 'builder',
+      purpose: 'build things',
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      systemPrompt: 'You build.',
+      userPrompt: 'Build: {{request}}',
+      writes: null,
+      envelope: 'build',
+      color: '#5ad2dd',
+    };
+    const judge: AgentDef = {
+      name: 'judge',
+      purpose: 'judge the result without editing it',
+      model: 'inherit',
+      reasoningEffort: 'high',
+      systemPrompt: 'You review.',
+      userPrompt: 'Review: {{request}}',
+      writes: [],
+      envelope: 'review',
+      toolProfile: 'read-only',
+      color: '#ff6f67',
+    };
+    const phases: PhaseDef[] = [
+      {
+        name: 'build',
+        kind: 'agent',
+        agent: 'builder',
+        model: 'anthropic/claude-haiku-4',
+        reasoningEffort: 'low',
+        description: 'Make the requested change inside the worktree.',
+        envelope: 'build',
+        prompt: { inputs: ['request'] },
+      },
+      {
+        name: 'test',
+        kind: 'code',
+        description: 'Prove the change with the project tests.',
+        command: { ref: 'test' },
+        feedbackTo: 'build',
+      },
+      {
+        name: 'review',
+        kind: 'agent',
+        agent: 'judge',
+        model: 'openai/gpt-5',
+        reasoningEffort: 'high',
+        description: 'Judge the result against the request.',
+        envelope: 'review',
+        prompt: { inputs: ['request'] },
+        gates: ['verdict_consistent', 'disapproval_halts'],
+      },
+    ];
+    const issues = generatedCompositionIssues({ phases }, [judge], [builder, judge], ['test']);
+    expect(issues.some((issue) => issue.message.includes('consume an earlier envelope'))).toBe(
+      true,
+    );
+  });
+
+  it('stamps do-not-fix only on judge-only reviewers', () => {
+    expect(envelopeConstitution('review', [])).toContain('Do not fix what you find');
+    expect(envelopeConstitution('review', null)).toContain('Fix the gaps you find');
+    expect(envelopeConstitution('review', null)).not.toContain('Do not fix what you find');
+    expect(envelopeConstitution('review', ['src/**'])).toContain('Fix the gaps you find');
   });
 });

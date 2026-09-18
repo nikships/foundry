@@ -1188,6 +1188,12 @@ export class Executor {
       recoveryNotes: this.recoveryNotes,
       commandDrift: this.commandDrift,
       healing: this.deps.healing ?? null,
+      agents: this.agents,
+      setAgentWrites: (agentName, writes) => {
+        const agent = this.agents.find((entry) => entry.name === agentName);
+        if (agent) agent.writes = writes;
+        this.sessions.get(agentName)?.setWrites(writes);
+      },
       cancelled: () => this.cancelled,
       onCancel: (abort) => this.onCancel(abort),
       phaseId: (name: string) => this.phaseId(name),

@@ -291,7 +291,7 @@ export function hydrateSynthesizedAgents(
     purpose: agent.purpose,
     model: 'inherit',
     reasoningEffort: agent.reasoningEffort ?? 'medium',
-    systemPrompt: injectEnvelopeConstitution(agent.systemPrompt, agent.envelope),
+    systemPrompt: injectEnvelopeConstitution(agent.systemPrompt, agent.envelope, agent.writes),
     userPrompt: agent.userPrompt,
     writes: agent.writes,
     envelope: agent.envelope,
