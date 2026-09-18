@@ -401,9 +401,10 @@ describe('json schema derivation', () => {
       }
 
       expect(schemas[kind].safeParse(minimal).success, `${kind} zod fills defaults`).toBe(true);
-      expect(compile(jsonSchemaFor(kind))(minimal), `${kind} json schema allows omitting defaults`).toBe(
-        true,
-      );
+      expect(
+        compile(jsonSchemaFor(kind))(minimal),
+        `${kind} json schema allows omitting defaults`,
+      ).toBe(true);
     }
   });
 
