@@ -235,8 +235,11 @@ describe('builtin prompt contracts', () => {
     }
   });
 
-  it('keeps the harness review halt line, quoted status fail stays out of review seeds', () => {
-    expect(FOUNDRY_RUN_HARNESS).toContain('when `approved` is false, report `status: "fail"` too');
+  it('attaches the review halt on the phase prompt, quoted status fail stays out of review seeds', () => {
+    expect(FOUNDRY_RUN_HARNESS).not.toContain(
+      'when `approved` is false, report `status: "fail"` too',
+    );
+    expect(FOUNDRY_RUN_HARNESS).toContain('call submit_envelope once');
     for (const name of ['reviewer', 'finisher']) {
       const agent = agentByName(name)!;
       expect(`${agent.systemPrompt}\n${agent.userPrompt}`, name).not.toContain('status: "fail"');

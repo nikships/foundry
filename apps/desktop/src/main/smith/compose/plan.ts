@@ -3,7 +3,7 @@
  *
  * Smith proposes; code disposes. This file owns the standing
  * rules, the per-request prompt (context summary, commands, roster, envelope
- * library, gate catalog, builtin shapes as few-shot), the schema-bound
+ * library, gate catalog, builtin phase-shape sketches), the schema-bound
  * `submit_result` answer, and the post-parse rails — the same `validate()` +
  * `preflightForRun()` a hand-built pipeline passes. A plan that cannot survive
  * those rails never reaches the operator's card.
@@ -160,11 +160,26 @@ export function stampedFewShotPipelines(
   });
 }
 
-/** The builtin shapes, stripped to what teaches composition. */
-function fewShotPipelines(models: readonly ModelInfo[]): string {
-  return stampedFewShotPipelines(models)
-    .map((shape) => JSON.stringify(shape))
-    .join('\n');
+/**
+ * Builtin pipeline shapes as sketches, not full JSON. Roster one-liners and
+ * the composition constitution already teach the field names; dumping six
+ * stamped pipelines on every compose/revise turn does not.
+ */
+function pipelineShapeSketches(): string {
+  return [
+    'Canonical (build-pr): plan (planner, plan envelope, gates artifacts_exist+files_non_empty) → build (builder, build envelope) → test (code {ref:test}, feedbackTo:build) → open_pr (pr_writer, pr envelope). Acceptance: envelope_status on open_pr.',
+    'Every agent phase names model + reasoningEffort from the cast pool above.',
+    '',
+    'Agent phase fields: name, kind:"agent", description, agent, model, reasoningEffort, prompt:{inputs:[...]}, envelope; optional gates, retries.',
+    'Code phase fields: name, kind:"code", description, command:{ref:"<project command>"}; optional feedbackTo, heal, flakeRerun.',
+    '',
+    'Deltas from canonical:',
+    '- fix-pr: diagnose (scout) instead of plan; builder phase named fix with envelope:diagnose; proof feedbackTo:fix; PR inputs diagnose+fix.',
+    '- spec-pr: survey (scout) → spec (planner) → open_pr. No builder, no test.',
+    '- triage-issue-pr: diagnose (scout) → file_issue (issue_writer) → spec (planner) → open_pr.',
+    '- ship-pr: refine (refiner, brief) first; later prompts use envelope:refine.improved_request as {{request}}; after test, production_check (finisher, review envelope, gates verdict_consistent+disapproval_halts) then verify (tests, feedbackTo:production_check) then open_pr.',
+    '- sdlc-pr: ship-pr plus review (reviewer, read-only) then document (documenter) then open_pr.',
+  ].join('\n');
 }
 
 export function buildPlanPrompt(inputs: PlanPromptInputs): string {
@@ -228,8 +243,8 @@ export function buildPlanPrompt(inputs: PlanPromptInputs): string {
       .map(([gate, blurb]) => `- ${gate}: ${blurb}`)
       .join('\n'),
     '',
-    '## Builtin pipelines (valid shapes; example model ids are syntax placeholders, not rankings)',
-    fewShotPipelines(inputs.models),
+    '## Builtin pipelines (phase-shape sketches; appoint model + reasoningEffort from the cast pool)',
+    pipelineShapeSketches(),
   );
   if (inputs.ghAvailable === false) {
     parts.push(

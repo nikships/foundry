@@ -233,10 +233,11 @@ export function envelopeFieldNames(
  * very schema the reply is parsed against — the fourth leg of the synced set
  * (type, prompt example, parse, wire constraint), so none of them can drift.
  *
- * Emitted as the OUTPUT view: `.default()` fields are `required`, i.e. the
- * model is asked for strictly more than `parseEnvelope` demands (which fills
- * defaults for anything omitted). Conforming to this schema therefore always
- * parses; the text-parse fallback covers replies that do not conform.
+ * `.default()` fields are optional on the wire: `parseEnvelope` fills them.
+ * Only keys parse actually requires (`status`, brief payload, plan lists,
+ * review `approved`, pr/issue title and body, custom `required: true`) are
+ * `required` here, so omitting an empty `artifacts: []` is not a constraint
+ * failure.
  *
  * No `$schema` dialect is declared, and the one zod stamps on is stripped. A
  * structured-output schema crosses into whichever validator the provider runs,
@@ -249,7 +250,32 @@ export function jsonSchemaFor(
   custom?: CustomEnvelopeField[],
   defs?: EnvelopeDef[],
 ): z.core.JSONSchema.BaseSchema {
-  return jsonSchemaWithoutDialect(schemaFor(kind, custom, defs));
+  // Zod's input view drops `additionalProperties: false`. Restore it so a
+  // structured submit still cannot invent envelope fields.
+  return refuseUnknownProperties(
+    jsonSchemaWithoutDialect(schemaFor(kind, custom, defs), { io: 'input' }),
+  );
+}
+
+function refuseUnknownProperties(
+  schema: z.core.JSONSchema.BaseSchema,
+): z.core.JSONSchema.BaseSchema {
+  closeAdditionalProperties(schema);
+  return schema;
+}
+
+function closeAdditionalProperties(node: unknown): void {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+  const rec = node as Record<string, unknown>;
+  if (rec.type === 'object' || (rec.properties && typeof rec.properties === 'object')) {
+    rec.additionalProperties = false;
+  }
+  if (rec.properties && typeof rec.properties === 'object') {
+    for (const value of Object.values(rec.properties as Record<string, unknown>)) {
+      closeAdditionalProperties(value);
+    }
+  }
+  closeAdditionalProperties(rec.items);
 }
 
 /**

@@ -495,7 +495,7 @@ describe('agent phases', () => {
       join(h.tracer.runDir(outcome.runId), 'builder/prompts/report-1.md'),
       'utf8',
     );
-    expect(prompt).toContain('call `submit_envelope` once');
+    expect(prompt).not.toContain('call `submit_envelope` once');
     expect(prompt).not.toContain('low|med|high');
   });
 

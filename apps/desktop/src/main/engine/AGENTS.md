@@ -23,8 +23,9 @@ New phase kinds or gates require shared types, registry/schema/check wiring, run
 - **Envelope parsing and validation share one budget.** Structured output remains a candidate until domain validation passes.
 - **Boundaries are enforced after each call with `git diff`.** `null` permits writes except protected paths; `[]` is read-only; allowlists support `*` and `**`. Revert violations and fail the phase.
 - **Compaction occurs only between phases.** Foundry supplies the summary
-  (request, current phase, artifacts, open failures, files, envelope fields)
-  and pins the phase prompt. Pi auto-compaction stays off.
+  (request, current phase, artifacts, open failures, envelope fields, and
+  any files Pi recorded as edited) and pins the phase prompt. Pi
+  auto-compaction stays off.
   The prompt ledger is forgotten only after a compact that actually dropped
   messages, and then only for phases other than the pin.
 - **Rewind is coordinated.** `PhaseRewinder` rewinds transport before the phase prompt and restores the worktree to the phase-start snapshot. On failure, correction falls back to append-only behavior.

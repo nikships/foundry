@@ -11,7 +11,7 @@ import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS, type AgentDef } from '@
 
 /**
  * Shared fail-closed footer. Review envelopes still get `status: "fail"` from
- * FOUNDRY_RUN_HARNESS when `approved` is false; this line tells every agent
+ * the phase user prompt when `approved` is false; this line tells every agent
  * they may report failure rather than inventing success.
  */
 const FAIL_CLOSED =

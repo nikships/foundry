@@ -183,7 +183,16 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
     user = [user, '', '## Recovering an interrupted attempt', '', ctx.recoveryNote].join('\n');
   }
 
-  user = [user, '', 'When done, call `submit_envelope` once.'].join('\n');
+  // Submit-once lives on the standing harness. The review halt is only true
+  // for review envelopes; stamping it on builders burns tokens and invents a
+  // field those kinds do not have.
+  if ((phase.envelope ?? agent.envelope) === 'review') {
+    user = [
+      user,
+      '',
+      'For a review envelope, when `approved` is false, report `status: "fail"` too.',
+    ].join('\n');
+  }
 
   return { system, user };
 }

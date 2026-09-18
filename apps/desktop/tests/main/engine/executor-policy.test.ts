@@ -100,7 +100,7 @@ describe('feedback re-entry into an already-prompted phase', () => {
     expect(prompts).toHaveLength(2);
     // The first entry is the whole phase prompt.
     expect(prompts[0]).toContain('do the thing');
-    expect(prompts[0]).toContain('call `submit_envelope` once');
+    expect(prompts[0]).not.toContain('call `submit_envelope` once');
     expect(prompts[0]).not.toContain(exampleFor('build'));
     // The re-entry is the evidence plus a continue instruction, and nothing the
     // session is already holding: no request, no envelope example.
@@ -153,7 +153,7 @@ describe('feedback re-entry into an already-prompted phase', () => {
     // Turn 2 is the feedback re-entry, and the rewound session no longer holds
     // the prompt: it arrives in full, feedback appended.
     expect(prompts[2]).toContain('do the thing');
-    expect(prompts[2]).toContain('call `submit_envelope` once');
+    expect(prompts[2]).not.toContain('call `submit_envelope` once');
     expect(prompts[2]).not.toContain(exampleFor('build'));
     expect(prompts[2]).toContain('./check.sh');
     expect(
@@ -249,7 +249,7 @@ describe('feedback re-entry into an already-prompted phase', () => {
     // build(s1) → probe(s2) → build(s3): each model change is a new session.
     expect(requests.map((r) => r.sessionId)).toEqual(['s1', 's2', 's3', 's4']);
     expect(requests[2]!.text).toContain('do the thing');
-    expect(requests[2]!.text).toContain('call `submit_envelope` once');
+    expect(requests[2]!.text).not.toContain('call `submit_envelope` once');
     expect(requests[2]!.text).not.toContain(exampleFor('build'));
     expect(requests[2]!.text).toContain('./check.sh');
   });
@@ -658,10 +658,11 @@ describe('the trace record', () => {
     expect(existsSync(join(dir, 'pipeline.json'))).toBe(true);
     expect(existsSync(join(dir, 'events.jsonl'))).toBe(true);
     expect(existsSync(join(dir, 'builder/prompts/build-1.md'))).toBe(true);
-    // Prompt on disk is exactly what was sent, including the submit_envelope cue.
+    // Prompt on disk is exactly what was sent. The submit_envelope cue lives
+    // on the standing harness, not this record.
     const prompt = readFileSync(join(dir, 'builder/prompts/build-1.md'), 'utf8');
     expect(prompt).toContain('do the thing');
-    expect(prompt).toContain('call `submit_envelope` once');
+    expect(prompt).not.toContain('call `submit_envelope` once');
     expect(prompt).not.toContain('## Report');
   });
 

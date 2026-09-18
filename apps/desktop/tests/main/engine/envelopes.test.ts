@@ -352,43 +352,36 @@ describe('json schema derivation', () => {
   });
 
   /**
-   * Pinned semantics: the emitted schema is the OUTPUT view, so every
-   * `.default()` field is `required`. The model is told to emit them all —
-   * strictly more than `parseEnvelope` demands, which fills defaults for
-   * anything omitted. Anything conforming to the schema therefore parses;
-   * the looser text-parse fallback stays the safety net for anything that
-   * does not. Changing this to the input view would silently let a model
-   * skip fields the next phase reads.
+   * Pinned semantics: the emitted schema is the input view, so Zod `.default()`
+   * fields are optional. Parse fills them. Only keys parse actually requires
+   * stay `required` on the wire.
    */
-  it('pins required-ness per kind, defaults included', () => {
-    const base = ['status', 'summary', 'artifacts', 'notes_for_next_agent'];
+  it('pins required-ness per kind, defaults omitted', () => {
     const expected: Record<(typeof BUILTIN_KINDS)[number], string[]> = {
-      generic: base,
-      brief: [...base, 'improved_request', 'constraints', 'acceptance_criteria'],
-      plan: [...base, 'commit_message', 'files_to_touch', 'steps', 'verification', 'risks'],
-      build: [...base, 'commit_message'],
-      scout: [...base, 'findings'],
-      review: [...base, 'approved', 'findings', 'blocking'],
-      document: base,
-      pr: [...base, 'title', 'body'],
-      issue: [...base, 'title', 'body', 'labels'],
+      generic: ['status'],
+      brief: ['status', 'improved_request', 'constraints', 'acceptance_criteria'],
+      plan: ['status', 'files_to_touch', 'steps', 'verification'],
+      build: ['status'],
+      scout: ['status'],
+      review: ['status', 'approved'],
+      document: ['status'],
+      pr: ['status', 'title', 'body'],
+      issue: ['status', 'title', 'body'],
     };
     for (const kind of BUILTIN_KINDS) {
       expect(jsonSchemaFor(kind).required, `${kind} required`).toEqual(expected[kind]);
     }
 
     // Nested objects follow the same rule: review findings carry a defaulted
-    // `evidence` and it is required too.
+    // `evidence` and it is not required.
     const reviewFindings = (
       (jsonSchemaFor('review').properties as Record<string, Record<string, unknown>>).findings
         .items as Record<string, unknown>
     ).required;
-    expect(reviewFindings).toEqual(['requirement', 'met', 'evidence']);
+    expect(reviewFindings).toEqual(['requirement', 'met']);
   });
 
-  it('lets the zod parse fill every defaulted field the schema demands', () => {
-    // The other half of the pin: omitting all defaults is stricter than the
-    // JSON Schema allows but still a valid envelope on the parse side.
+  it('lets the zod parse fill every defaulted field the schema also allows omitting', () => {
     for (const kind of BUILTIN_KINDS) {
       const minimal: Record<string, unknown> = { status: 'success' };
       if (kind === 'brief') {
@@ -408,8 +401,8 @@ describe('json schema derivation', () => {
       }
 
       expect(schemas[kind].safeParse(minimal).success, `${kind} zod fills defaults`).toBe(true);
-      expect(compile(jsonSchemaFor(kind))(minimal), `${kind} json schema demands defaults`).toBe(
-        false,
+      expect(compile(jsonSchemaFor(kind))(minimal), `${kind} json schema allows omitting defaults`).toBe(
+        true,
       );
     }
   });
@@ -465,14 +458,7 @@ describe('json schema derivation', () => {
     expect(props.urgent.type).toBe('boolean');
     expect(props.steps).toMatchObject({ type: 'array', items: { type: 'string' } });
     // The agent override wins, so severity drops out of required; owner joins it.
-    expect(schema.required).toEqual([
-      'status',
-      'summary',
-      'artifacts',
-      'notes_for_next_agent',
-      'urgent',
-      'owner',
-    ]);
+    expect(schema.required).toEqual(['status', 'urgent', 'owner']);
 
     const sample: unknown = JSON.parse(exampleFor('severity_report', customFields, defs));
     const validate = compile(schema);
@@ -483,7 +469,7 @@ describe('json schema derivation', () => {
   it('falls back to the generic schema for an unknown kind', () => {
     const defs = [{ name: 'severity_report', fields: [] }];
     const schema = jsonSchemaFor('deleted_envelope', undefined, defs);
-    expect(schema.required).toEqual(['status', 'summary', 'artifacts', 'notes_for_next_agent']);
+    expect(schema.required).toEqual(['status']);
     expect(compile(schema)(JSON.parse(exampleFor('deleted_envelope', undefined, defs)))).toBe(true);
   });
 });

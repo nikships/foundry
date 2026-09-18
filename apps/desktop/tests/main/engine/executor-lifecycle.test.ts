@@ -308,7 +308,7 @@ describe('continuing a killed run', () => {
     const prompt = turnRequests(continued)[0]!.text;
     // Full: the new session holds nothing, so the phase's own ask is re-sent.
     expect(prompt).toContain('Build: do the thing');
-    expect(prompt).toContain('call `submit_envelope` once');
+    expect(prompt).not.toContain('call `submit_envelope` once');
     expect(prompt).not.toContain('## Report');
     expect(prompt).toContain('## Recovering an interrupted attempt');
     expect(prompt).toContain('stopped by the operator while the "build" phase');

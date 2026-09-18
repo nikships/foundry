@@ -377,7 +377,7 @@ describe('compaction between phases', () => {
     expect(facts.phaseUserPrompt).not.toContain('## Report');
     expect(facts.envelopeKind).toBe('build');
     expect(facts.requiredFields).toContain('status');
-    expect(facts.requiredFields).toContain('commit_message');
+    expect(facts.requiredFields).not.toContain('commit_message');
     // Standing role is re-injected every turn.
     expect(turnRequests(scripted)[1]!.systemPrompt).toContain('You build.');
   });
@@ -505,7 +505,7 @@ describe('structured-output envelopes', () => {
 
     const example = exampleFor('build');
     const userText = String(turnRequests(scripted)[0]!.text);
-    expect(userText).toContain('call `submit_envelope` once');
+    expect(userText).not.toContain('call `submit_envelope` once');
     expect(userText).not.toContain(example);
     expect(userText).not.toContain('## Report');
     const prompt = readFileSync(

@@ -8,17 +8,12 @@ import {
   artifactPathsOf,
   foundryCompactionSummary,
   requiredFieldsFor,
-  stripReportBlock,
   unresolvedFailuresOf,
   type CompactionFacts,
 } from '../../../src/main/engine/compaction.js';
 import { FOUNDRY_RUN_HARNESS } from '../../../src/main/pi/system-prompt.js';
 
 const PHASE_PROMPT = ['Build: ship the widget.', '', '## Request', '', 'ship the widget'].join(
-  '\n',
-);
-
-const WITH_REPORT = [PHASE_PROMPT, '', '## Report', '', '{', '  "status": "success"', '}'].join(
   '\n',
 );
 
@@ -35,14 +30,6 @@ function facts(over: Partial<CompactionFacts> = {}): CompactionFacts {
     ...over,
   };
 }
-
-describe('stripReportBlock', () => {
-  it('removes the trailing Report example and leaves the phase prompt', () => {
-    expect(stripReportBlock(WITH_REPORT)).toBe(PHASE_PROMPT);
-    expect(stripReportBlock(WITH_REPORT)).not.toContain('## Report');
-    expect(stripReportBlock(PHASE_PROMPT)).toBe(PHASE_PROMPT);
-  });
-});
 
 describe('foundryCompactionSummary', () => {
   it('keeps the phase prompt verbatim', () => {
@@ -62,7 +49,9 @@ describe('foundryCompactionSummary', () => {
     expect(summary).toContain('kind: build');
     expect(summary).toContain('required fields:');
     expect(summary).toContain('status');
-    expect(summary).toContain('commit_message');
+    expect(summary).not.toContain('commit_message');
+    expect(summary).toContain('## Files modified');
+    expect(summary).toContain('- src/widget.ts');
   });
 
   it('does not use Pi’s chat template or summarise the system harness', () => {
@@ -76,10 +65,16 @@ describe('foundryCompactionSummary', () => {
 
   it('omits empty constitution sections rather than inventing them', () => {
     const summary = foundryCompactionSummary(
-      facts({ phaseUserPrompt: '', artifactPaths: [], unresolvedFailures: [] }),
+      facts({
+        phaseUserPrompt: '',
+        artifactPaths: [],
+        unresolvedFailures: [],
+        filesModified: [],
+      }),
     );
     expect(summary).not.toContain('## Phase prompt');
     expect(summary).not.toContain('## Project card');
+    expect(summary).not.toContain('## Files modified');
     expect(summary).toContain('## Artifact paths\n\n(none)');
     expect(summary).toContain('## Unresolved failures\n\n(none)');
   });

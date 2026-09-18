@@ -26,7 +26,6 @@ import {
   type RenderContext,
   type RenderedPrompt,
 } from '../prompts.js';
-import { stripReportBlock } from '../compaction.js';
 import { promptFingerprint, type PromptLedger } from '../prompt-ledger.js';
 import { diffStat } from '../git.js';
 
@@ -560,7 +559,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     }
 
     this.deps.prompts.note(session, phase.name, fingerprint, {
-      userPrompt: stripReportBlock(baseline.user),
+      userPrompt: baseline.user,
     });
     return { rendered, systemPrompt, delta: false };
   }

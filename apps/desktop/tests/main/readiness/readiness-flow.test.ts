@@ -837,7 +837,8 @@ describe('readiness remediator continuation prompt', () => {
   it('states marker-ignore ownership once and does not advertise unavailable workers', () => {
     const combined = `${READINESS_SYSTEM_PROMPT}\n${readinessRemediatePrompt(evaluation)}`;
     expect(combined.match(/Exempt the marker from every gate/g)).toHaveLength(1);
-    expect(combined).not.toMatch(/Fan out|sub-agents|workers to split/);
+    expect(combined).not.toMatch(/AskUser/);
+    expect(combined).toMatch(/stop and summarize what you need from the operator/);
   });
 
   it('tells a continuation turn not to start over', () => {
