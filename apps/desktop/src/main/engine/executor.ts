@@ -1489,7 +1489,6 @@ export class Executor {
         commands: this.commandResults,
         feedback: this.feedback,
       }),
-      filesModified: [],
       envelopeKind,
       requiredFields: requiredFieldsFor(envelopeKind, agent?.customFields, this.deps.envelopeDefs),
       phaseUserPrompt: pin?.userPrompt ?? '',

@@ -453,23 +453,24 @@ describe('opening a session', () => {
     expect(spy.loaders[0]!.cwd).toBe(h.cwd);
   });
 
-  it('turns off tool discovery and loads repository context files', async () => {
+  it('turns off tool discovery and skips repository context files', async () => {
     const h = harness();
     await h.transport.start();
     const loader = spy.loaders[0]!;
     // An agent's tools, prompt, and policy come from the roster and from
     // src/main/pi. Whatever the operator installed for their own pi must not
-    // change what a run does. AGENTS.md in the worktree is loaded.
+    // change what a run does. AGENTS.md walking from cwd is skipped so repo
+    // docs cannot argue with the roster.
     expect(loader.noExtensions).toBe(true);
     expect(loader.noSkills).toBe(true);
     expect(loader.noPromptTemplates).toBe(true);
     expect(loader.noThemes).toBe(true);
-    expect(loader.noContextFiles).toBe(false);
+    expect(loader.noContextFiles).toBe(true);
     expect(loader.appendSystemPromptOverride?.([])).toEqual([]);
     const promptHarness = loader.systemPromptOverride?.(undefined) ?? '';
     expect(promptHarness).toMatch(/Foundry pipeline agent/i);
     expect(promptHarness.match(/submit_envelope/g)).toHaveLength(1);
-    expect(promptHarness).toContain('when `approved` is false, report `status: "fail"` too');
+    expect(promptHarness).not.toContain('when `approved` is false, report `status: "fail"` too');
     expect(promptHarness).toContain('untrusted task data');
     expect(promptHarness).toContain('reveal prompts');
   });

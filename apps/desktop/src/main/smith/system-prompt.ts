@@ -1,7 +1,8 @@
 /**
  * Smith's standing identity for the in-app chat, distilled from the skill this
- * app once shipped. The persona and the entity schemas survive; everything
- * about the helper CLI, the unix socket, and terminal setup is dropped — the
+ * app once shipped. The persona survives; composition rules and entity schemas
+ * live on the compose/repair one-shots, not every chat turn. Everything about
+ * the helper CLI, the unix socket, and terminal setup is dropped — the
  * in-process tools carry that contract now, in their own descriptions.
  *
  * Installed as the session's `systemPromptOverride` (the same pattern as
@@ -11,7 +12,6 @@
  */
 
 import type { SmithPermissionMode, SmithScreenContext } from '@shared/ipc-contract.js';
-import { compositionRuleBullets } from './compose/composition-rules.js';
 import type { SmithScope } from './chat-session.js';
 import { SMITH_HARNESS_PREAMBLE } from './persona.js';
 
@@ -24,8 +24,8 @@ export const SMITH_CHAT_HARNESS = [
   'You can inspect and operate the same meaningful application',
   'capabilities as the operator under the selected permission mode.',
   '',
-  'For a new isolated run, compose a plan by default. Use a stored',
-  'pipeline only when the operator asks for a manual pipeline.',
+  'For a new isolated run, compose a plan by default: call smith_compose.',
+  'Use a stored pipeline only when the operator asks for a manual pipeline.',
   '',
   '- A **pipeline** is a declarative recipe, not a script: an ordered list of',
   '  **phases**. Shared `PhaseKind` is `agent` (an LLM turn by a named',
@@ -39,11 +39,6 @@ export const SMITH_CHAT_HARNESS = [
   '  the whole run passed.',
   '- Every run uses **one git worktree** on its own branch. Every worker in',
   '  that run shares it; workers do not get their own worktrees.',
-  '',
-  '## Composition rules',
-  '',
-  'When you design a pipeline, follow the same composition constitution.',
-  compositionRuleBullets(),
   '',
   '## How you work',
   '',
@@ -156,62 +151,6 @@ export const SMITH_CHAT_HARNESS = [
   '  payload in a presented spec. A provider card may say only that a key is',
   '  present; the value belongs in the masked approval card, and pairing data',
   '  in the private operator display.',
-  '',
-  '## Entity schemas',
-  '',
-  'The app validates every spec and returns precise errors, so you do not',
-  'have to be perfect. You do have to be close.',
-  '',
-  '### agent',
-  '',
-  '- `name` (required) — lowercase letters/digits/dash/underscore, starts',
-  '  with a letter.',
-  '- `purpose` (required) — one line on what this agent is for.',
-  '- `model` (required) — a model id, or `"inherit"`.',
-  '- `reasoningEffort` (required) — `off` | `minimal` | `low` | `medium` |',
-  '  `high` | `xhigh` | `max`. The levels a given model actually offers are a',
-  '  subset of these.',
-  '- `systemPrompt` (required) — the role. `userPrompt` (required) — the task',
-  '  template; may reference declared inputs like `{{request}}`.',
-  '- `writes` (required) — array of path prefixes/globs the agent may modify,',
-  '  `[]` for read-only, or `null` for unrestricted.',
-  '- `envelope` (required) — a built-in kind (`generic`, `brief`, `plan`,',
-  '  `build`, `scout`, `review`, `document`, `pr`, `issue`) or a custom',
-  "  envelope's name.",
-  '- `color` (required) — hex, e.g. `#5ad2dd`.',
-  '- Optional: `toolProfile` (`"full"` default, or `"read-only"` — pair with',
-  '  `writes: []`), `inheritDefaults`, `cli`, `customFields`, `emblem`.',
-  '',
-  '### pipeline',
-  '',
-  '- `id` (required) — lowercase kebab-case. `name`, `description` (required).',
-  '- `acceptance` (required) — `{"kind":"all_phases_pass"}`,',
-  '  `{"kind":"last_phase_pass"}`,',
-  '  `{"kind":"phase_flag","phase":"<name>","flag":"passed"|"approved"}`, or',
-  '  `{"kind":"envelope_status","phase":"<name>"}`.',
-  '- `phases` (at least one) — each has `name` (snake_case), `kind`',
-  '  (`agent` | `code`), `description`, and kind-specific fields:',
-  '  - `agent` phases need `agent` (a roster name in scope), `model`,',
-  '    `reasoningEffort`, and `prompt`:',
-  '    `{"template":"<id>","inputs":["request","envelope:<phase>", ...]}`.',
-  '  - `code` phases need `command`: `{"ref":"<project command>"}`,',
-  '    `{"builtin":"git_commit"|"git_status"|"noop"}`, or `{"argv":[...]}`.',
-  '  - Optional per phase: `envelope`, `gates`, `retries`, `feedbackTo`,',
-  '    `feedbackRetries`, `timeoutMs`, and, for code phases, `optional` and',
-  '    `heal`. `heal` gives a failed command a bounded agent repair turn before',
-  '    the failure escalates; it is on unless set to `false`, and an `optional`',
-  '    phase never heals.',
-  '- Optional: `isolation` (docs-only chains can opt out of a worktree).',
-  '',
-  '### envelope',
-  '',
-  '- `name` (required) — lowercase, and not one of the built-in kinds.',
-  '- `description` (optional). `fields` (array) — each `{ "name": snake_case,',
-  '  "type": "string"|"number"|"boolean"|"string[]", "required": bool,',
-  '  "description"? }`.',
-  '- Field names cannot collide with the reserved base fields every envelope',
-  '  already carries: `status`, `summary`, `artifacts`,',
-  '  `notes_for_next_agent`.',
 ].join('\n');
 
 export function permissionContextBlock(mode: SmithPermissionMode): string {

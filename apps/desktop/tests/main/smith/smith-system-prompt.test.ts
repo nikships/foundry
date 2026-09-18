@@ -1,6 +1,6 @@
 /**
- * Smith's chat harness: the persona and entity schemas from the skill
- * survive; the CLI reference does not. The screen context renders as a
+ * Smith's chat harness: the persona survives; composition rules and entity
+ * schemas live on the compose one-shot. The screen context renders as a
  * compact standing block, never a payload.
  */
 
@@ -34,6 +34,7 @@ describe('SMITH_CHAT_HARNESS', () => {
 
   it('teaches Smith composition as the default and Manual as opt-in', () => {
     expect(SMITH_CHAT_HARNESS).toContain('For a new isolated run, compose a plan by default');
+    expect(SMITH_CHAT_HARNESS).toContain('call smith_compose');
     expect(SMITH_CHAT_HARNESS).toContain(
       'pipeline only when the operator asks for a manual pipeline',
     );
@@ -52,7 +53,8 @@ describe('SMITH_CHAT_HARNESS', () => {
     expect(SMITH_CHAT_HARNESS).not.toMatch(/`agent` \| `code` \| `engineer`/);
     expect(SMITH_CHAT_HARNESS).not.toContain('three kinds');
     expect(SMITH_CHAT_HARNESS).not.toContain('set `question`');
-    expect(SMITH_CHAT_HARNESS).toContain('(`agent` | `code`)');
+    expect(SMITH_CHAT_HARNESS).toContain('Shared `PhaseKind` is `agent`');
+    expect(SMITH_CHAT_HARNESS).toContain('or `code`');
     expect(PHASE_KINDS).toEqual(['agent', 'code']);
     expect(isPhaseKind('engineer')).toBe(false);
     expect(isPhaseKind('question')).toBe(false);
@@ -72,31 +74,24 @@ describe('SMITH_CHAT_HARNESS', () => {
     expect(parsed.success).toBe(false);
   });
 
-  it('includes disapproval_halts and every agent phase names model + reasoningEffort', () => {
-    expect(SMITH_CHAT_HARNESS).toContain('disapproval_halts');
-    expect(SMITH_CHAT_HARNESS).toContain('verdict_consistent');
-    expect(SMITH_CHAT_HARNESS).toContain('proven before any commit');
-    expect(SMITH_CHAT_HARNESS).toContain(
+  it('keeps composition-rule bullets on compose, not ordinary chat', () => {
+    expect(SMITH_CHAT_HARNESS).not.toContain('## Composition rules');
+    expect(SMITH_CHAT_HARNESS).not.toContain(compositionRuleBullets());
+    expect(SMITH_COMPOSE_PROMPT).toContain(compositionRuleBullets());
+    expect(SMITH_COMPOSE_PROMPT).toContain('disapproval_halts');
+    expect(SMITH_COMPOSE_PROMPT).toContain('verdict_consistent');
+    expect(SMITH_COMPOSE_PROMPT).toContain('proven before any commit');
+    expect(SMITH_COMPOSE_PROMPT).toContain(
       '**Every agent phase names its own model and reasoning level.**',
     );
-    expect(SMITH_CHAT_HARNESS).toContain('reasoningEffort');
-    expect(SMITH_CHAT_HARNESS).toContain(compositionRuleBullets());
-    expect(SMITH_COMPOSE_PROMPT).toContain(compositionRuleBullets());
   });
 
-  it('carries the entity schemas: fields, enums, and reserved names', () => {
-    expect(SMITH_CHAT_HARNESS).toContain('`reasoningEffort` (required)');
-    expect(SMITH_CHAT_HARNESS).toContain('`writes` (required)');
-    expect(SMITH_CHAT_HARNESS).toContain('all_phases_pass');
-    expect(SMITH_CHAT_HARNESS).toContain('envelope_status');
-    // The reserved base fields a custom envelope may not redeclare.
-    for (const field of ['status', 'summary', 'artifacts', 'notes_for_next_agent']) {
-      expect(SMITH_CHAT_HARNESS).toContain(field);
-    }
-    // The built-in envelope kinds a custom name may not collide with.
-    for (const kind of ['generic', 'brief', 'plan', 'build', 'scout', 'review']) {
-      expect(SMITH_CHAT_HARNESS).toContain(kind);
-    }
+  it('keeps entity schemas off ordinary chat — tools already validate', () => {
+    expect(SMITH_CHAT_HARNESS).not.toContain('## Entity schemas');
+    expect(SMITH_CHAT_HARNESS).not.toContain('`reasoningEffort` (required)');
+    expect(SMITH_CHAT_HARNESS).not.toContain('`writes` (required)');
+    expect(SMITH_CHAT_HARNESS).not.toContain('all_phases_pass');
+    expect(SMITH_CHAT_HARNESS).not.toContain('envelope_status');
   });
 
   it('keeps the approval contract: one card, no note, never re-propose the same spec', () => {

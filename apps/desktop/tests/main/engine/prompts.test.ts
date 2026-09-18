@@ -56,10 +56,26 @@ describe('renderPrompt', () => {
 
   it('tells the agent to submit_envelope without reprinting the schema example', () => {
     const rendered = renderPrompt(agent, phase, ctx());
-    expect(rendered.user).toContain('call `submit_envelope` once');
+    expect(rendered.user).not.toContain('submit_envelope');
     expect(rendered.user).not.toContain('## Report');
     expect(rendered.user).not.toMatch(/Reply with ONLY this JSON/);
     expect(rendered.user).not.toContain(exampleFor('build'));
+  });
+
+  it('attaches the review halt only to review envelopes', () => {
+    const halt = 'when `approved` is false, report `status: "fail"` too';
+    expect(renderPrompt(agent, phase, ctx()).user).not.toContain(halt);
+    const reviewer: AgentDef = { ...agent, name: 'reviewer', envelope: 'review' };
+    const reviewPhase: PhaseDef = {
+      name: 'review',
+      kind: 'agent',
+      agent: 'reviewer',
+      description: 'review the work',
+      envelope: 'review',
+    };
+    const reviewUser = renderPrompt(reviewer, reviewPhase, ctx()).user;
+    expect(reviewUser).toContain(halt);
+    expect(reviewUser).not.toContain('When done, call `submit_envelope` once.');
   });
 
   it('renders supplied bounded git context before the report schema', () => {
@@ -77,9 +93,6 @@ describe('renderPrompt', () => {
     expect(rendered.user).toContain('- Base ref: main');
     expect(rendered.user).toContain('- Branch point: abc123');
     expect(rendered.user).toContain('README.md | 2 +-');
-    expect(rendered.user.indexOf('## Accumulated git context')).toBeLessThan(
-      rendered.user.indexOf('submit_envelope'),
-    );
   });
 
   it('uses a declared improved request in place of the raw request', () => {

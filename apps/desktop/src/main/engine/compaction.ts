@@ -3,8 +3,9 @@
  *
  * Pi's default compact template is a chat Goal / Progress / Next Steps note.
  * A pipeline turn needs the request, the current phase, artifact paths, open
- * failures, files already edited, and the envelope the next submit must hit.
- * The system harness is re-injected every turn, so it is never summarised.
+ * failures, and the envelope the next submit must hit. Files Pi recorded as
+ * edited are included when that list is non-empty. The system harness is
+ * re-injected every turn, so it is never summarised.
  *
  * `session.compact()` stays opaque: this module only builds the text a Foundry
  * wrapper hands back through `session_before_compact`.
@@ -18,18 +19,12 @@ export interface CompactionFacts {
   phase: string;
   artifactPaths: readonly string[];
   unresolvedFailures: readonly string[];
-  filesModified: readonly string[];
+  /** Present only when Pi recorded edits; an empty list is omitted from the summary. */
+  filesModified?: readonly string[];
   envelopeKind: string;
   requiredFields: readonly string[];
-  /** Current phase user prompt with the Report block removed. */
+  /** Current phase user prompt, pinned across compact. */
   phaseUserPrompt: string;
-}
-
-/** Drops the trailing `## Report` example so a pin does not re-teach the envelope. */
-export function stripReportBlock(userPrompt: string): string {
-  const match = /(?:^|\n)## Report(?:\n|$)/.exec(userPrompt);
-  if (!match || match.index === undefined) return userPrompt.trimEnd();
-  return userPrompt.slice(0, match.index).trimEnd();
 }
 
 /** Field names the next `submit_envelope` must still name, from the same schema. */
@@ -97,7 +92,11 @@ export function foundryCompactionSummary(facts: CompactionFacts): string {
     ['## Current phase', '', facts.phase.trim() || '(none)'].join('\n'),
     ['## Artifact paths', '', bullets(facts.artifactPaths)].join('\n'),
     ['## Unresolved failures', '', bullets(facts.unresolvedFailures)].join('\n'),
-    ['## Files modified', '', bullets(facts.filesModified)].join('\n'),
+  );
+  if (facts.filesModified?.length) {
+    sections.push(['## Files modified', '', bullets(facts.filesModified)].join('\n'));
+  }
+  sections.push(
     [
       '## Envelope',
       '',

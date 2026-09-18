@@ -122,7 +122,7 @@ function compactionSlot(): {
         if (!facts) return;
         const ops = event.preparation.fileOps;
         const fromPrep = [...(ops?.written ?? []), ...(ops?.edited ?? [])];
-        const filesModified = [...new Set([...facts.filesModified, ...fromPrep])];
+        const filesModified = [...new Set([...(facts.filesModified ?? []), ...fromPrep])];
         return {
           compaction: {
             summary: foundryCompactionSummary({ ...facts, filesModified }),

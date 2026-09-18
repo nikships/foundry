@@ -170,6 +170,7 @@ export class PiTransport implements AgentTransport {
       harness: FOUNDRY_RUN_HARNESS,
       extensionFactory: this.extension.factory,
       packageResources,
+      noContextFiles: true,
     });
     const opened = await openFoundrySession({
       cwd: this.opts.cwd,

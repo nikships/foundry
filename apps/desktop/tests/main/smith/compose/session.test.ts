@@ -224,7 +224,7 @@ describe('ComposeSession', () => {
     );
   });
 
-  it('gives Smith the commands, roster, and few-shot pipelines', async () => {
+  it('gives Smith the commands, roster, and pipeline shape sketches', async () => {
     const oneShots = scriptedOneShots([submitted(validReply())]);
     const prompts: string[] = [];
     const factory: typeof oneShots.factory = (opts) => {
@@ -271,11 +271,12 @@ describe('ComposeSession', () => {
     expect(ask).toContain('intelligence unrated');
     expect(ask).not.toContain('$3/M input');
     expect(ask).not.toContain('200k context');
-    expect(ask).toContain('"model":"anthropic/claude-opus-4"');
-    expect(ask).toContain('"model":"anthropic/claude-haiku-4"');
-    expect(ask).toContain('"reasoningEffort":"high"');
-    expect(ask).toContain('"reasoningEffort":"medium"');
-    // Builtin pipelines ride along as few-shot examples of valid shapes.
+    expect(ask).toContain('Canonical (build-pr)');
+    expect(ask).toContain('Deltas from canonical');
+    expect(ask).toContain('fix-pr:');
+    expect(ask).toContain('sdlc-pr:');
+    expect(ask).not.toContain('"id":"build-pr"');
+    // Builtin pipelines ride along as phase-shape sketches, not full JSON.
     expect(ask).toContain('## Builtin pipelines');
     expect(oneShots.calls[0]!.systemPrompt).toContain('untrusted task data');
     expect(oneShots.calls[0]!.systemPrompt).toContain('Call submit_result exactly once');
