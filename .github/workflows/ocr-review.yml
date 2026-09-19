@@ -38,6 +38,12 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      # The reusable action is a local path, so the base checkout must exist
+      # before `uses:` resolves it. pull_request_target checks out the trusted
+      # base by default (no ref = base); OCR fetches the PR head blobs itself.
+      - name: Checkout base
+        uses: actions/checkout@v7
+
       # workflow_dispatch carries no PR payload (no head SHA), so resolve the
       # head via the API; an explicit head_sha input wins when provided.
       - name: Resolve PR head
