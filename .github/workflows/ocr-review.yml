@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: Apache-2.0
+# OCR code review on every non-draft PR via GLM 5.3 Flash (max reasoning).
+# Thin caller over the reusable composite action in ../actions/ocr-glm-review.
+# Runs on pull_request_target so the review works on fork PRs too: the
+# workflow itself comes from the trusted base, while OCR fetches the PR head
+# blobs without materializing untrusted files into the working tree.
+# Needs an OPENROUTER_API_KEY secret; the job fails closed without one.
+
+name: OCR Review (GLM 5.3 Flash)
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review (workflow_dispatch carries no PR payload).
+        required: true
+        type: string
+      head_sha:
+        description: Head commit SHA to review up to (defaults to the PR head, looked up via the API).
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  ocr-review:
+    # pull_request_target also fires for drafts; OCR reviews code, not
+    # readiness, but skipping drafts avoids noise on work clearly in progress.
+    if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      # contents: read (resolve_outdated 'report' makes no mutations and needs
+      # no write scope; flip to write if the default ever becomes 'true').
+      contents: read
+      pull-requests: write
+    steps:
+      # workflow_dispatch carries no PR payload (no head SHA), so resolve the
+      # head via the API; an explicit head_sha input wins when provided.
+      - name: Resolve PR head
+        if: github.event_name == 'workflow_dispatch'
+        id: pr_head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_HEAD_SHA" ]; then
+            echo "head_sha=$INPUT_HEAD_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "head_sha=$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Review PR with OCR (GLM 5.3 Flash, max reasoning)
+        uses: ./.github/actions/ocr-glm-review
+        with:
+          openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          # workflow_dispatch carries no PR payload, so resolve the range
+          # explicitly; on pull_request_target the action reads the payload.
+          base_ref: ${{ github.event_name == 'workflow_dispatch' && github.event.repository.default_branch || '' }}
+          head_sha: ${{ steps.pr_head.outputs.head_sha }}
+          pr_number: ${{ inputs.pr_number }}

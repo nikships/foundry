@@ -1,0 +1,241 @@
+# SPDX-License-Identifier: Apache-2.0
+# Runs Alibaba Open Code Review (OCR) on a pull request using GLM 5.3 Flash
+# at max reasoning through OpenRouter.
+#
+# Placement decision: this wrapper lives in the public Foundry repo, not the
+# private Nikships/my-skills repo. A GitHub reusable action or composite action
+# referenced via `uses:` resolves and checks out without any credentials, so a
+# private host breaks every consumer that is public or lacks a PAT with repo
+# scope (including all forks). The canonical copy belongs in a public repo;
+# private repos can still *call* it. The OCR engine itself stays pinned to
+# upstream `alibaba/open-code-review`; this wrapper only fixes the
+# model + routing + reasoning defaults.
+#
+# Provider routing: cheapest-first with no quantization filtering.
+# Rationale, verified against the live OpenRouter endpoints API for
+# `z-ai/glm-5.3-flash` (29 endpoints): every serving endpoint reports fp8,
+# fp4, nvfp4, or unknown — there is no bf16/fp16/fp32 endpoint to prefer.
+# OpenRouter reserves `quantizations` for open-weight models and its docs
+# note that quantization metadata is mainly meaningful on
+# Together/Fireworks-style endpoints. Filtering here (e.g. to fp8 only)
+# would exclude the cheapest `unknown`-labelled endpoints such as Relace
+# and Wafer for zero quality gain, so the default is `sort: "price"` with
+# fallbacks on. Callers who would rather pin a provider can pass
+# `provider_order` (tried first, in order) or exclude noisy ones via
+# `provider_ignore`.
+#
+# Reasoning: `reasoning.effort: "max"` is the OpenRouter-native way to ask
+# for max reasoning and matches GLM 5.3 Flash's own default (`reasoning:
+# { mandatory: true, default_effort: "max" }`, supports max/high/low).
+# It is sent alongside `reasoning_effort: "max"` because OCR's
+# `llm_reasoning_effort` input merges `reasoning_effort` into the request
+# body via `llm.extra_body`, while OpenRouter's gateway honors the
+# top-level `reasoning` object; sending both keeps max reasoning working
+# whether the request path reads one key or the other. Temperature 1.0 and
+# top_p 0.95 are Z.ai's recommended settings for this model.
+
+name: OCR code review with GLM 5.3 Flash (max reasoning)
+description: >-
+  Runs Alibaba Open Code Review on the PR using Z.ai GLM 5.3 Flash at max
+  reasoning via OpenRouter, routed cheapest-first. Thin wrapper over the
+  upstream alibaba/open-code-review action with fixed model, routing, and
+  reasoning defaults.
+
+inputs:
+  # --- Credentials (caller passes a secret; never logged) ---
+  openrouter_api_key:
+    description: OpenRouter API key, stored as a secret by the caller.
+    required: true
+
+  # --- Model / routing (defaults encode the cheapest-first policy) ---
+  model:
+    description: OpenRouter model slug.
+    required: false
+    default: z-ai/glm-5.3-flash
+  reasoning_effort:
+    description: Reasoning depth. One of max, high, low (the levels GLM 5.3 Flash supports on OpenRouter). Defaults to max.
+    required: false
+    default: max
+  provider_sort:
+    description: OpenRouter provider sort. "price" always picks cheapest-first (no load balancing); empty keeps OpenRouter default price-weighted balancing.
+    required: false
+    default: price
+  provider_order:
+    description: Optional comma-separated provider slugs tried first, in order (e.g. "z-ai,deepinfra"). Empty means no ordering constraint.
+    required: false
+    default: ''
+  provider_ignore:
+    description: Optional comma-separated provider slugs to skip (e.g. "modal,venice"). Empty means no exclusions.
+    required: false
+    default: ''
+  allow_fallbacks:
+    description: Whether OpenRouter may fall back to other providers when the cheapest is unavailable. Keep true for reliability.
+    required: false
+    default: 'true'
+
+  # --- Review behaviour (pass-through to upstream, with OCR-review defaults) ---
+  language:
+    description: Review output language.
+    required: false
+    default: English
+  effort:
+    description: OCR review depth preset (low, medium, high). Empty keeps the OCR default.
+    required: false
+    default: high
+  sticky_summary:
+    description: Update the summary comment in place instead of posting a new one each run.
+    required: false
+    default: 'true'
+  incremental:
+    description: Only append inline comments that do not overlap an existing bot comment. History is never deleted.
+    required: false
+    default: 'true'
+  resolve_outdated:
+    description: 'Resolve this action''s own outdated inline threads ("false", "report", "true"). "true" needs contents: write on the caller workflow.'
+    required: false
+    default: report
+  checkpoint_range:
+    description: Review only new pushes since the last checkpoint instead of the full range.
+    required: false
+    default: 'true'
+  full_review:
+    description: Force one full review even with checkpoint_range on.
+    required: false
+    default: 'false'
+  upload_artifacts:
+    description: Upload raw JSON result and stderr as workflow artifacts ("true"/"false").
+    required: false
+    default: 'true'
+  ocr_version:
+    description: npm version spec for @alibaba-group/open-code-review.
+    required: false
+    default: latest
+  github_token:
+    description: GitHub token used to post review comments.
+    required: false
+    default: ${{ github.token }}
+  # --- Range overrides (only needed for non-PR triggers like workflow_dispatch) ---
+  base_ref:
+    description: Override the base ref (use with head_sha for non-PR events).
+    required: false
+    default: ''
+  head_sha:
+    description: Override the head commit SHA (use with base_ref for non-PR events).
+    required: false
+    default: ''
+  pr_number:
+    description: Override the pull request number (needed when the event payload carries none, e.g. workflow_dispatch).
+    required: false
+    default: ''
+
+outputs:
+  comments_total:
+    description: Total number of review comments generated by OCR.
+    value: ${{ steps.ocr.outputs.comments_total }}
+  comments_inline:
+    description: Number of inline comments successfully posted.
+    value: ${{ steps.ocr.outputs.comments_inline }}
+  comments_skipped:
+    description: Number of inline comments skipped by incremental mode.
+    value: ${{ steps.ocr.outputs.comments_skipped }}
+  comments_failed:
+    description: Number of inline comments that failed to post.
+    value: ${{ steps.ocr.outputs.comments_failed }}
+  summary_comment_url:
+    description: URL of the posted/updated summary comment, if any.
+    value: ${{ steps.ocr.outputs.summary_comment_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build OpenRouter extra_body
+      id: routing
+      shell: bash
+      env:
+        INPUT_REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+        INPUT_PROVIDER_SORT: ${{ inputs.provider_sort }}
+        INPUT_PROVIDER_ORDER: ${{ inputs.provider_order }}
+        INPUT_PROVIDER_IGNORE: ${{ inputs.provider_ignore }}
+        INPUT_ALLOW_FALLBACKS: ${{ inputs.allow_fallbacks }}
+      run: |
+        set -euo pipefail
+        # Validate early with clear errors instead of a cryptic OCR failure.
+        EFFORT="$(printf '%s' "$INPUT_REASONING_EFFORT" | tr '[:upper:]' '[:lower:]')"
+        case "$EFFORT" in
+          max|high|low) ;;
+          *) echo "::error::reasoning_effort must be one of: max, high, low (got '$INPUT_REASONING_EFFORT')"; exit 1 ;;
+        esac
+        SORT="$(printf '%s' "$INPUT_PROVIDER_SORT" | tr '[:upper:]' '[:lower:]')"
+        case "$SORT" in
+          ""|price|throughput|latency) ;;
+          *) echo "::error::provider_sort must be one of: price, throughput, latency (got '$INPUT_PROVIDER_SORT')"; exit 1 ;;
+        esac
+        ALLOW="$(printf '%s' "$INPUT_ALLOW_FALLBACKS" | tr '[:upper:]' '[:lower:]')"
+        case "$ALLOW" in
+          true|false) ;;
+          *) echo "::error::allow_fallbacks must be true or false (got '$INPUT_ALLOW_FALLBACKS')"; exit 1 ;;
+        esac
+        # node is guaranteed on PATH by the Actions runtime; the CSV helpers
+        # below trim whitespace and drop empties so "z-ai, deepinfra" works.
+        BODY="$(INPUT_EFFORT="$EFFORT" INPUT_SORT="$SORT" INPUT_ORDER="$INPUT_PROVIDER_ORDER" INPUT_IGNORE="$INPUT_PROVIDER_IGNORE" INPUT_ALLOW="$ALLOW" node -e '
+          const split = (v) => (v || "").split(",").map((s) => s.trim()).filter(Boolean);
+          const provider = { allow_fallbacks: process.env.INPUT_ALLOW === "true" };
+          // No `quantizations` filter by design: every live GLM 5.3 Flash
+          // endpoint is already quantized (fp8/fp4/unknown), so filtering
+          // cannot buy full precision — it only excludes cheap endpoints.
+          if (process.env.INPUT_SORT) provider.sort = process.env.INPUT_SORT;
+          const order = split(process.env.INPUT_ORDER);
+          if (order.length > 0) provider.order = order;
+          const ignore = split(process.env.INPUT_IGNORE);
+          if (ignore.length > 0) provider.ignore = ignore;
+          const body = {
+            // OpenRouter-native max-reasoning signal (gateway level).
+            reasoning: { effort: process.env.INPUT_EFFORT },
+            provider,
+            // Z.ai recommended sampling for GLM 5.3 Flash. OCR has no
+            // temperature/top_p config keys, so they ride extra_body.
+            temperature: 1,
+            top_p: 0.95,
+          };
+          process.stdout.write(JSON.stringify(body));
+        ')"
+        # Multiline value via heredoc so the JSON survives intact.
+        {
+          echo "extra_body<<EXTRA_BODY_EOF"
+          printf '%s\n' "$BODY"
+          echo "EXTRA_BODY_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Run OCR review
+      id: ocr
+      # Pinned to the upstream commit for the latest release at authoring time
+      # (v1.12.7); the `ocr_version` input separately pins the npm CLI build.
+      # Refresh the pin when adopting a new upstream release.
+      uses: alibaba/open-code-review@85cecfe5f935da2b2aae8f91ce4fee8ed343a681
+      with:
+        llm_url: https://openrouter.ai/api/v1
+        llm_auth_token: ${{ inputs.openrouter_api_key }}
+        llm_model: ${{ inputs.model }}
+        # OpenAI-compatible protocol: OpenRouter serves /chat/completions.
+        # Any other value selects the OpenAI-compatible protocol.
+        llm_use_anthropic: 'false'
+        # Upstream default disables thinking mode; without this override the
+        # model would review with thinking off despite "max reasoning".
+        llm_extra_body: ${{ steps.routing.outputs.extra_body }}
+        # OCR merges reasoning_effort into the body; the explicit
+        # reasoning_effort key that llm_extra_body could carry would win, but
+        # ours carries none — the input is the single source of truth.
+        llm_reasoning_effort: ${{ inputs.reasoning_effort }}
+        language: ${{ inputs.language }}
+        effort: ${{ inputs.effort }}
+        sticky_summary: ${{ inputs.sticky_summary }}
+        incremental: ${{ inputs.incremental }}
+        resolve_outdated: ${{ inputs.resolve_outdated }}
+        checkpoint_range: ${{ inputs.checkpoint_range }}
+        full_review: ${{ inputs.full_review }}
+        upload_artifacts: ${{ inputs.upload_artifacts }}
+        ocr_version: ${{ inputs.ocr_version }}
+        github_token: ${{ inputs.github_token }}
+        base_ref: ${{ inputs.base_ref }}
+        head_sha: ${{ inputs.head_sha }}
+        pr_number: ${{ inputs.pr_number }}
