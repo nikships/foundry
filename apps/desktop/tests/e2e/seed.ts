@@ -200,6 +200,21 @@ export function seedOnboardedFixture(
       },
       endedAt: new Date().toISOString(),
     });
+    tracer.event({
+      runId: E2E_RUN_ID,
+      phaseId,
+      type: 'tool_call',
+      name: 'edit: example.ts',
+      payload: {
+        kind: 'edit',
+        args: {
+          path: 'example.ts',
+          oldText: 'export const value = 17;\n',
+          newText: 'export const value = 42;\n',
+        },
+      },
+      endedAt: new Date().toISOString(),
+    });
     tracer.recordEnvelope({
       runId: E2E_RUN_ID,
       phaseId,

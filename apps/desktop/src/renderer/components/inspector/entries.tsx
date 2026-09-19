@@ -8,7 +8,7 @@
  * is mid-run, and the block shows that rather than pretending to be finished.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { EventRow, UsageBreakdown } from '@shared/types.js';
 import { clockTime, tokens } from '../../utils/format.js';
 import { isAutoAllowPolicy } from '../../utils/derive.js';
@@ -704,8 +704,12 @@ function UsageRow({ event }: { event: EventRow }): React.JSX.Element | null {
   );
 }
 
-/** Renders one trace row as the transcript entry it represents. */
-export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Element | null {
+/** Unchanged rows retain their identity when the cursor merges a streamed update. */
+export const TranscriptEntry = memo(function TranscriptEntry({
+  event,
+}: {
+  event: EventRow;
+}): React.JSX.Element | null {
   switch (event.type) {
     case 'thinking':
       return <ThinkingBlock event={event} />;
@@ -740,7 +744,7 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
     default:
       return null;
   }
-}
+});
 
 /**
  * A collapse that leaves the user's re-expands intact: `initial` is the open
