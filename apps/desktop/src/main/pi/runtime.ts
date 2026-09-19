@@ -34,7 +34,7 @@ export function modelRuntime(supportDir: string): Promise<ModelRuntime> {
   const cached = runtimes.get(dir);
   if (cached) return cached;
 
-  const building = create(dir).catch((err: unknown) => {
+  const building = create(dir, supportDir).catch((err: unknown) => {
     runtimes.delete(dir);
     throw err;
   });
@@ -42,7 +42,7 @@ export function modelRuntime(supportDir: string): Promise<ModelRuntime> {
   return building;
 }
 
-async function create(dir: string): Promise<ModelRuntime> {
+async function create(dir: string, supportDir: string): Promise<ModelRuntime> {
   mkdirSync(dir, { recursive: true });
   const runtime = await ModelRuntime.create({
     authPath: join(dir, 'auth.json'),
@@ -51,8 +51,10 @@ async function create(dir: string): Promise<ModelRuntime> {
   });
   // Before the runtime is handed out, so no caller can look for a provider
   // Foundry adds and find it missing. Registration stores no credential: these
-  // providers stay unavailable until a key is saved for one.
-  registerDirectProviders(runtime);
+  // providers stay unavailable until a key is saved for one. The support dir
+  // selects the credential-mode thinking maps (`max` on both tiers only with
+  // a Muse subscription); later credential changes re-sync before catalog reads.
+  registerDirectProviders(runtime, supportDir);
   return runtime;
 }
 

@@ -21,7 +21,7 @@ import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { ModelInfo } from '@shared/types.js';
 import { isDirectProviderId } from '@shared/direct-providers.js';
 import { intelligenceFor } from '@shared/model-intelligence.js';
-import { applyDirectProviderOverrides } from './direct-providers.js';
+import { applyDirectProviderOverrides, syncMetaThinkingLevels } from './direct-providers.js';
 import { defaultEffortFor, effortsFor, modelKey } from './model.js';
 import { modelRuntime } from './runtime.js';
 
@@ -145,6 +145,10 @@ const BUILTIN_PI_PROVIDERS = new Set([
 /** Every model the runtime can reach right now, picker-shaped. */
 export async function availableModels(supportDir: string): Promise<ModelInfo[]> {
   const runtime = await modelRuntime(supportDir);
+  // The Muse subscription can land after the runtime was built; re-sync the
+  // `meta` thinking maps first so the picker offers `max` exactly where the
+  // credential mode supports it (and the transports clamp against the same).
+  syncMetaThinkingLevels(runtime, supportDir);
   const available = await runtime.getAvailable();
   return available.map(toModelInfo);
 }
@@ -161,6 +165,7 @@ export async function refreshCatalog(supportDir: string): Promise<void> {
   const runtime = await modelRuntime(supportDir);
   await runtime.refresh({ allowNetwork: false });
   applyDirectProviderOverrides(runtime);
+  syncMetaThinkingLevels(runtime, supportDir);
 }
 
 /**

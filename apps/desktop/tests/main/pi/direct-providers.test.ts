@@ -15,8 +15,17 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DIRECT_PROVIDERS, isDirectProviderId } from '../../../src/shared/direct-providers.js';
-import { registerDirectProviders } from '../../../src/main/pi/direct-providers.js';
+import {
+  DIRECT_PROVIDERS,
+  isDirectProviderId,
+  sparkThinkingLevelMap,
+} from '../../../src/shared/direct-providers.js';
+import {
+  isMuseSubscriptionMode,
+  registerDirectProviders,
+  syncMetaThinkingLevels,
+} from '../../../src/main/pi/direct-providers.js';
+import { MuseCredentialStore, museStoreDir } from '../../../src/main/bridge/muse-credentials.js';
 import { refreshCatalog, toModelInfo } from '../../../src/main/pi/catalog.js';
 import { modelRuntime, piStateDir, resetModelRuntimes } from '../../../src/main/pi/runtime.js';
 import { REASONING_EFFORTS } from '../../../src/shared/reasoning-effort.js';
@@ -46,22 +55,35 @@ describe('the direct-provider table', () => {
     expect(ids.some((id) => id.includes('image') || id.includes('llama'))).toBe(false);
   });
 
-  it('withholds the two efforts the API refuses and names the rest', () => {
+  it('offers max per the per-model/per-credential matrix (API-key baseline)', () => {
+    // `max` was hidden because the shared table nulled it for both tiers.
+    // Matrix: direct API key reaches `max` on the standard tier only
+    // (contributor stops at `xhigh`); a Muse subscription reaches `max` on
+    // both. The static table carries the API-key baseline; subscription mode
+    // upgrades the contributor entry at registration time.
+    const standard = meta?.models.find((model) => model.id === 'muse-spark-1.3');
+    const contributor = meta?.models.find((model) => model.id === 'muse-spark-1.3-contributor');
+    // `off` (`none`) is refused on every Spark model, so it stays nulled
+    // rather than omitted — an omitted key means "provider default", and
+    // there is no default for a level that 400s.
+    expect(standard?.thinkingLevelMap?.off).toBeNull();
+    expect(contributor?.thinkingLevelMap?.off).toBeNull();
+    expect(standard?.thinkingLevelMap?.max).toBe('max');
+    expect(contributor?.thinkingLevelMap?.max).toBeNull();
+    expect(standard?.thinkingLevelMap?.minimal).toBe('minimal');
+    expect(contributor?.thinkingLevelMap?.xhigh).toBe('xhigh');
     for (const model of meta?.models ?? []) {
-      // Verified against the live endpoint: `none` answers "does not support"
-      // for every Spark model and `max` is not a variant it knows, so both are
-      // nulled rather than omitted — an omitted key means "provider default",
-      // and there is no default for a level that 400s.
-      expect(model.thinkingLevelMap?.off).toBeNull();
-      expect(model.thinkingLevelMap?.max).toBeNull();
-      expect(model.thinkingLevelMap?.minimal).toBe('minimal');
-      expect(model.thinkingLevelMap?.xhigh).toBe('xhigh');
       // Every level Foundry knows gets an explicit answer, so a new level
       // added to `REASONING_EFFORTS` cannot silently inherit a default.
       for (const level of REASONING_EFFORTS) {
         expect(model.thinkingLevelMap, level).toHaveProperty(level);
       }
     }
+    // Subscription mode offers `max` on both tiers.
+    expect(sparkThinkingLevelMap('muse-spark-1.3', true).max).toBe('max');
+    expect(sparkThinkingLevelMap('muse-spark-1.3-contributor', true).max).toBe('max');
+    expect(sparkThinkingLevelMap('muse-spark-1.3', false).max).toBe('max');
+    expect(sparkThinkingLevelMap('muse-spark-1.3-contributor', false).max).toBeNull();
   });
 
   it('prices the contributor tier below the standard one it mirrors', () => {
@@ -196,9 +218,71 @@ describe('registering the table on a runtime', () => {
       expect(info.isCustom).toBe(false);
       expect(info.contextWindow).toBe(1_048_576);
       expect(info.cost).toEqual({ input: 1.25, output: 4.25, cacheRead: 0.15, cacheWrite: 0 });
-      // `off` and `max` are refused by the API, so the picker must not offer them.
-      expect(info.supportedReasoningEfforts).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh']);
+      // `off` is refused by the API, so the picker must not offer it; `max`
+      // is supported on the standard tier under a direct API key.
+      expect(info.supportedReasoningEfforts).toEqual([
+        'minimal',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max',
+      ]);
       expect(info.defaultReasoningEffort).toBe('medium');
+      const contributor = runtime
+        .getModels('meta')
+        .find((model) => model.id === 'muse-spark-1.3-contributor');
+      expect(contributor).toBeDefined();
+      // Contributor on a direct API key stops at `xhigh`: no subscription
+      // credential in this temp dir, so `max` stays hidden there.
+      expect(toModelInfo(contributor!).supportedReasoningEfforts).toEqual([
+        'minimal',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+      ]);
+    } finally {
+      resetModelRuntimes();
+    }
+  });
+
+  it('offers max on both tiers with a Muse subscription and restores the baseline without one', async () => {
+    const support = tempDir('foundry-direct-providers-');
+    try {
+      const runtime = await modelRuntime(support);
+      expect(isMuseSubscriptionMode(support)).toBe(false);
+      const payload = Buffer.from(
+        JSON.stringify({ sub: 'alice', iss: 'test', email: 'alice@example.test' }),
+      ).toString('base64url');
+      new MuseCredentialStore(museStoreDir(support)).save({
+        identityToken: `header.${payload}.signature`,
+        apiKey: 'minted-key',
+        apiKeyExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+      });
+      expect(isMuseSubscriptionMode(support)).toBe(true);
+      syncMetaThinkingLevels(runtime, support);
+      for (const id of ['muse-spark-1.3', 'muse-spark-1.3-contributor']) {
+        const registered = runtime.getModel('meta', id);
+        expect(registered?.thinkingLevelMap?.max).toBe('max');
+        expect(toModelInfo(registered!).supportedReasoningEfforts).toContain('max');
+      }
+      // Registration at build is subscription-aware too.
+      resetModelRuntimes();
+      const rebuilt = await modelRuntime(support);
+      expect(
+        toModelInfo(rebuilt.getModel('meta', 'muse-spark-1.3-contributor')!)
+          .supportedReasoningEfforts,
+      ).toContain('max');
+      // Expiry (or sign-out) drops the contributor back to `xhigh` while the
+      // standard tier keeps `max`.
+      new MuseCredentialStore(museStoreDir(support)).removeAll();
+      expect(isMuseSubscriptionMode(support)).toBe(false);
+      syncMetaThinkingLevels(rebuilt, support);
+      expect(rebuilt.getModel('meta', 'muse-spark-1.3')?.thinkingLevelMap?.max).toBe('max');
+      expect(
+        rebuilt.getModel('meta', 'muse-spark-1.3-contributor')?.thinkingLevelMap?.max,
+      ).toBeNull();
     } finally {
       resetModelRuntimes();
     }
