@@ -12,7 +12,57 @@
  */
 
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
-import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
+import { DIRECT_PROVIDERS, sparkThinkingLevelMap } from '@shared/direct-providers.js';
+import { MuseCredentialStore, museStoreDir } from '../bridge/muse-credentials.js';
+
+/**
+ * True when a usable Muse subscription key is present.
+ *
+ * Both credential modes share pi's `meta` provider id (the minted key is
+ * stored on the existing `meta` slot), so this is the signal that separates
+ * them: a direct API key leaves the Muse store empty, while a subscription
+ * login mints a Model API key into it. Never throws: an unreadable store is
+ * API-key mode.
+ */
+export function isMuseSubscriptionMode(supportDir: string): boolean {
+  try {
+    return new MuseCredentialStore(museStoreDir(supportDir)).hasUsableAPIKey();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Re-registers `meta` with the thinking maps for this credential mode.
+ *
+ * The static table carries the API-key baseline (`muse-spark-1.3` offers
+ * `max`, `muse-spark-1.3-contributor` stops at `xhigh`). Subscription mode
+ * offers `max` on both. Re-registration replaces the provider config in
+ * place and keeps the stored credential: the key lives in pi's auth store
+ * under the same `meta` id, not in the registration. Called after the
+ * credential changes (and before catalog reads) so the picker, the clamp,
+ * and the value sent to the provider all agree.
+ */
+export function syncMetaThinkingLevels(runtime: ModelRuntime, supportDir: string): void {
+  const subscription = isMuseSubscriptionMode(supportDir);
+  const meta = DIRECT_PROVIDERS.find((provider) => provider.id === 'meta');
+  if (!meta) return;
+  try {
+    runtime.registerProvider(meta.id, {
+      name: meta.label,
+      baseUrl: meta.baseUrl,
+      api: meta.api,
+      models: meta.models.map((model) => ({
+        ...model,
+        input: [...model.input],
+        cost: { ...model.cost },
+        thinkingLevelMap: { ...sparkThinkingLevelMap(model.id, subscription) },
+      })),
+    });
+  } catch (error) {
+    console.warn(`[pi] could not sync the meta thinking levels: ${message(error)}`);
+  }
+}
 
 /**
  * Teaches a runtime every provider in the table and applies direct-key API overrides.
@@ -23,7 +73,8 @@ import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
  * Registration carries no credential, so a provider registered here stays
  * absent from `getAvailable()` until a key is stored for it.
  */
-export function registerDirectProviders(runtime: ModelRuntime): void {
+export function registerDirectProviders(runtime: ModelRuntime, supportDir?: string): void {
+  const subscription = supportDir ? isMuseSubscriptionMode(supportDir) : false;
   for (const provider of DIRECT_PROVIDERS) {
     try {
       runtime.registerProvider(provider.id, {
@@ -32,12 +83,18 @@ export function registerDirectProviders(runtime: ModelRuntime): void {
         api: provider.api,
         // Copied out of the shared table because pi keeps the registration and
         // mutates model entries as it composes providers; the table is a
-        // shipped constant the renderer reads from too.
+        // shipped constant the renderer reads from too. The `meta` maps are
+        // resolved per credential mode so subscription `max` needs no second
+        // table: `sparkThinkingLevelMap` is the matrix.
         models: provider.models.map((model) => ({
           ...model,
           input: [...model.input],
           cost: { ...model.cost },
-          ...(model.thinkingLevelMap ? { thinkingLevelMap: { ...model.thinkingLevelMap } } : {}),
+          ...(provider.id === 'meta'
+            ? { thinkingLevelMap: { ...sparkThinkingLevelMap(model.id, subscription) } }
+            : model.thinkingLevelMap
+              ? { thinkingLevelMap: { ...model.thinkingLevelMap } }
+              : {}),
         })),
       });
     } catch (error) {

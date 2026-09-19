@@ -49,9 +49,9 @@ export interface DirectModelDef {
   /**
    * Tristate, as `references/models.md` describes it: a string is supported,
    * `null` is refused, and an omitted key falls back to the provider default.
-   * Written out in full for Muse Spark because the API refuses two of pi's
-   * seven levels outright, and an omitted key would leave those to a provider
-   * default that does not exist.
+   * Written out in full for Muse Spark because the API refuses `off` outright
+   * (and `max` on the contributor tier under a direct API key), and an omitted
+   * key would leave those to a provider default that does not exist.
    */
   thinkingLevelMap?: Readonly<Record<string, string | null>>;
   input: readonly ('text' | 'image')[];
@@ -61,13 +61,19 @@ export interface DirectModelDef {
 }
 
 /**
- * Muse Spark's thinking levels.
+ * Muse Spark's thinking levels, per credential mode.
  *
- * The API accepts `minimal` through `xhigh` and refuses both ends: `none`
- * answers "does not support" for every Spark model, and `max` is not a variant
- * it knows. `off` is therefore withheld rather than mapped — these models
- * always reason, and offering an effort the provider rejects would fail a
- * phase at request time instead of in the picker.
+ * The API refuses `off` on every Spark model (`none` answers "does not
+ * support"), so `off` is withheld rather than mapped — these models always
+ * reason, and offering an effort the provider rejects would fail a phase at
+ * request time instead of in the picker.
+ *
+ * `max` availability is the per-model/per-credential matrix the picker
+ * filters on: a direct API key reaches `max` on the standard tier only, so
+ * the contributor tier withholds it (up to `xhigh`); a Muse subscription
+ * (OAuth-minted Model API key) reaches `max` on both tiers. The static table
+ * below carries the API-key baseline; subscription mode upgrades the
+ * contributor entry at registration time (see `main/pi/direct-providers.ts`).
  */
 const SPARK_THINKING: Readonly<Record<string, string | null>> = {
   off: null,
@@ -76,8 +82,34 @@ const SPARK_THINKING: Readonly<Record<string, string | null>> = {
   medium: 'medium',
   high: 'high',
   xhigh: 'xhigh',
+  max: 'max',
+};
+
+/** Contributor tier on a direct API key: everything the standard tier offers except `max`. */
+const SPARK_THINKING_CONTRIBUTOR: Readonly<Record<string, string | null>> = {
+  off: null,
+  minimal: 'minimal',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
   max: null,
 };
+
+/**
+ * Which thinking map one Spark model registers with.
+ *
+ * `subscription` means a usable Muse OAuth-minted key is present: both tiers
+ * offer `max`. Without it (direct API key) only `muse-spark-1.3` offers
+ * `max` and `muse-spark-1.3-contributor` stops at `xhigh`.
+ */
+export function sparkThinkingLevelMap(
+  modelId: string,
+  subscription: boolean,
+): Readonly<Record<string, string | null>> {
+  if (subscription) return SPARK_THINKING;
+  return modelId === 'muse-spark-1.3-contributor' ? SPARK_THINKING_CONTRIBUTOR : SPARK_THINKING;
+}
 
 /** Published Spark rates, in USD per million tokens — pi's `cost` unit. */
 const SPARK_COST: ModelCost = { input: 1.25, output: 4.25, cacheRead: 0.15, cacheWrite: 0 };
@@ -99,7 +131,9 @@ function sparkModel(id: string, name: string, cost: ModelCost): DirectModelDef {
     id,
     name,
     reasoning: true,
-    thinkingLevelMap: SPARK_THINKING,
+    // API-key baseline: `sparkThinkingLevelMap(id, false)`. Subscription mode
+    // upgrades the contributor entry to `max` at registration time.
+    thinkingLevelMap: sparkThinkingLevelMap(id, false),
     // Video, audio, and PDF inputs are accepted by the API and absent here
     // because pi's model shape has no way to declare them. Images are accepted
     // on user turns only; tool-result images are lifted in spark-payload.ts

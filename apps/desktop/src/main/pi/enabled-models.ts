@@ -35,7 +35,12 @@ export async function enabledPiModels(
   hiddenModelIds: readonly string[],
 ): Promise<PiModel[]> {
   const { modelRuntime } = await import('./runtime.js');
+  const { syncMetaThinkingLevels } = await import('./direct-providers.js');
   const runtime = await modelRuntime(supportDir);
+  // Same sync as the picker path: transports clamp against these PiModels, so
+  // a `max` the picker offered must still be supported here or it would not
+  // stick. Subscription login can land after the runtime was built.
+  syncMetaThinkingLevels(runtime, supportDir);
   const hidden = new Set(hiddenModelIds);
   return (await runtime.getAvailable()).filter((model) => !hidden.has(modelKey(model)));
 }
