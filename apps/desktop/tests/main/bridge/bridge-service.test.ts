@@ -142,9 +142,12 @@ describe('BridgeService', () => {
       'gemini',
       'kimi',
       'grok',
+      'muse',
     ]);
     expect(snapshot.providers.find((p) => p.id === 'codex')?.authenticated).toBe(true);
     expect(snapshot.providers.find((p) => p.id === 'claude')?.authenticated).toBe(false);
+    expect(snapshot.providers.find((p) => p.id === 'muse')?.bridgeRequired).toBe(false);
+    expect(snapshot.providers.find((p) => p.id === 'muse')?.authenticated).toBe(false);
   }, 20_000);
 
   it('drops a provider’s models on disconnect', async () => {
@@ -168,6 +171,69 @@ describe('BridgeService', () => {
       detail: 'there was no account to sign out of',
     });
   }, 20_000);
+
+  it('starts a Muse sign-in without the Bridge child', async () => {
+    const dir = supportDir();
+    const applied: Array<string | null> = [];
+    const opened: string[] = [];
+    const service = new BridgeService({
+      supportDir: dir,
+      manager: { binaryPath: null },
+      applyMuseApiKey: async (key) => {
+        applied.push(key);
+      },
+      openExternal: (url) => opened.push(url),
+      museFetch: async (url) => {
+        if (url.includes('/device/authorization/')) {
+          return {
+            status: 200,
+            json: async () => ({
+              device_code: 'dev',
+              user_code: 'WXYZ-9999',
+              verification_uri: 'https://www.meta.com/device',
+              interval: 1,
+              expires_in: 60,
+            }),
+          };
+        }
+        if (url.includes('/device/token/')) {
+          const payload = Buffer.from(
+            JSON.stringify({ sub: 'ada', iss: 'test', email: 'ada@ex.test' }),
+          )
+            .toString('base64url')
+            .replace(/=+$/, '');
+          return {
+            status: 200,
+            json: async () => ({ access_token: `header.${payload}.signature` }),
+          };
+        }
+        return { status: 200, json: async () => ({ api_key: 'minted-key' }) };
+      },
+    });
+    services.push(service);
+
+    const result = await service.connect('muse');
+    expect(result.ok).toBe(true);
+    expect(service.snapshot().providers.find((p) => p.id === 'muse')?.loginInFlight).toBe(true);
+    expect(opened[0]).toContain('meta.com');
+
+    const deadline = Date.now() + 1_000;
+    while (Date.now() < deadline) {
+      if (service.snapshot().providers.find((p) => p.id === 'muse')?.authenticated) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const muse = service.snapshot().providers.find((p) => p.id === 'muse');
+    expect(muse?.authenticated).toBe(true);
+    expect(muse?.accounts[0]?.label).toBe('ada@ex.test');
+    expect(JSON.stringify(muse)).not.toContain('minted-key');
+    expect(applied).toEqual(['minted-key']);
+
+    expect(await service.disconnect('muse')).toEqual({
+      ok: true,
+      detail: 'signed out of 1 account',
+    });
+    expect(applied).toEqual(['minted-key', null]);
+  });
 
   it('refuses to start a login when the Bridge itself is unavailable', async () => {
     const dir = supportDir();

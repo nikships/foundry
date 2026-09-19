@@ -439,6 +439,11 @@ export interface BridgeAccountInfo {
   disabled: boolean;
 }
 
+export interface BridgeLoginPrompt {
+  userCode: string;
+  verificationUri: string;
+}
+
 export interface BridgeProviderInfo {
   id: string;
   label: string;
@@ -447,6 +452,15 @@ export interface BridgeProviderInfo {
   authenticated: boolean;
   accounts: BridgeAccountInfo[];
   loginInFlight: boolean;
+  /** Device-code prompt while an in-process sign-in is waiting. */
+  loginPrompt?: BridgeLoginPrompt;
+  /**
+   * When false, Connect works even if the Bridge child is down. Muse sign-in
+   * does not spawn CLIProxyAPI.
+   */
+  bridgeRequired?: boolean;
+  /** Operator-facing failure from an in-process login, never a token. */
+  loginError?: string;
 }
 
 /** Why the Bridge is not serving, when it is not. */
@@ -694,7 +708,8 @@ export interface FoundryApi {
     /**
      * Begins a provider's OAuth flow in the operator's browser. Returns as soon
      * as the browser is open; the account lands asynchronously and the state
-     * call reports it.
+     * call reports it. Muse uses an in-process device-code flow and does not
+     * require the Bridge child.
      */
     connect(provider: string): Promise<BridgeActionResult>;
     /** Removes a provider's accounts and drops its models from the catalog. */

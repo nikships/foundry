@@ -10,7 +10,7 @@
 
 import type { BridgeActionResult, BridgeState, StoredProviderKey } from '@shared/ipc-contract.js';
 import { IPC } from '@shared/ipc-contract.js';
-import { isBridgeProvider } from '../bridge/providers.js';
+import { isSubscriptionProvider } from '../bridge/providers.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 
@@ -37,30 +37,35 @@ export function register(ctx: Ctx, handle: Handle): void {
         icon: provider.icon,
         authenticated: provider.authenticated,
         loginInFlight: provider.loginInFlight,
+        ...(provider.loginPrompt ? { loginPrompt: { ...provider.loginPrompt } } : {}),
+        ...(provider.bridgeRequired !== undefined
+          ? { bridgeRequired: provider.bridgeRequired }
+          : {}),
+        ...(provider.loginError ? { loginError: provider.loginError } : {}),
         accounts: provider.accounts.map((account) => ({ ...account })),
       })),
     };
   });
 
   handle(IPC.bridgeConnect, async (provider: string): Promise<BridgeActionResult> => {
-    if (!isBridgeProvider(provider)) return unknownProvider(provider);
+    if (!isSubscriptionProvider(provider)) return unknownProvider(provider);
     const result = await ctx.bridge.connect(provider);
-    // The flow finishes in a browser; the auth watcher broadcasts again when
-    // the account actually lands. This first one moves the pane out of its
-    // pending state right away.
+    // The flow finishes in a browser; the auth watcher (or Muse poll) broadcasts
+    // again when the account actually lands. This first one moves the pane out
+    // of its pending state right away.
     ctx.broadcast(IPC.eventBridgeChanged);
     return result;
   });
 
   handle(IPC.bridgeDisconnect, async (provider: string): Promise<BridgeActionResult> => {
-    if (!isBridgeProvider(provider)) return unknownProvider(provider);
+    if (!isSubscriptionProvider(provider)) return unknownProvider(provider);
     const result = await ctx.bridge.disconnect(provider);
     ctx.broadcast(IPC.eventBridgeChanged);
     return result;
   });
 
   handle(IPC.bridgeCancelLogin, (provider: string): boolean => {
-    if (!isBridgeProvider(provider)) return false;
+    if (!isSubscriptionProvider(provider)) return false;
     const cancelled = ctx.bridge.cancel(provider);
     if (cancelled) ctx.broadcast(IPC.eventBridgeChanged);
     return cancelled;

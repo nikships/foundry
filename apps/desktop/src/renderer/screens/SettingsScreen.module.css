@@ -588,6 +588,18 @@
   color: var(--amber);
 }
 
+.inlineLink {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: default;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* companion qr pairing */
 .qrContainer {
   display: flex;
