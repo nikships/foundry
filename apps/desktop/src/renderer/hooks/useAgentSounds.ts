@@ -24,24 +24,18 @@ import {
 } from '../view-models/agent-sound-cues.js';
 
 export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
-  const enabledRef = useRef(enabled);
   const projectsRef = useRef(projects);
   const composeRef = useRef(new Map<string, ComposeCueSnapshot>());
   const runsRef = useRef(new Map<string, RunCueSnapshot>());
   const smithRef = useRef<SmithCueSnapshot | undefined>(undefined);
-  const inFlightRef = useRef(false);
-  const queuedRef = useRef(false);
   const projectKey = useMemo(() => projects.map((project) => project.id).join(','), [projects]);
-
-  useEffect(() => {
-    enabledRef.current = enabled;
-  }, [enabled]);
 
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
 
   useEffect(() => {
+    if (!enabled) return;
     const unlock = (): void => unlockAgentSounds();
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
@@ -49,15 +43,24 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
     };
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) {
+      composeRef.current.clear();
+      runsRef.current.clear();
+      smithRef.current = undefined;
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
     let disposed = false;
-    inFlightRef.current = false;
-    queuedRef.current = false;
+    let inFlight = false;
+    let queued = false;
 
     const play = (cues: readonly AgentSoundCue[]): void => {
-      if (disposed || !enabledRef.current) return;
+      if (disposed) return;
       for (const cue of cues) playAgentSound(cue);
     };
 
@@ -81,11 +84,11 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
 
     const refreshRuns = async (): Promise<void> => {
       if (disposed) return;
-      if (inFlightRef.current) {
-        queuedRef.current = true;
+      if (inFlight) {
+        queued = true;
         return;
       }
-      inFlightRef.current = true;
+      inFlight = true;
       try {
         const lists = await Promise.all(
           projectsRef.current.map((project) => api.runs.list(project.id, false)),
@@ -97,9 +100,9 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       } catch {
         /* A missed poll is silent; the next change event or live tick retries. */
       } finally {
-        inFlightRef.current = false;
-        if (!disposed && queuedRef.current) {
-          queuedRef.current = false;
+        inFlight = false;
+        if (!disposed && queued) {
+          queued = false;
           void refreshRuns();
         }
       }
@@ -143,5 +146,5 @@ export function useAgentSounds(enabled: boolean, projects: ProjectDef[]): void {
       offSmith();
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [projectKey]);
+  }, [enabled, projectKey]);
 }

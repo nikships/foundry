@@ -3,7 +3,7 @@
  * Used by Inspector transcript rows and the run-detail phase timeline.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type { FileDiffOptions } from '@pierre/diffs';
 import type { FileContents } from '@pierre/diffs/react';
 import { MultiFileDiff, PatchDiff } from '@pierre/diffs/react';
@@ -110,7 +110,8 @@ function PairDiff({
   return <EmptyDiff />;
 }
 
-export default function EditDiffView({ event }: { event: EventRow }): React.JSX.Element {
+// Polls and elapsed-time ticks must not rebuild an unchanged diff's shadow DOM.
+const EditDiffView = memo(function EditDiffView({ event }: { event: EventRow }): React.JSX.Element {
   const themeType = useDocumentThemeType();
   const model = useMemo(() => editDiffFromEvent(event), [event]);
   const options = useMemo(() => ({ ...OPTIONS, themeType }), [themeType]);
@@ -149,4 +150,6 @@ export default function EditDiffView({ event }: { event: EventRow }): React.JSX.
       />
     </div>
   );
-}
+});
+
+export default EditDiffView;

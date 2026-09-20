@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ReadinessState } from '@shared/types.js';
 import { api } from '../api.js';
 import { isReadinessTerminal } from '../view-models/readiness-view.js';
+import { pollWhileVisible } from '../utils/visible-poll.js';
 
 /**
  * The live readiness session for one project, polled while it is moving.
@@ -28,52 +29,35 @@ export function useReadinessSession(
 
   useEffect(() => {
     if (!projectId) return;
-    let cancelled = false;
-
-    const read = async (): Promise<ReadinessState | null> => {
-      try {
-        return await api.readiness.get(projectId);
-      } catch {
-        return null;
-      }
-    };
-
-    void read().then((next) => {
-      if (!cancelled) setSession(next);
-    });
-
-    const id = window.setInterval(() => {
-      void read().then((next) => {
-        if (cancelled || !next) return;
-        setSession((current) => {
-          // A settled session stops moving: keep the settled snapshot and let
-          // the interval below tear itself down on the next render.
-          if (current && isReadinessTerminal(current.phase) && current.phase === next.phase) {
-            return current;
-          }
-          return next;
-        });
-        if (isReadinessTerminal(next.phase) || next.phase === 'needs_continue') {
-          window.clearInterval(id);
+    let settled = false;
+    const poll = pollWhileVisible(
+      async (signal) => {
+        try {
+          const next = await api.readiness.get(projectId);
+          if (signal.aborted) return;
+          settled = !!next && (isReadinessTerminal(next.phase) || next.phase === 'needs_continue');
+          setSession((current) => {
+            if (
+              current &&
+              next &&
+              isReadinessTerminal(current.phase) &&
+              current.phase === next.phase
+            ) {
+              return current;
+            }
+            return next;
+          });
+        } catch {
+          // Keep the last snapshot; the next visible poll retries.
         }
-      });
-    }, pollMs);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
+      },
+      () => (settled ? null : pollMs),
+    );
+    return poll.stop;
   }, [projectId, pollMs, nonce]);
 
   return {
     session,
-    refresh: () => {
-      setNonce((n) => n + 1);
-      if (!projectId) return;
-      void api.readiness
-        .get(projectId)
-        .then(setSession)
-        .catch(() => {});
-    },
+    refresh: () => setNonce((n) => n + 1),
   };
 }

@@ -140,10 +140,29 @@
 
 /* The Agent readiness tab glows red while the project is not agent-ready. */
 .source-tabs button[data-alert='true'] {
+  position: relative;
   border: 1px solid color-mix(in srgb, var(--red) 55%, transparent);
   color: var(--red);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--red) 45%, transparent);
+}
+
+/* Cross-fade fixed shadows: animating box-shadow repaints on every frame. */
+.source-tabs button[data-alert='true']::before,
+.source-tabs button[data-alert='true']::after {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  content: '';
+  pointer-events: none;
   animation: readiness-alert 1.6s var(--ease) infinite;
+}
+
+.source-tabs button[data-alert='true']::before {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--red) 45%, transparent);
+  animation-name: readiness-alert-base;
+}
+
+.source-tabs button[data-alert='true']::after {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--red) 70%, transparent);
 }
 
 .source-tabs button[data-alert='true'] svg {
@@ -159,10 +178,31 @@
 @keyframes readiness-alert {
   0%,
   100% {
-    box-shadow: 0 0 8px color-mix(in srgb, var(--red) 45%, transparent);
+    opacity: 0;
   }
   50% {
-    box-shadow: 0 0 14px color-mix(in srgb, var(--red) 70%, transparent);
+    opacity: 1;
+  }
+}
+
+@keyframes readiness-alert-base {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source-tabs button[data-alert='true']::before,
+  .source-tabs button[data-alert='true']::after {
+    animation: none;
+  }
+
+  .source-tabs button[data-alert='true']::after {
+    opacity: 0;
   }
 }
 

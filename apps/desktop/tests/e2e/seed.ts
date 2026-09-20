@@ -194,9 +194,28 @@ export function seedOnboardedFixture(
       type: 'tool_call',
       name: 'read: README.md',
       payload: {
+        tool: 'read',
+        toolUseId: 'e2e-read-readme',
         kind: 'read',
-        args: { file_path: 'README.md' },
+        args: { path: 'README.md' },
         result: '# e2e fixture\n',
+      },
+      endedAt: new Date().toISOString(),
+    });
+    tracer.event({
+      runId: E2E_RUN_ID,
+      phaseId,
+      type: 'tool_call',
+      name: 'edit: example.ts',
+      payload: {
+        tool: 'edit',
+        toolUseId: 'e2e-edit-example',
+        kind: 'edit',
+        args: {
+          path: 'example.ts',
+          edits: [{ oldText: 'export const value = 17;\n', newText: 'export const value = 42;\n' }],
+        },
+        result: 'ok',
       },
       endedAt: new Date().toISOString(),
     });

@@ -26,6 +26,35 @@ test.describe('run / Inspector', () => {
       ).toHaveAttribute('aria-valuetext', '41,391 tokens in context of 500,000, 8% used');
       await expect(window.getByText('41k / 500k').first()).toBeVisible();
 
+      const diff = window.getByTestId('edit-diff');
+      await expect(diff.locator('[data-line][data-line-type="change-addition"]')).toContainText(
+        'export const value = 42;',
+      );
+      // Allow highlighting to settle, then cover two 3s detail-poll cycles.
+      // Rebuilding identical diff DOM wastes CPU, layout and raster work.
+      const mutations = await diff.locator('diffs-container').evaluate(async (host) => {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        let count = 0;
+        const observer = new MutationObserver((records) => {
+          count += records.length;
+        });
+        observer.observe(host.shadowRoot!, { childList: true, subtree: true });
+        await new Promise((resolve) => setTimeout(resolve, 6500));
+        observer.disconnect();
+        return count;
+      });
+      expect(mutations).toBe(0);
+
+      // Context and local state must still cross memoized row boundaries.
+      await window.getByTestId('inspector-collapse-all').click();
+      await expect(diff).toHaveCount(0);
+      await window.getByRole('button', { name: /edit example.ts/i }).click();
+      await expect(diff).toBeVisible();
+      await window.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      await expect(diff.locator('diffs-container')).toHaveCSS('color-scheme', 'light');
+      await window.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      await expect(diff.locator('diffs-container')).toHaveCSS('color-scheme', 'dark');
+
       await window.getByTestId('inspector-open-run').click();
       await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'run-detail');
 
