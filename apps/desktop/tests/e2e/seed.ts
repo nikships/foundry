@@ -194,8 +194,10 @@ export function seedOnboardedFixture(
       type: 'tool_call',
       name: 'read: README.md',
       payload: {
+        tool: 'read',
+        toolUseId: 'e2e-read-readme',
         kind: 'read',
-        args: { file_path: 'README.md' },
+        args: { path: 'README.md' },
         result: '# e2e fixture\n',
       },
       endedAt: new Date().toISOString(),

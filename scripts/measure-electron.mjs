@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 const port = Number(process.argv[2] ?? 9251);
 const seconds = Number(process.argv[3] ?? 30);
 const timeoutMs = 5_000;
+// Node timers reject delays above 2^31 - 1 ms (~24.8 days), hence this cap on `seconds`.
 const maxTimerSeconds = 2_147_483_647 / 1_000;
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -71,8 +72,8 @@ async function connect(url) {
     if (!Object.hasOwn(message, 'id')) return;
     const request = pending.get(message.id);
     if (!request) {
-      failPending(new Error(`Unexpected CDP response id ${String(message.id)} from ${url}`));
-      socket.close();
+      // Late or unknown response id: ignore it instead of failing every other
+      // pending call; the close/error listeners already handle real disconnects.
       return;
     }
     pending.delete(message.id);
