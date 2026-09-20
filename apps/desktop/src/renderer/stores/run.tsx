@@ -12,6 +12,7 @@ import type {
 } from '@shared/types.js';
 import { api } from '../api.js';
 import { useProposals } from '../hooks/useProposals.js';
+import { pollWhileVisible } from '../utils/visible-poll.js';
 import {
   selectActivityItems,
   selectActivityRuns,
@@ -57,11 +58,6 @@ function groupByPhaseId<T extends { phaseId: string | null }>(rows: T[]): Map<st
   return map;
 }
 
-function cancelTimer(ref: { current: number | null }): void {
-  if (ref.current !== null) window.clearTimeout(ref.current);
-  ref.current = null;
-}
-
 /**
  * The cursor re-serves rows patched in place (tool results, growing text), so
  * merge by eventId rather than append: new rows land in order, updated rows
@@ -94,75 +90,53 @@ export function useRun(
   gatesByPhase: Map<string, GateResultRow[]>;
 } {
   const [view, setView] = useState<RunView>(emptyView);
-
-  const viewRef = useRef(view);
-  useEffect(() => {
-    viewRef.current = view;
-  }, [view]);
-
-  const timerRef = useRef<number | null>(null);
-  const inFlightRef = useRef(false);
-  const disposedRef = useRef(false);
-  // Ref breaks the schedule <-> tick cycle without stale timeouts.
-  const tickRef = useRef<() => Promise<void>>(async () => {});
-
-  const schedule = useCallback(() => {
-    cancelTimer(timerRef);
-    if (disposedRef.current) return;
-    const cadence = viewRef.current.live ? 500 : 3000;
-    timerRef.current = window.setTimeout(() => void tickRef.current(), cadence);
+  const pollRef = useRef<ReturnType<typeof pollWhileVisible> | null>(null);
+  const refresh = useCallback(async () => {
+    await pollRef.current?.refresh();
   }, []);
 
-  const tick = useCallback(async (): Promise<void> => {
-    if (inFlightRef.current || disposedRef.current || !projectId || !runId) return;
-    inFlightRef.current = true;
-    try {
-      const [detail, page] = await Promise.all([
-        api.runs.detail(projectId, runId),
-        api.runs.events(projectId, runId, viewRef.current.cursor),
-      ]);
-      setView((prev) => ({
-        run: detail.run,
-        phases: detail.phases,
-        envelopes: detail.envelopes,
-        gates: detail.gates,
-        sessions: detail.sessions,
-        live: detail.live,
-        events: mergeEvents(prev.events, page.events),
-        cursor: page.events.length ? page.cursor : prev.cursor,
-        loading: false,
-        error: '',
-      }));
-    } catch (e) {
-      setView((prev) => ({ ...prev, loading: false, error: (e as Error).message }));
-    } finally {
-      inFlightRef.current = false;
-      schedule();
-    }
-  }, [projectId, runId, schedule]);
-
   useEffect(() => {
-    tickRef.current = tick;
-  }, [tick]);
-
-  useEffect(() => {
-    disposedRef.current = false;
-    const reset = emptyView();
-    setView(reset);
-    viewRef.current = reset;
-    cancelTimer(timerRef);
-    void tick();
+    setView(emptyView());
+    if (!projectId || !runId) return;
+    let cursor = 0;
+    let live = false;
+    const poll = pollWhileVisible(
+      async (signal) => {
+        try {
+          const [detail, page] = await Promise.all([
+            api.runs.detail(projectId, runId),
+            api.runs.events(projectId, runId, cursor),
+          ]);
+          if (signal.aborted) return;
+          live = detail.live;
+          if (page.events.length) cursor = page.cursor;
+          setView((prev) => ({
+            ...detail,
+            events: mergeEvents(prev.events, page.events),
+            cursor,
+            loading: false,
+            error: '',
+          }));
+        } catch (e) {
+          if (!signal.aborted) {
+            setView((prev) => ({ ...prev, loading: false, error: (e as Error).message }));
+          }
+        }
+      },
+      () => (live ? 500 : 3000),
+    );
+    pollRef.current = poll;
     return () => {
-      disposedRef.current = true;
-      cancelTimer(timerRef);
+      poll.stop();
+      pollRef.current = null;
     };
-  }, [projectId, runId, tick]);
+  }, [projectId, runId]);
 
   const eventsByPhase = useMemo(() => groupByPhaseId(view.events), [view.events]);
   const envelopesByPhase = useMemo(() => groupByPhaseId(view.envelopes), [view.envelopes]);
   const gatesByPhase = useMemo(() => groupByPhaseId(view.gates), [view.gates]);
 
-  return { view, refresh: tick, eventsByPhase, envelopesByPhase, gatesByPhase };
+  return { view, refresh, eventsByPhase, envelopesByPhase, gatesByPhase };
 }
 
 /** The runs list for a project, polled while any run is live. */
@@ -178,58 +152,45 @@ export function useRunList(
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const timerRef = useRef<number | null>(null);
-  const inFlightRef = useRef(false);
-  const disposedRef = useRef(false);
-  const runsRef = useRef(runs);
-  const tickRef = useRef<() => Promise<void>>(async () => {});
-  useEffect(() => {
-    runsRef.current = runs;
-  }, [runs]);
-
-  const schedule = useCallback(() => {
-    cancelTimer(timerRef);
-    if (disposedRef.current) return;
-    const anyLive = runsRef.current.some((r) => r.status === 'running');
-    timerRef.current = window.setTimeout(() => void tickRef.current(), anyLive ? 800 : 4000);
+  const pollRef = useRef<ReturnType<typeof pollWhileVisible> | null>(null);
+  const refresh = useCallback(async () => {
+    await pollRef.current?.refresh();
   }, []);
 
-  const tick = useCallback(async (): Promise<void> => {
-    if (inFlightRef.current || disposedRef.current) return;
+  useEffect(() => {
+    setRuns([]);
+    setError('');
+    setLoading(Boolean(projectId));
     if (!projectId) {
-      setRuns([]);
-      setLoading(false);
       return;
     }
-    inFlightRef.current = true;
-    try {
-      setRuns(await api.runs.list(projectId, includeArchived));
-      setError('');
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-      inFlightRef.current = false;
-      schedule();
-    }
-  }, [projectId, includeArchived, schedule]);
-
-  useEffect(() => {
-    tickRef.current = tick;
-  }, [tick]);
-
-  useEffect(() => {
-    disposedRef.current = false;
-    void tick();
-    const off = api.on('runs-changed', () => void tick());
+    let live = false;
+    const poll = pollWhileVisible(
+      async (signal) => {
+        try {
+          const next = await api.runs.list(projectId, includeArchived);
+          if (signal.aborted) return;
+          live = next.some((run) => run.status === 'running');
+          setRuns(next);
+          setError('');
+        } catch (e) {
+          if (!signal.aborted) setError((e as Error).message);
+        } finally {
+          if (!signal.aborted) setLoading(false);
+        }
+      },
+      () => (live ? 800 : 4000),
+    );
+    pollRef.current = poll;
+    const off = api.on('runs-changed', () => void poll.refresh());
     return () => {
-      disposedRef.current = true;
       off();
-      cancelTimer(timerRef);
+      poll.stop();
+      pollRef.current = null;
     };
-  }, [tick]);
+  }, [projectId, includeArchived]);
 
-  return { runs, loading, error, refresh: tick };
+  return { runs, loading, error, refresh };
 }
 
 /**

@@ -206,12 +206,14 @@ export function seedOnboardedFixture(
       type: 'tool_call',
       name: 'edit: example.ts',
       payload: {
+        tool: 'edit',
+        toolUseId: 'e2e-edit-example',
         kind: 'edit',
         args: {
           path: 'example.ts',
-          oldText: 'export const value = 17;\n',
-          newText: 'export const value = 42;\n',
+          edits: [{ oldText: 'export const value = 17;\n', newText: 'export const value = 42;\n' }],
         },
+        result: 'ok',
       },
       endedAt: new Date().toISOString(),
     });

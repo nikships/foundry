@@ -14,6 +14,7 @@ import StatusBadge from '../components/common/StatusBadge.js';
 import EmptyState from '../components/common/EmptyState.js';
 import TranscriptLane from '../components/inspector/TranscriptLane.js';
 import { clockTime, since, truncate } from '../utils/format.js';
+import { pollWhileVisible } from '../utils/visible-poll.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
 import { CollapseContext } from '../components/inspector/collapse.js';
@@ -167,8 +168,10 @@ export default function InspectorScreen({
   const live = view.live;
   useEffect(() => {
     if (!live) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    return pollWhileVisible(
+      () => setNow(Date.now()),
+      () => 1000,
+    ).stop;
   }, [live]);
 
   const lanes = useMemo(

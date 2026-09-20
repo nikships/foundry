@@ -10,6 +10,7 @@ import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useApp } from '../stores/app.js';
 import { useRun } from '../stores/run.js';
 import { clockTime, duration, tokens } from '../utils/format.js';
+import { pollWhileVisible } from '../utils/visible-poll.js';
 import { runDuration } from '../utils/derive.js';
 import Waterfall from '../components/run/Waterfall.js';
 import PhaseDrawer from '../components/pipeline/PhaseDrawer.js';
@@ -126,10 +127,11 @@ export default function RunDetailScreen({
   }, [wantsCheckpoints, projectId, runId, checkpointsNonce]);
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      if (view.live) setNow(Date.now());
-    }, 250);
-    return () => window.clearInterval(id);
+    if (!view.live) return;
+    return pollWhileVisible(
+      () => setNow(Date.now()),
+      () => 250,
+    ).stop;
   }, [view.live]);
 
   useEffect(() => {

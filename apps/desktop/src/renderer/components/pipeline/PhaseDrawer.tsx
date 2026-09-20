@@ -5,6 +5,7 @@ import { modelLabel } from '@shared/model-label.js';
 import { api } from '../../api.js';
 import { useApp } from '../../stores/app.js';
 import { clockTime, duration, tokens } from '../../utils/format.js';
+import { pollWhileVisible } from '../../utils/visible-poll.js';
 import {
   isAutoAllowPolicy,
   modelFallbackFor,
@@ -157,24 +158,24 @@ export default function PhaseDrawer({
   }, [tab, documentCount]);
 
   useEffect(() => {
-    let timer: number | null = null;
     setLiveTail('');
     setLiveTailError('');
-    if (!live || phase.status !== 'running') return;
-    const poll = async (): Promise<void> => {
-      try {
-        setLiveTail(await api.runs.liveTail(phase.phaseId));
-        setLiveTailError('');
-      } catch (e) {
-        setLiveTailError((e as Error).message);
-      }
-    };
-    void poll();
-    timer = window.setInterval(() => void poll(), 150);
-    return () => {
-      if (timer !== null) window.clearInterval(timer);
-    };
-  }, [phase.phaseId, live, phase.status]);
+    if (!live || phase.status !== 'running' || tab !== 'timeline') return;
+    const poll = pollWhileVisible(
+      async (signal) => {
+        try {
+          const tail = await api.runs.liveTail(phase.phaseId);
+          if (signal.aborted) return;
+          setLiveTail(tail);
+          setLiveTailError('');
+        } catch (e) {
+          if (!signal.aborted) setLiveTailError((e as Error).message);
+        }
+      },
+      () => 150,
+    );
+    return poll.stop;
+  }, [phase.phaseId, live, phase.status, tab]);
 
   useEffect(() => {
     if (tab !== 'prompt') return;
