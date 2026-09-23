@@ -1,6 +1,7 @@
 package com.foundry.companion.ui.navigation
 
 sealed class NavRoute(val route: String) {
+    data object Onboarding : NavRoute("onboarding")
     data object Pair : NavRoute("pair")
     data object Runs : NavRoute("runs")
     data object NewRun : NavRoute("new-run")

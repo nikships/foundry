@@ -9,6 +9,7 @@
     <color name="accent">#EE6018</color>
     <color name="text_primary">#EEEEEE</color>
     <color name="text_dim">#8C8C8C</color>
+    <color name="bg_base_light">#FFFBF8</color>
     <color name="status_running">#EE6018</color>
     <color name="status_accepted">#34D399</color>
     <color name="status_rejected">#F5A623</color>

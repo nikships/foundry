@@ -13,6 +13,7 @@ class NavRoutesTest {
 
     @Test
     fun testRouteTemplates() {
+        assertEquals("onboarding", NavRoute.Onboarding.route)
         assertEquals("pair", NavRoute.Pair.route)
         assertEquals("runs", NavRoute.Runs.route)
         assertEquals("new-run", NavRoute.NewRun.route)

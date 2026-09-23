@@ -11,6 +11,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.foundry.companion.data.model.COMPANION_PROTOCOL_VERSION
 import com.foundry.companion.data.model.PairedSession
 import com.foundry.companion.ui.navigation.FoundryNavHost
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
@@ -117,6 +119,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleDeepLink(intent: Intent?) {
         if (intent == null) return
+
+        if (intent.data?.scheme == "foundry" && intent.data?.host == "onboarding") {
+            pendingDeepLinkRoute.value = com.foundry.companion.ui.navigation.NavRoute.Onboarding.route
+            return
+        }
 
         val data = intent.data?.takeIf { it.scheme == "foundry" && it.host == "run" }
         val target = resolveDeepLink(
