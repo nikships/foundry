@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.foundry.companion.data.model.COMPANION_PROTOCOL_VERSION
@@ -66,7 +67,7 @@ class MainActivity : ComponentActivity() {
         handleDeepLink(intent)
 
         setContent {
-            FoundryTheme {
+            FoundryTheme(darkTheme = isSystemInDarkTheme()) {
                 FoundryNavHost(
                     viewModel = viewModel,
                     sessionManager = app.sessionManager,

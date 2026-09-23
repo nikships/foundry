@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.foundry.companion.R
 import com.foundry.companion.ui.components.FoundryPrimaryButton
 import com.foundry.companion.ui.components.FoundrySecondaryButton
 import com.foundry.companion.ui.theme.FoundryTheme
@@ -80,8 +83,12 @@ fun OnboardingScreen(
         }
     }
     val pages = listOf(
-        OnboardingPage("WELCOME TO FOUNDRY", "Ideas in. Finished work out.", "Your desktop runs stay close at hand, without turning your phone into another dashboard.", { color ->
-            Icon(Icons.Outlined.Visibility, null, tint = color, modifier = Modifier.size(56.dp))
+        OnboardingPage("WELCOME TO FOUNDRY", "Ideas in. Finished work out.", "Your desktop runs stay close at hand, without turning your phone into another dashboard.", {
+            Image(
+                painter = painterResource(R.drawable.foundry_cube),
+                contentDescription = "Foundry logo",
+                modifier = Modifier.size(88.dp)
+            )
         }),
         OnboardingPage("STAY IN THE LOOP", "See what needs you.", "Watch runs move from accepted to complete, then step in when your attention is the only thing missing.", { color ->
             Icon(Icons.Outlined.QrCodeScanner, null, tint = color, modifier = Modifier.size(56.dp))

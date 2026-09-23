@@ -9,7 +9,7 @@
     </style>
     <style name="Theme.FoundryCompanion.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/bg_base</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_foundry_logo</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/foundry_cube</item>
         <item name="postSplashScreenTheme">@style/Theme.FoundryCompanion</item>
     </style>
 </resources>

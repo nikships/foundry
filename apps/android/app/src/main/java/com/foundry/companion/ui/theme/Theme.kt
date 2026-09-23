@@ -43,7 +43,7 @@ fun FoundryTheme(
     typography: FoundryTypography = FoundryTypography(),
     shapes: FoundryShapes = FoundryShapes(),
     spacing: FoundrySpacing = FoundrySpacing(),
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val resolvedColors = if (darkTheme) colors else colors.copy(
