@@ -23,6 +23,7 @@ import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.ui.screens.smith.SmithScreen
 import com.foundry.companion.ui.screens.smith.SmithVoicePanel
+import com.foundry.companion.ui.screens.onboarding.OnboardingScreen
 import com.foundry.companion.util.CompanionHaptics
 import com.foundry.companion.util.CustomTabs
 import com.foundry.companion.viewmodel.CompanionViewModel
@@ -54,7 +55,11 @@ fun FoundryNavHost(
 
     // Start destination based on whether paired
     val isPaired = uiState.activeSession != null
-    val startDestination = if (isPaired) NavRoute.Runs.route else NavRoute.Pair.route
+    val startDestination = when {
+        sessionManager != null && !sessionManager.hasSeenOnboarding() -> NavRoute.Onboarding.route
+        isPaired -> NavRoute.Runs.route
+        else -> NavRoute.Pair.route
+    }
 
     // Save active route on destination change
     DisposableEffect(navController, sessionManager) {
@@ -74,6 +79,7 @@ fun FoundryNavHost(
                     }
                 }
                 NavRoute.Pair.route -> NavRoute.Pair.route
+                NavRoute.Onboarding.route -> NavRoute.Onboarding.route
                 NavRoute.NewRun.route -> NavRoute.NewRun.route
                 NavRoute.Smith.route -> NavRoute.Smith.route
                 else -> NavRoute.Runs.route
@@ -124,7 +130,17 @@ fun FoundryNavHost(
     // process was killed there is no Home to pop to, so one is pushed first.
     LaunchedEffect(pendingDeepLink, isPaired) {
         val route = pendingDeepLink?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (route == NavRoute.Onboarding.route) {
+            if (navController.currentDestination?.route != NavRoute.Onboarding.route) {
+                navController.navigate(NavRoute.Onboarding.route) {
+                    launchSingleTop = true
+                }
+            }
+            onDeepLinkHandled()
+            return@LaunchedEffect
+        }
         if (!isPaired) return@LaunchedEffect
+        if (sessionManager?.hasSeenOnboarding() == false) return@LaunchedEffect
         try {
             val stackRoutes = listOfNotNull(
                 navController.currentBackStackEntry?.destination?.route,
@@ -147,6 +163,9 @@ fun FoundryNavHost(
 
     // React to pairing state changes
     LaunchedEffect(isPaired) {
+        if (navController.currentDestination?.route == NavRoute.Onboarding.route ||
+            sessionManager?.hasSeenOnboarding() == false
+        ) return@LaunchedEffect
         if (!isPaired && navController.currentDestination?.route != NavRoute.Pair.route) {
             navController.navigate(NavRoute.Pair.route) {
                 popUpTo(0) { inclusive = true }
@@ -167,6 +186,18 @@ fun FoundryNavHost(
         startDestination = startDestination,
         modifier = modifier
     ) {
+        composable(NavRoute.Onboarding.route) {
+            OnboardingScreen(
+                onFinished = {
+                    sessionManager?.setSeenOnboarding(true)
+                    val destination = if (isPaired) NavRoute.Runs.route else NavRoute.Pair.route
+                    navController.navigate(destination) {
+                        popUpTo(NavRoute.Onboarding.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         // 1. Pair Screen
         composable(NavRoute.Pair.route) {
             PairScreen(

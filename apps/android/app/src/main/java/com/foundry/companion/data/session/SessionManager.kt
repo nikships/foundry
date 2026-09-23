@@ -81,6 +81,12 @@ class SessionManager(context: Context) {
         editPrefs { putBoolean(KEY_NOTIFY_PROMPTED, prompted) }
     }
 
+    fun hasSeenOnboarding(): Boolean = prefs.getBoolean(KEY_ONBOARDING_SEEN, false)
+
+    fun setSeenOnboarding(seen: Boolean) {
+        editPrefs { putBoolean(KEY_ONBOARDING_SEEN, seen) }
+    }
+
     fun getLastActiveRoute(): String? {
         return prefs.getString(KEY_LAST_ROUTE, null)
     }
@@ -123,6 +129,7 @@ class SessionManager(context: Context) {
         private const val KEY_NOTIFIED_WAITING_RUNS = "notified_waiting_runs"
         private const val KEY_NOTIFY_SETTLE = "notify_settle"
         private const val KEY_NOTIFY_PROMPTED = "notify_prompted"
+        private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
         private const val KEY_LAST_ROUTE = "last_active_route"
         private const val KEY_NOTIFIED_RUNS = "notified_runs"
         private const val KEY_LAST_PIPELINE_PREFIX = "last_pipeline"

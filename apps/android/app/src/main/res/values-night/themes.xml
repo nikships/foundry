@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources>
     <style name="Theme.FoundryCompanion" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">@color/bg_base_light</item>
-        <item name="android:navigationBarColor">@color/bg_base_light</item>
-        <item name="android:windowBackground">@color/bg_base_light</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
+        <item name="android:statusBarColor">@color/bg_base</item>
+        <item name="android:navigationBarColor">@color/bg_base</item>
+        <item name="android:windowBackground">@color/bg_base</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
     <style name="Theme.FoundryCompanion.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/bg_base</item>

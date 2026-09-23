@@ -23,6 +23,7 @@ class StateRestorationTest {
         sessionManager.clearSession()
         sessionManager.clearNewRunDraft()
         sessionManager.setSelectedProjectId(null)
+        sessionManager.setSeenOnboarding(false)
     }
 
     @Test
@@ -45,6 +46,19 @@ class StateRestorationTest {
 
         sessionManager.setPromptedNotificationPermission(true)
         assertTrue(sessionManager.hasPromptedNotificationPermission())
+    }
+
+    @Test
+    fun testOnboardingSeenStatePersistsAcrossRestart() {
+        assertFalse(sessionManager.hasSeenOnboarding())
+
+        sessionManager.setSeenOnboarding(true)
+
+        val restored = SessionManager(ApplicationProvider.getApplicationContext())
+        assertTrue(restored.hasSeenOnboarding())
+
+        restored.setSeenOnboarding(false)
+        assertFalse(sessionManager.hasSeenOnboarding())
     }
 
     @Test
