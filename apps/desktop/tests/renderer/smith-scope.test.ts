@@ -48,7 +48,6 @@ describe('smith capability scope', () => {
   it('runs viewer-global capabilities from All projects without a note', () => {
     expect(smithCapabilityScopeNote('assigned-work', null)).toBeNull();
     expect(smithCapabilityScopeNote('ticket-status', null)).toBeNull();
-    expect(smithCapabilityScopeNote('voice-key-state', null)).toBeNull();
   });
 
   it('asks for a project scope for plans, pipelines, and context refresh', () => {

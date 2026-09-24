@@ -848,9 +848,8 @@ describe('user-level access receipts', () => {
     expect(isComposeOperation('compose_accept')).toBe(true);
     expect(isComposeOperation('compose_get')).toBe(true);
     expect(isComposeOperation('linear_issues')).toBe(false);
-    expect(isCredentialOperation('gemini_live_set_api_key')).toBe(true);
     expect(isCredentialOperation('linear_set_api_key')).toBe(true);
     expect(isCredentialOperation('set_api_key')).toBe(true);
-    expect(isCredentialOperation('gemini_live_state')).toBe(false);
+    expect(isCredentialOperation('linear_state')).toBe(false);
   });
 });

@@ -7,11 +7,6 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { REASONING_EFFORTS, isReasoningEffort } from '@shared/reasoning-effort.js';
 import { APP_THEME_IDS, isAppTheme } from '@shared/themes.js';
-import {
-  DEFAULT_SMITH_LIVE_VOICE,
-  SMITH_LIVE_VOICE_SETTINGS,
-  isSmithLiveVoiceSetting,
-} from '@shared/gemini-live-voices.js';
 import type { AppSettings, LinearStatusMapping } from '@shared/types.js';
 import { sanitizeFontFamily } from '@shared/types.js';
 import {
@@ -57,7 +52,6 @@ export const appSettingsSchema = z.object({
   }),
   interfaceFont: z.string().trim().max(128).nullable(),
   monoFont: z.string().trim().max(128).nullable(),
-  smithLiveVoice: z.enum(SMITH_LIVE_VOICE_SETTINGS),
   forgeProvider: z.enum(FORGE_PROVIDER_SETTINGS),
 });
 
@@ -83,7 +77,6 @@ export function defaultSettings(): AppSettings {
     linearStatusMapping: { started: null, completed: null, failed: null },
     interfaceFont: null,
     monoFont: null,
-    smithLiveVoice: DEFAULT_SMITH_LIVE_VOICE,
     forgeProvider: DEFAULT_FORGE_PROVIDER,
   };
 }
@@ -149,9 +142,6 @@ export function migrate(raw: unknown): AppSettings {
   // font restores it silently.
   merged.interfaceFont = sanitizeFontFamily(merged.interfaceFont);
   merged.monoFont = sanitizeFontFamily(merged.monoFont);
-  if (!isSmithLiveVoiceSetting(merged.smithLiveVoice)) {
-    merged.smithLiveVoice = base.smithLiveVoice;
-  }
   if (!isForgeProviderPreference(merged.forgeProvider)) {
     merged.forgeProvider = base.forgeProvider;
   }

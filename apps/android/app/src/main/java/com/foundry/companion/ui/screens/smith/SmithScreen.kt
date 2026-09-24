@@ -78,8 +78,7 @@ fun SmithScreen(
     actionError: String? = null,
     models: List<SmithModelInfo> = emptyList(),
     onSelectModel: (String) -> Unit = {},
-    onSelectEffort: (String) -> Unit = {},
-    onVoice: (() -> Unit)? = null
+    onSelectEffort: (String) -> Unit = {}
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -121,11 +120,6 @@ fun SmithScreen(
                     eyebrowStyle = true,
                     onBackClick = onBackClick,
                     actions = {
-                        if (onVoice != null) {
-                            TextButton(onClick = onVoice, enabled = isConnected) {
-                                Text("VOICE", style = typography.labelMono, color = colors.accent)
-                            }
-                        }
                         TextButton(
                             onClick = onNewChat,
                             enabled = isConnected && !running,

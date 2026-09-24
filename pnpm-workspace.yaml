@@ -24,5 +24,3 @@ allowBuilds:
   electron-winstaller: false
   protobufjs: false
   unrs-resolver: false
-minimumReleaseAgeExclude:
-  - '@google/genai@2.23.0'

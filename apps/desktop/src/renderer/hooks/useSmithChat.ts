@@ -13,10 +13,10 @@ import { api } from '../api.js';
  * invoke result so the surface never waits on the next push to catch up.
  *
  * Full user-level access (compose prompts, assigned Linear work +
- * status, saved pipeline runs, context refresh, voice-key state) routes
+ * status, saved pipeline runs, context refresh) routes
  * through `send`: the composer prefills the capability phrasing
  * (`SMITH_QUICK_PROMPTS`), the operator confirms it, and the same session
- * answers — voice joins the same conversation via `smith_work`.
+ * answers.
  */
 export function useSmithChat(projectId: string | undefined): {
   state: SmithChatState | null;

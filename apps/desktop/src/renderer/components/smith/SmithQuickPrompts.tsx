@@ -5,10 +5,9 @@ import styles from './SmithQuickPrompts.module.css';
 
 /**
  * One-tap entry points for Smith's full user-level access: assigned Linear
- * work + status, Smith run plans, saved pipelines, context refresh, and
- * the voice-key state. A tap prefills the composer — it never sends — so the
- * operator confirms or edits the prompt before Smith proposes anything, and
- * the same phrasing works spoken through `smith_work` in voice mode.
+ * work + status, Smith run plans, saved pipelines, and context refresh.
+ * A tap prefills the composer — it never sends — so the operator confirms
+ * or edits the prompt before Smith proposes anything.
  */
 export default function SmithQuickPrompts({
   disabled,

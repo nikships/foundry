@@ -101,11 +101,10 @@ export function describeScreen(view: View, position: ScreenPosition): SmithScree
 //
 // The model-facing tools for these capabilities live in main
 // (`smith_compose`, `smith_runs` linear_*/start, `smith_projects`,
-// `smith_providers` gemini_live_*). This file is the
-// renderer half: the exact operator phrasing that triggers each tool, the
-// confirmation note shown before a privileged step runs, and the plan-id
-// plumbing for the async composition round-trip. Voice reuses the same
-// prompts through `smith_work`, so text and voice inherit `smith_compose`.
+// `smith_providers`). This file is the renderer half: the exact operator
+// phrasing that triggers each tool, the confirmation note shown before a
+// privileged step runs, and the plan-id plumbing for the async composition
+// round-trip.
 
 /** Stable ids for the user-level capabilities Smith now offers. */
 export type SmithCapabilityId =
@@ -115,8 +114,7 @@ export type SmithCapabilityId =
   | 'compose-list'
   | 'pipeline-run'
   | 'linear-pipeline-run'
-  | 'refresh-context'
-  | 'voice-key-state';
+  | 'refresh-context';
 
 /** One composer chip: what the operator sees and what Smith receives. */
 export interface SmithQuickPrompt {
@@ -177,12 +175,6 @@ export const SMITH_QUICK_PROMPTS: ReadonlyArray<SmithQuickPrompt> = [
     label: 'Refresh context',
     prompt: "Refresh this project's context card.",
     hint: 'Rebuild the repository fact card agents receive',
-  },
-  {
-    id: 'voice-key-state',
-    label: 'Voice key',
-    prompt: 'Check the Live Voice key state.',
-    hint: 'Whether a Gemini key is stored for voice',
   },
 ];
 

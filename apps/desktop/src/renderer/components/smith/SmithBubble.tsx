@@ -28,7 +28,6 @@ import SmithScopePicker from './SmithScopePicker.js';
 import SmithPermissionControl from './SmithPermissionControl.js';
 import SmithTranscript from './SmithTranscript.js';
 import SmithModeBar from './SmithModeBar.js';
-import SmithVoicePanel from './SmithVoicePanel.js';
 import SmithPinnedPlan from './SmithPinnedPlan.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
@@ -85,8 +84,7 @@ export default function SmithBubble({
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
-  const { mode, state: voiceState, draft, setDraft, withPinnedPlan, unpinPlan } = useSmithChatUI();
-  const voiceConnected = voiceState.status === 'live' || voiceState.status === 'connecting';
+  const { draft, setDraft, withPinnedPlan, unpinPlan } = useSmithChatUI();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
   const { state, send, cancel, newChat, setPermissionMode } = useSmithChat(scopeId);
@@ -142,8 +140,8 @@ export default function SmithBubble({
   useEscapeToClose(close, open);
 
   useEffect(() => {
-    if (open && mode === 'text') inputRef.current?.focus();
-  }, [open, mode]);
+    if (open) inputRef.current?.focus();
+  }, [open]);
 
   const submit = (): void => {
     const text = draft.trim();
@@ -187,7 +185,6 @@ export default function SmithBubble({
               title="New chat — cancels a turn in flight, wipes the conversation, and starts fresh"
               label="New chat"
               testId="smith-bubble-new-chat"
-              disabled={voiceConnected}
             >
               <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.3" />
               <path
@@ -240,90 +237,80 @@ export default function SmithBubble({
             }
           />
           <SmithPinnedPlan key={scopeId ?? 'global'} />
-          {mode === 'voice' ? (
-            <SmithVoicePanel />
-          ) : (
-            <>
-              <SmithTranscript
-                key={scopeId ?? 'global'}
-                entries={transcript}
-                running={running}
-                compact
-                onOpenInspector={onOpenInspector}
-                onOpenReceiptLink={
-                  onOpenReceiptLink
-                    ? (link: SmithReceiptLink) => {
-                        // Following a link navigates the app behind the popover, so
-                        // leaving it open would hide the screen it just opened.
-                        close();
-                        onOpenReceiptLink(link);
-                      }
-                    : undefined
-                }
-                emptyState={
-                  <div className={styles.empty}>
-                    {smithProject ? (
-                      <p>
-                        Ask Smith anything about {smithProject.name} — entities, readiness, runs.
-                      </p>
-                    ) : (
-                      <p>Ask Smith to inspect and manage Foundry across all projects.</p>
-                    )}
-                  </div>
-                }
-                tail={
-                  <div className={styles.cardSlot}>
-                    <SmithProposalCard
-                      projectId={scopeId}
-                      onCompleted={onCompleted}
-                      compact
-                      onRequestChanges={(prefill) => {
-                        setDraft((prev) => prev || prefill);
-                        inputRef.current?.focus();
-                      }}
-                    />
-                  </div>
-                }
-              />
-
-              {state?.error && (
-                <div className={styles.errorBanner} role="alert">
-                  {state.error}
-                </div>
-              )}
-
-              <footer className={styles.composer}>
-                <textarea
-                  ref={inputRef}
-                  className={`textarea ${styles.input}`}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={onKeyDown}
-                  placeholder={
-                    smithProject ? 'Message Smith…' : 'Message Smith across all projects…'
+          <SmithTranscript
+            key={scopeId ?? 'global'}
+            entries={transcript}
+            running={running}
+            compact
+            onOpenInspector={onOpenInspector}
+            onOpenReceiptLink={
+              onOpenReceiptLink
+                ? (link: SmithReceiptLink) => {
+                    // Following a link navigates the app behind the popover, so
+                    // leaving it open would hide the screen it just opened.
+                    close();
+                    onOpenReceiptLink(link);
                   }
-                  rows={1}
-                  aria-label="Message Smith"
-                  data-testid="smith-bubble-input"
-                />
-                {running ? (
-                  <Button size="sm" onClick={() => void cancel()} data-testid="smith-bubble-cancel">
-                    Stop
-                  </Button>
+                : undefined
+            }
+            emptyState={
+              <div className={styles.empty}>
+                {smithProject ? (
+                  <p>Ask Smith anything about {smithProject.name} — entities, readiness, runs.</p>
                 ) : (
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    disabled={!draft.trim()}
-                    onClick={submit}
-                    data-testid="smith-bubble-send"
-                  >
-                    Send
-                  </Button>
+                  <p>Ask Smith to inspect and manage Foundry across all projects.</p>
                 )}
-              </footer>
-            </>
+              </div>
+            }
+            tail={
+              <div className={styles.cardSlot}>
+                <SmithProposalCard
+                  projectId={scopeId}
+                  onCompleted={onCompleted}
+                  compact
+                  onRequestChanges={(prefill) => {
+                    setDraft((prev) => prev || prefill);
+                    inputRef.current?.focus();
+                  }}
+                />
+              </div>
+            }
+          />
+
+          {state?.error && (
+            <div className={styles.errorBanner} role="alert">
+              {state.error}
+            </div>
           )}
+
+          <footer className={styles.composer}>
+            <textarea
+              ref={inputRef}
+              className={`textarea ${styles.input}`}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={smithProject ? 'Message Smith…' : 'Message Smith across all projects…'}
+              rows={1}
+              aria-label="Message Smith"
+              data-testid="smith-bubble-input"
+            />
+            {running ? (
+              <Button size="sm" onClick={() => void cancel()} data-testid="smith-bubble-cancel">
+                Stop
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={!draft.trim()}
+                onClick={submit}
+                data-testid="smith-bubble-send"
+              >
+                Send
+              </Button>
+            )}
+          </footer>
         </div>
       )}
 
@@ -333,12 +320,11 @@ export default function SmithBubble({
         className={styles.launcher}
         onClick={() => (open ? close() : openPopover())}
         title="Smith"
-        aria-label={`${open ? 'Close' : 'Open'} Smith chat${voiceConnected ? (voiceState.muted ? ', microphone muted' : ', voice connected') : ''}`}
+        aria-label={`${open ? 'Close' : 'Open'} Smith chat`}
         aria-expanded={open}
         data-testid="smith-bubble"
       >
         {cubeSrc && <img src={cubeSrc} className={styles.launcherMark} alt="" />}
-        {voiceConnected && <span className={styles.voiceDot} aria-hidden />}
         {badge && (
           <span
             className={cx(styles.badge, proposalPending && styles.badgeProposal)}

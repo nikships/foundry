@@ -1,6 +1,5 @@
 /**
- * YOLO used to sit in its own padded, wrapping header above Text/Voice.
- * That extra chrome row is gone: the toggle lives on the mode bar.
+ * YOLO sits on one non-wrapping row with the Smith chat chrome.
  *
  * Visual layout is not executable under Vitest's node environment, so this
  * file reads the source the renderer ships rather than painting pixels.
@@ -47,7 +46,7 @@ function hostsPermissionOnModeBar(src: string, label: string): void {
 }
 
 describe('Smith mode bar YOLO placement', () => {
-  it('keeps Text, Voice, and YOLO on one non-wrapping row', () => {
+  it('keeps YOLO on one non-wrapping row', () => {
     const bar = rule(barCss, '.bar');
     expect(bar).toMatch(/flex-wrap:\s*nowrap/);
     expect(bar).toMatch(/min-width:\s*0/);
@@ -56,9 +55,6 @@ describe('Smith mode bar YOLO placement', () => {
     const trailing = rule(barCss, '.trailing');
     expect(trailing).toMatch(/flex:\s*1 1 auto/);
     expect(trailing).toMatch(/min-width:\s*0/);
-
-    expect(rule(barCss, '.modes')).toMatch(/flex:\s*none/);
-    expect(rule(barCss, '.connection')).toMatch(/flex:\s*none/);
   });
 
   it('keeps YOLO as a compact control without wrapping chrome', () => {

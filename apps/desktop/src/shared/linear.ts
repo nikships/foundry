@@ -59,8 +59,8 @@ const ASSIGNED_FILLER = new Set([
  * Splits an assigned-to-me request off a Linear search string. An explicit
  * `assigned` flag always wins; otherwise phrasing like "my tickets" or
  * "assigned to me" selects the viewer's own work and is removed from the
- * remaining key/title filter, so a voice transcript ("what's assigned to
- * me") becomes an assigned browse instead of a literal text search.
+ * remaining key/title filter, so phrasing like "what's assigned to
+ * me" becomes an assigned browse instead of a literal text search.
  */
 export function splitLinearAssignedIntent(query: string, assigned?: boolean): LinearAssignedIntent {
   const detected = ASSIGNED_INTENT_PATTERNS.some((pattern) => pattern.test(query));

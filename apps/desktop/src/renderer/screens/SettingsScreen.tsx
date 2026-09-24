@@ -11,7 +11,6 @@ import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import {
   BRIDGE_UNAVAILABLE_COPY,
   type BridgeState,
-  type GeminiLiveConnectionState,
   type LinearConnectionState,
   type StoredProviderKey,
   type TavilyConnectionState,
@@ -19,11 +18,6 @@ import {
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
 import { DIRECT_PROVIDERS } from '@shared/direct-providers.js';
 import { MODEL_UNSET, MODEL_UNSET_MESSAGE } from '@shared/model-choice.js';
-import {
-  DEFAULT_SMITH_LIVE_VOICE,
-  GEMINI_LIVE_VOICES,
-  isSmithLiveVoiceSetting,
-} from '@shared/gemini-live-voices.js';
 import {
   DEFAULT_FORGE_PROVIDER,
   isForgeProviderPreference,
@@ -287,146 +281,6 @@ function ForgeProviderSection(): React.JSX.Element {
             aria-label="Source control provider"
           />
         </Field>
-      </div>
-    </Section>
-  );
-}
-
-/**
- * Smith voice mode's credential card. Owns its key draft, busy/note state, and
- * its own confirm for the destructive remove, so the integrations pane's render
- * stays small and the section reads exactly like Linear's and Tavily's.
- */
-function GeminiLiveSection({
-  onError,
-}: {
-  onError: (errors: string[]) => void;
-}): React.JSX.Element {
-  const { settings, patchSettings } = useApp();
-  const [connection, setConnection] = useState<GeminiLiveConnectionState | null>(null);
-  const [keyDraft, setKeyDraft] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState('');
-
-  useEffect(() => {
-    void api.geminiLive.state().then(setConnection);
-  }, []);
-
-  const voiceOptions = useMemo(
-    () => [
-      {
-        value: 'random',
-        label: 'Random each session',
-        description: 'Picks one voice when you start listening; stays for that session.',
-      },
-      ...GEMINI_LIVE_VOICES.map((voice) => ({ value: voice, label: voice })),
-    ],
-    [],
-  );
-
-  const runAction = async (
-    action: () => Promise<{ ok: boolean; detail: string }>,
-  ): Promise<void> => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const result = await action();
-      setNote(result.detail);
-      onError(result.ok ? [] : [result.detail]);
-      if (result.ok) setKeyDraft('');
-    } catch (error) {
-      const message = (error as Error).message;
-      setNote(message);
-      onError([message]);
-    } finally {
-      setConnection(await api.geminiLive.state());
-      setBusy(false);
-    }
-  };
-
-  const clearKey = useConfirmAction(
-    'Remove the stored Gemini API key? Smith voice mode will not connect until a new one is saved.',
-    async (): Promise<void> => {
-      await runAction(() => api.geminiLive.clearApiKey());
-    },
-  );
-
-  const setVoice = async (next: string): Promise<void> => {
-    if (!isSmithLiveVoiceSetting(next)) return;
-    const issues = await patchSettings({ smithLiveVoice: next });
-    onError(issues);
-  };
-
-  return (
-    <Section label="Gemini Live" note="Speak with the same Smith you use in chat.">
-      <div className={styles.providerCard} data-testid="gemini-live-integration">
-        <div className={styles.providerHead}>
-          <h3>Smith voice mode</h3>
-          <span
-            className={`${styles.settingsPill} ${connection?.keySet ? styles.ok : styles.plain}`}
-          >
-            {connection?.keySet ? 'key set' : 'not connected'}
-          </span>
-        </div>
-        <p className={styles.settingsLead}>
-          Voice mode speaks with Gemini&rsquo;s live model while your chosen Smith model handles the
-          same continuous conversation and work. The encrypted key uses this Mac&rsquo;s credential
-          storage and never enters settings.json or a transcript; the live session connects with a
-          short-lived token minted from it.
-        </p>
-        <Field
-          label="API key"
-          htmlFor="gemini-live-api-key"
-          hint={
-            connection?.keySet
-              ? 'A key is stored. Saving a new key replaces it.'
-              : 'Create an API key in Google AI Studio. Only the live voice uses it.'
-          }
-        >
-          <TextInput
-            id="gemini-live-api-key"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            mono
-            value={keyDraft}
-            placeholder={connection?.keySet ? '••••••••' : 'AIza…'}
-            onChange={(event) => setKeyDraft(event.target.value)}
-          />
-        </Field>
-        <div className={styles.settingsBtnrow}>
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={busy || !keyDraft.trim()}
-            onClick={() => void runAction(() => api.geminiLive.setApiKey(keyDraft))}
-          >
-            {busy ? 'Saving…' : connection?.keySet ? 'Replace key' : 'Save key'}
-          </Button>
-          {connection?.keySet && (
-            <Button size="sm" variant="danger" disabled={busy} onClick={() => void clearKey()}>
-              Remove key
-            </Button>
-          )}
-        </div>
-        <Field
-          label="Speaker voice"
-          htmlFor="gemini-live-speaker-voice"
-          hint="Applies the next time you start a live session. Random picks once per start, not per reply."
-        >
-          <Dropdown
-            id="gemini-live-speaker-voice"
-            data-testid="gemini-live-speaker-voice"
-            value={settings?.smithLiveVoice ?? DEFAULT_SMITH_LIVE_VOICE}
-            options={voiceOptions}
-            onChange={(next) => void setVoice(next)}
-            menuWidth="compact"
-            aria-label="Speaker voice"
-          />
-        </Field>
-        {(note || connection?.detail) && (
-          <p className={styles.hint}>{note || connection?.detail}</p>
-        )}
       </div>
     </Section>
   );
@@ -2364,7 +2218,6 @@ export default function SettingsScreen({
                           </p>
                         </div>
                       </Section>
-                      <GeminiLiveSection onError={setErrors} />
                     </>
                   )}
                 </PaneBody>

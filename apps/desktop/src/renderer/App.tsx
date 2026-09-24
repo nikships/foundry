@@ -411,13 +411,7 @@ function AppInner(): React.JSX.Element {
   }
 
   return (
-    <SmithChatUIProvider
-      enabled={ready && !needsOnboarding}
-      screenContext={view === 'smith' ? smithContext : liveScreenContext}
-      openSettings={() => openSettingsPane('integrations')}
-      openReceiptLink={openReceiptLink}
-      onDiscussPlan={onDiscussPlan}
-    >
+    <SmithChatUIProvider openReceiptLink={openReceiptLink} onDiscussPlan={onDiscussPlan}>
       <div className={styles.shell}>
         <div className={styles.titlebar}>
           {ready && !needsOnboarding && (

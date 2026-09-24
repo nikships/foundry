@@ -893,7 +893,7 @@ export function compareEntities(
 //
 // Smith reports assigned tickets and composition proposals as transcript
 // text plus action receipts; these helpers give that text one consistent
-// shape in both the chat transcript and the voice narration. They mirror the
+// shape in the chat transcript. They mirror the
 // shared Linear status line deliberately: the renderer must render persisted
 // snapshots (including ones written before `assignee` existed) without
 // importing main.

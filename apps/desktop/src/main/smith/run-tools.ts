@@ -333,7 +333,7 @@ function linearRunRead(
     if (assigned !== undefined && typeof assigned !== 'boolean') {
       return Promise.resolve(json({ ok: false, error: 'assigned must be a boolean' }));
     }
-    // A voice transcript ("what's assigned to me") reads as assigned intent
+    // Phrasing like "what's assigned to me" reads as assigned intent
     // with no usable text filter; an explicit flag always wins.
     const intent = splitLinearAssignedIntent(query ?? '', assigned);
     return intent.assigned

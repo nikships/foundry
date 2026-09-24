@@ -573,25 +573,17 @@ project.
 - Launcher popover: `smith-bubble-input/-send/-cancel`, `smith-bubble-expand`
   opens the full screen (carrying context about where you were),
   `smith-bubble-close`.
-- Select `smith-mode-text` or `smith-mode-voice` inside either chat view.
-  Voice uses the same conversation. It does not open another window or overlay.
-  `smith-voice-panel` contains the orb, captions, connection state, and audio controls.
-  Changing modes keeps the draft and voice connection. The mode bar shows the
-  microphone state and an End button while voice is connected.
-  Closing the popover keeps voice connected. The Smith launcher shows its state.
-  Starting voice uses the microphone and Gemini. Do not start it without permission.
 - `smith-permission-mode` controls YOLO mode for the current chat. Enabling it
   requires the confirmation dialog and an idle Smith turn. App actions and entity
   saves then execute without approval cards. Key entry and Companion pairing still
   use private cards. Write boundaries, tool allowlists, and run gates remain active.
-  The control stays visible in text and voice mode. Disable it to require approval
-  for future actions; work already started continues. New chat and app restart
-  reset it to off. Validate this control only in an isolated user-data directory.
+  Disable it to require approval for future actions; work already started continues.
+  New chat and app restart reset it to off. Validate this control only in an
+  isolated user-data directory.
 - Tool and note groups use `smith-activity`. Active tool groups open automatically
   and collapse when work ends. Open a tool row to read its output.
   Output has a separate scroll area. Scrolling up stops automatic scrolling;
-  Latest message returns to the end. New chat cancels an active text turn;
-  it is disabled while voice is connected. Opening Replay intro stops voice.
+  Latest message returns to the end. New chat cancels an active text turn.
 - Entity writes arrive as an inline `smith-proposal-card` at the transcript
   tail showing create/overwrite plus the full definition; answer with
   `smith-proposal-approve` / `smith-proposal-reject`. Approving saves the

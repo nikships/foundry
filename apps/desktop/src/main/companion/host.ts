@@ -40,8 +40,6 @@ import type {
 } from '@shared/types.js';
 import { isReasoningEffort } from '@shared/reasoning-effort.js';
 import type {
-  GeminiLiveConnectionState,
-  GeminiLiveToken,
   LinearConnectionState,
   ComposeAcceptResult,
   ComposeState,
@@ -128,11 +126,6 @@ export interface CompanionHostDeps {
    * answers 404 rather than inventing a second conversation.
    */
   smith?: CompanionSmithDeps;
-  /** Paired phones receive one-use tokens, never the stored Gemini key. */
-  voice?: {
-    state(): GeminiLiveConnectionState;
-    mintToken(): Promise<GeminiLiveToken | { error: string }>;
-  };
   /** Test seams. Production leaves these unset. Pinned binds disable discovery. */
   bindHost?: string;
   tailscaleHost?: string;
@@ -824,21 +817,6 @@ export class CompanionHost {
   ): Promise<unknown> {
     const smith = this.deps.smith;
     if (!smith) throw new RouteError(404, 'not_found', 'Smith is not available');
-
-    if (rest[0] === 'voice') {
-      const voice = this.deps.voice;
-      if (!voice) throw new RouteError(404, 'not_found', 'Voice is not available on this Mac');
-      if (method === 'GET' && rest.length === 1) return voice.state();
-      if (method === 'POST' && rest[1] === 'token' && rest.length === 2) {
-        // Drain and parse the scoped request even though tokens are currently
-        // global. Leaving a POST body unread can strand the phone's keep-alive
-        // connection before its next companion request.
-        scopeFromBody(await readJson(req));
-        const result = await voice.mintToken();
-        if ('error' in result) throw new RouteError(400, 'bad_request', result.error);
-        return result;
-      }
-    }
 
     if (method === 'GET' && rest.length === 0) {
       return this.smithSnapshot(smith, url.searchParams.get('projectId'));

@@ -51,13 +51,6 @@ function createWindow(theme: AppTheme): BrowserWindow {
     return { action: 'deny' };
   });
 
-  // Smith voice mode asks for the microphone. macOS shows the system prompt
-  // once; this handler is what surfaces the request inside the sandboxed
-  // renderer at all.
-  window.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'media');
-  });
-
   if (DEV_URL) {
     void window.loadURL(DEV_URL);
   } else {

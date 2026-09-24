@@ -33,14 +33,13 @@ export function resolveSmithProjectId(
 const GLOBAL_SMITH_CAPABILITIES: ReadonlySet<SmithCapabilityId> = new Set([
   'assigned-work',
   'ticket-status',
-  'voice-key-state',
 ]);
 
 /**
- * Whether a capability works from the current scope. Assigned work, ticket
- * status, and the voice-key state are viewer-global; compose plans and
- * lists, pipeline runs, and context refreshes need an explicit project, so
- * in All-projects scope Smith must ask which project before proposing.
+ * Whether a capability works from the current scope. Assigned work and ticket
+ * status are viewer-global; compose plans and lists, pipeline runs, and
+ * context refreshes need an explicit project, so in All-projects scope Smith
+ * must ask which project before proposing.
  */
 export function smithCapabilityScopeNote(
   capability: SmithCapabilityId,

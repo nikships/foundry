@@ -67,8 +67,6 @@ import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
 import { linearCredentials } from './linear/credentials.js';
 import { LinearService } from './linear/service.js';
 import { tavilyCredentials, TavilyService } from './tavily/service.js';
-import { geminiLiveCredentials } from './gemini-live/credentials.js';
-import { GeminiLiveService } from './gemini-live/service.js';
 import { enabledModelIds, enabledModels, enabledPiModels } from './pi/enabled-models.js';
 import { scmStatus, setForgePreferenceProvider } from './system/forge.js';
 
@@ -103,7 +101,6 @@ export class AppContext {
   readonly bridge: BridgeService;
   readonly linear: LinearService;
   readonly tavily: TavilyService;
-  readonly geminiLive: GeminiLiveService;
   readonly version: string;
   /**
    * How every non-run agent turn is opened — repository context, detection,
@@ -139,7 +136,6 @@ export class AppContext {
     this.envelopes = new EnvelopeStore(supportDir);
     this.linear = new LinearService(linearCredentials(supportDir));
     this.tavily = new TavilyService({ supportDir, credentials: tavilyCredentials(supportDir) });
-    this.geminiLive = new GeminiLiveService({ credentials: geminiLiveCredentials(supportDir) });
     // The in-process extension reads its key from this process's environment,
     // so export it before the first agent session can open.
     this.tavily.applyEnv();
@@ -294,10 +290,6 @@ export class AppContext {
         listProposals: () => this.smith.proposals.list(),
         answerProposal: (id, answer) => this.smith.proposals.answer(id, answer),
         models: () => this.availableModels(),
-      },
-      voice: {
-        state: () => this.geminiLive.state(),
-        mintToken: () => this.geminiLive.mintToken(),
       },
     });
 

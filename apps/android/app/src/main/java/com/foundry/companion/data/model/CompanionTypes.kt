@@ -1013,13 +1013,6 @@ data class SmithScopeRequest(
 )
 
 @Serializable
-data class SmithVoiceToken(
-    val token: String,
-    val model: String,
-    val systemInstruction: String
-)
-
-@Serializable
 data class SmithProposal(
     val id: String,
     val type: String,
