@@ -279,28 +279,41 @@ export default function PhaseDrawer({
               </CodeBlock>
             )}
             <ol className={styles.events}>
-              {timelineEvents.map((event) => (
-                <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
-                  <button className={styles.event} onClick={() => toggle(event.eventId)}>
-                    <span className={styles.icon}>
-                      <EventIcon event={event} />
-                    </span>
-                    <span className={styles.eventName}>{event.name}</span>
-                    <span className={styles.spacer} />
-                    {event.endedAt && (
-                      <span className={`mono faint ${styles.duration}`}>
-                        {duration(
-                          new Date(event.endedAt).getTime() - new Date(event.startedAt).getTime(),
-                        )}
+              {timelineEvents.map((event) => {
+                const isOpen = openEvents.has(event.eventId);
+                return (
+                  <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
+                    <button
+                      type="button"
+                      className={styles.event}
+                      onClick={() => toggle(event.eventId)}
+                      aria-expanded={isOpen}
+                      aria-controls={`event-payload-${event.eventId}`}
+                    >
+                      <span className={styles.icon}>
+                        <EventIcon event={event} />
                       </span>
+                      <span className={styles.eventName}>{event.name}</span>
+                      <span className={styles.spacer} />
+                      {event.endedAt && (
+                        <span className={`mono faint ${styles.duration}`}>
+                          {duration(
+                            new Date(event.endedAt).getTime() - new Date(event.startedAt).getTime(),
+                          )}
+                        </span>
+                      )}
+                      <span className={`mono faint ${styles.timestamp}`}>
+                        {clockTime(event.startedAt)}
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div id={`event-payload-${event.eventId}`}>
+                        <EventPayload event={event} />
+                      </div>
                     )}
-                    <span className={`mono faint ${styles.timestamp}`}>
-                      {clockTime(event.startedAt)}
-                    </span>
-                  </button>
-                  {openEvents.has(event.eventId) && <EventPayload event={event} />}
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ol>
             {!timelineEvents.length && !liveTail && !liveTailError && (
               <p className={`faint ${styles.padded}`}>Nothing recorded for this phase yet.</p>
