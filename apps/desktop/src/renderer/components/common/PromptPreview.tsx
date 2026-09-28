@@ -46,10 +46,10 @@ export default function PromptPreview({
   const extraCount = agent.customFields?.length ?? 0;
 
   return (
-    <ModalShell onClose={onClose} className={styles.modal}>
+    <ModalShell onClose={onClose} ariaLabelledBy="prompt-preview-title" className={styles.modal}>
       <header className="spread">
-        <h2>Prompt preview: {agent.name}</h2>
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <h2 id="prompt-preview-title">Prompt preview: {agent.name}</h2>
+        <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close prompt preview">
           Close
         </Button>
       </header>
