@@ -129,11 +129,24 @@ export class Tracer {
    */
   private changeCounter: number;
 
+  /**
+   * Cached prepared statement for `runs()` phase summary fetches.
+   * Compiling this once per `Tracer` instance avoids re-parsing SQL
+   * on every `runs()` list query.
+   */
+  private phaseSummaryStmt: {
+    all: (runId: SqlValue) => { name: string; status: PhaseStatus; kind: PhaseKind }[];
+  };
+
   constructor(
     private readonly db: Db,
     /** Files stay the raw record: runs/{runId}/… under the project dir. */
     private readonly runsDir: string,
   ) {
+    this.phaseSummaryStmt = this.db.prepare<
+      SqlValue[],
+      { name: string; status: PhaseStatus; kind: PhaseKind }
+    >('SELECT name, status, kind FROM phases WHERE run_id = ? ORDER BY seq');
     // Every table that stamps a change_id draws from this one counter, so the
     // seed is the max across all of them — seeding from `events` alone would
     // re-issue ids a reopened database has already given to a checkpoint.
@@ -329,11 +342,7 @@ export class Tracer {
         ' ORDER BY started_at DESC LIMIT ?',
       ...args,
     );
-    const summary = this.db.prepare<
-      SqlValue[],
-      { name: string; status: PhaseStatus; kind: PhaseKind }
-    >('SELECT name, status, kind FROM phases WHERE run_id = ? ORDER BY seq');
-    return rows.map((r) => ({ ...mapRun(r), phaseSummary: summary.all(r.run_id) }));
+    return rows.map((r) => ({ ...mapRun(r), phaseSummary: this.phaseSummaryStmt.all(r.run_id) }));
   }
 
   activeRunIds(): string[] {
