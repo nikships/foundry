@@ -213,6 +213,9 @@ export default function ProjectCommands({
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label={
+                        command.name ? `Remove command ${command.name}` : 'Remove command'
+                      }
                       onClick={() => remove(i)}
                       data-testid={`project-command-${command.name}-remove`}
                     >

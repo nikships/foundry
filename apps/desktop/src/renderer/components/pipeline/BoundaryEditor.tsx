@@ -55,7 +55,12 @@ export default function BoundaryEditor({
                 placeholder="src/**"
                 onChange={(e) => update(i, e.target.value)}
               />
-              <Button variant="ghost" size="sm" onClick={() => remove(i)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={pattern ? `Remove pattern ${pattern}` : 'Remove pattern'}
+                onClick={() => remove(i)}
+              >
                 ✕
               </Button>
             </div>
