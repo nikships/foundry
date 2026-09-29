@@ -147,11 +147,16 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       setPipelines(nextPipelines);
     }
 
+    const storedSmithPreference = smithPreferenceRef.current;
+    const currentSmithScope =
+      storedSmithPreference === SMITH_ALL_PROJECTS
+        ? null
+        : (storedSmithPreference ?? smithProjectId);
     const smithScope = resolveSmithProjectId(
       nextProjects,
       scopeId,
-      smithProjectId,
-      smithPreferenceRef.current !== null,
+      currentSmithScope,
+      storedSmithPreference !== null,
     );
     if (smithScope !== smithProjectId) setSmithProjectId(smithScope);
     rememberSmithScope(smithScope);
