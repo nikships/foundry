@@ -5,12 +5,13 @@
  * seam rather than navigating the window.
  */
 
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { api } from '../../api.js';
 import { parseMarkdown, type MarkdownBlock, type MarkdownInline } from '../../utils/markdown.js';
 import styles from './MarkdownText.module.css';
 
-function Inline({ nodes }: { nodes: MarkdownInline[] }): React.JSX.Element {
+// Memoize sub-components to prevent deep re-renders when parent transcript/state updates during streaming
+const Inline = memo(function Inline({ nodes }: { nodes: MarkdownInline[] }): React.JSX.Element {
   return (
     <>
       {nodes.map((node, i) => {
@@ -53,9 +54,9 @@ function Inline({ nodes }: { nodes: MarkdownInline[] }): React.JSX.Element {
       })}
     </>
   );
-}
+});
 
-function Block({ block }: { block: MarkdownBlock }): React.JSX.Element {
+const Block = memo(function Block({ block }: { block: MarkdownBlock }): React.JSX.Element {
   switch (block.type) {
     case 'heading': {
       // Chat headings are section labels, not document structure: clamp the
@@ -100,9 +101,10 @@ function Block({ block }: { block: MarkdownBlock }): React.JSX.Element {
         </p>
       );
   }
-}
+});
 
-export default function MarkdownText({ text }: { text: string }): React.JSX.Element {
+// Memoized to prevent re-parsing and DOM reconciliation during high-frequency streaming state updates
+function MarkdownText({ text }: { text: string }): React.JSX.Element {
   // The transcript re-renders on every progress push; parse only when the
   // message itself changes.
   const blocks = useMemo(() => parseMarkdown(text), [text]);
@@ -114,3 +116,5 @@ export default function MarkdownText({ text }: { text: string }): React.JSX.Elem
     </div>
   );
 }
+
+export default memo(MarkdownText);
