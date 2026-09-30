@@ -22,6 +22,8 @@ export default tseslint.config(
       'node_modules/**',
       'coverage/**',
       'assets/**',
+      'playwright-report/**',
+      'test-results/**',
       // Standalone marketing site: its own toolchain and tsconfig, and
       // deliberately outside the app build, `npm run check`, and CI.
       'apps/website/**',
