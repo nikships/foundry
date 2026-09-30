@@ -412,12 +412,39 @@ export function searchSettings(query: string, cap = 12): SettingsHit[] {
     .map(({ hit }) => hit);
 }
 
-/** Does anything in (or about) this pane match the rail's search query? */
+/**
+ * Does anything in (or about) this pane match the rail's search query?
+ * Performance-optimized O(N) short-circuiting check that avoids the object allocations,
+ * scoring, and array sorting overhead of `searchSettings`.
+ */
 export function paneMatchesQuery(pane: SettingsPaneId, query: string): boolean {
-  const q = query.trim();
+  const q = query.trim().toLowerCase();
   if (!q) return true;
-  const everything = SETTINGS_SECTIONS.length + SETTINGS_PANES.length;
-  return searchSettings(q, everything).some((hit) => hit.pane === pane);
+
+  // 1. Check if the target pane metadata (label or keywords) matches
+  const targetPane = SETTINGS_PANES.find((p) => p.id === pane);
+  if (
+    targetPane &&
+    (targetPane.label.toLowerCase().includes(q) ||
+      targetPane.keywords.toLowerCase().includes(q))
+  ) {
+    return true;
+  }
+
+  // 2. Check if any section belonging to this pane matches (label, keywords, or note)
+  for (let i = 0; i < SETTINGS_SECTIONS.length; i++) {
+    const section = SETTINGS_SECTIONS[i];
+    if (section.pane !== pane) continue;
+    if (
+      section.label.toLowerCase().includes(q) ||
+      section.keywords.toLowerCase().includes(q) ||
+      (section.note ?? '').toLowerCase().includes(q)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /** Wraps the first case-insensitive occurrence of `q` in a mark. */
