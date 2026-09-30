@@ -425,8 +425,7 @@ export function paneMatchesQuery(pane: SettingsPaneId, query: string): boolean {
   const targetPane = SETTINGS_PANES.find((p) => p.id === pane);
   if (
     targetPane &&
-    (targetPane.label.toLowerCase().includes(q) ||
-      targetPane.keywords.toLowerCase().includes(q))
+    (targetPane.label.toLowerCase().includes(q) || targetPane.keywords.toLowerCase().includes(q))
   ) {
     return true;
   }
