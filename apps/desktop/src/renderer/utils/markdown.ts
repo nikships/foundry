@@ -131,10 +131,10 @@ const LINK = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/;
 const BARE_URL = /^https?:\/\/[^\s<>)]+/;
 
 // Optimization: Pre-compiled trigger patterns to scan directly to characters
-// that can start inline formatting (` ` `, `*`, `_`, `[`, `h`, `H`).
+// that can start inline formatting (` ` `, `*`, `_`, `[`, or `https:`/`http:`).
 // This avoids testing all 5 inline regexes at every non-formatting character
 // and prevents O(N^2) character-by-character string allocations on prose (~30x faster).
-const TRIGGER_WITH_LINKS = /[`*_[hH]/;
+const TRIGGER_WITH_LINKS = /[`*_[]|https?:/;
 const TRIGGER_NO_LINKS = /[`*_]/;
 
 export function parseInline(text: string, opts?: { noLinks?: boolean }): MarkdownInline[] {
