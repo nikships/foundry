@@ -412,12 +412,24 @@ export function searchSettings(query: string, cap = 12): SettingsHit[] {
     .map(({ hit }) => hit);
 }
 
-/** Does anything in (or about) this pane match the rail's search query? */
+/**
+ * Does anything in (or about) this pane match the rail's search query?
+ * Fast path: checks target pane metadata and its sections directly with short-circuiting
+ * instead of running full search, scoring, sorting, and object allocations across all panes.
+ */
 export function paneMatchesQuery(pane: SettingsPaneId, query: string): boolean {
-  const q = query.trim();
+  const q = query.trim().toLowerCase();
   if (!q) return true;
-  const everything = SETTINGS_SECTIONS.length + SETTINGS_PANES.length;
-  return searchSettings(q, everything).some((hit) => hit.pane === pane);
+  const targetPane = SETTINGS_PANES.find((p) => p.id === pane);
+  if (
+    targetPane &&
+    (targetPane.label.toLowerCase().includes(q) || targetPane.keywords.includes(q))
+  ) {
+    return true;
+  }
+  return SETTINGS_SECTIONS.some(
+    (section) => section.pane === pane && scoreSection(section, q) >= 0,
+  );
 }
 
 /** Wraps the first case-insensitive occurrence of `q` in a mark. */
