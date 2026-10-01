@@ -86,7 +86,14 @@ export default function UpdateBanner({
       <p className={styles.detail}>{detail}</p>
 
       {status.stage === 'downloading' && (
-        <div className={styles.progress} aria-label={`Download ${status.percent ?? 0} percent`}>
+        <div
+          className={styles.progress}
+          role="progressbar"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Download ${status.percent ?? 0} percent`}
+        >
           <div className={styles.track}>
             <div className={styles.fill} style={{ width: `${percent}%` }} />
           </div>
