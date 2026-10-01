@@ -103,6 +103,11 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     selectedProjectIdRef.current = selectedProjectId;
   }, [selectedProjectId]);
 
+  const smithProjectIdRef = useRef(smithProjectId);
+  useEffect(() => {
+    smithProjectIdRef.current = smithProjectId;
+  }, [smithProjectId]);
+
   const project = useMemo(
     () => projects.find((p) => p.id === selectedProjectId) ?? projects[0] ?? null,
     [projects, selectedProjectId],
@@ -150,14 +155,14 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     const smithScope = resolveSmithProjectId(
       nextProjects,
       scopeId,
-      smithProjectId,
+      smithProjectIdRef.current,
       smithPreferenceRef.current !== null,
     );
-    if (smithScope !== smithProjectId) setSmithProjectId(smithScope);
+    if (smithScope !== smithProjectIdRef.current) setSmithProjectId(smithScope);
     rememberSmithScope(smithScope);
 
     setReady(true);
-  }, [smithProjectId, rememberSmithScope]);
+  }, [rememberSmithScope]);
 
   const selectProject = useCallback(
     (id: string): void => {
@@ -171,6 +176,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
 
   const selectSmithProject = useCallback(
     (id: string | null): void => {
+      smithProjectIdRef.current = id;
       setSmithProjectId(id);
       rememberSmithScope(id);
     },
