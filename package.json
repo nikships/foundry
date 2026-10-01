@@ -46,12 +46,12 @@
   },
   "config": {
     "bridge": {
-      "version": "7.3.14",
+      "version": "8.0.7",
       "releaseBaseUrl": "https://github.com/router-for-me/CLIProxyAPI/releases/download",
       "dir": "resources/bridge",
       "binary": "cli-proxy-api",
-      "archiveSha256": "ec45cffb882ef94f2c80b897767b376fea57e025ff28cef118453d58d4c83964",
-      "binarySha256": "2c42f0fc6d9eb428bb975ed6d98202569c59d1b6f8d0367bebb7cbbfafb96b85"
+      "archiveSha256": "817554e0eb9acf0a85d99deb54a355434deb2ed3f00cacc380a1085a48a4a40c",
+      "binarySha256": "c46f68ee7517ccf891ffee47dc6747c5ed3fe1fdd2759fbaac7ee7f9340d1365"
     }
   },
   "dependencies": {
