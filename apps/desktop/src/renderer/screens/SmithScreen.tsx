@@ -175,7 +175,7 @@ export default function SmithScreen({
           />
         }
       />
-      <SmithPinnedPlan key={scopeId ?? 'global'} />
+      <SmithPinnedPlan />
       {transcript.length === 0 && (
         <SmithQuickPrompts
           disabled={running || !!modelBlocked}
