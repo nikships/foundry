@@ -236,7 +236,7 @@ export default function SmithBubble({
               />
             }
           />
-          <SmithPinnedPlan key={scopeId ?? 'global'} />
+          <SmithPinnedPlan />
           <SmithTranscript
             key={scopeId ?? 'global'}
             entries={transcript}
