@@ -137,7 +137,7 @@ jobs:
         env:
           # Hash pins Developer ID Application when the P12 also carries App Store certs.
           CSC_IDENTITY_AUTO_DISCOVERY: 'true'
-          CSC_NAME: '734BE283C1325CCCBB7EC1BAF93539843702652A'
+          CSC_NAME: '1E2C100CA8A3E15CA55A98BE513BCFB6C4D57EC2'
           # Explicitly disable publish; CI detection would otherwise try GH releases.
           EP_DRAFT: 'true'
         run: |
