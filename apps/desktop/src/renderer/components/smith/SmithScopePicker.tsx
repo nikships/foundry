@@ -25,7 +25,7 @@ export default function SmithScopePicker({ running }: { running: boolean }): Rea
         value={smithProjectId ?? ALL}
         disabled={running || proposalPending}
         onChange={(event) =>
-          selectSmithProject(event.currentTarget.value === ALL ? null : event.currentTarget.value)
+          selectSmithProject(event.target.value === ALL ? null : event.target.value)
         }
         aria-label="Smith scope"
         data-testid="smith-scope"
