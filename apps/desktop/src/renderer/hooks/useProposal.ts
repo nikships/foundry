@@ -20,5 +20,6 @@ export function useProposal(planId: string | undefined): ProposalSnapshot | null
       off();
     };
   }, [planId]);
+  if (!planId) return null;
   return live?.planId === planId ? live : null;
 }

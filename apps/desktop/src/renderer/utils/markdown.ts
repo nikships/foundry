@@ -130,8 +130,14 @@ const EM_UNDERSCORE = /^_([^_\s](?:[^_]*[^_\s])?)_/;
 const LINK = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/;
 const BARE_URL = /^https?:\/\/[^\s<>)]+/;
 
+// Precompiled trigger pattern regexes to fast-forward past plain text spans.
+// A candidate inline syntax element can only start at `, *, _, [, or https?://.
+const TRIGGER_WITH_LINKS = /[`*_[]|https?:\/\//;
+const TRIGGER_NO_LINKS = /[`*_]/;
+
 export function parseInline(text: string, opts?: { noLinks?: boolean }): MarkdownInline[] {
   const noLinks = opts?.noLinks ?? false;
+  const triggerPattern = noLinks ? TRIGGER_NO_LINKS : TRIGGER_WITH_LINKS;
   const out: MarkdownInline[] = [];
   let plain = '';
   const flush = (): void => {
@@ -143,6 +149,16 @@ export function parseInline(text: string, opts?: { noLinks?: boolean }): Markdow
 
   let rest = text;
   while (rest.length > 0) {
+    // Fast-forward past plain text spans: find the index of the next potential inline marker.
+    const nextTrigger = rest.search(triggerPattern);
+    if (nextTrigger > 0) {
+      plain += rest.slice(0, nextTrigger);
+      rest = rest.slice(nextTrigger);
+    } else if (nextTrigger === -1) {
+      plain += rest;
+      break;
+    }
+
     const code = rest.match(INLINE_CODE);
     if (code) {
       flush();
@@ -189,6 +205,8 @@ export function parseInline(text: string, opts?: { noLinks?: boolean }): Markdow
       rest = rest.slice(href.length);
       continue;
     }
+    // None of the inline rules matched at current position (e.g. lone '*' or intraword '_').
+    // Consume 1 character as plain text and advance.
     plain += rest[0]!;
     rest = rest.slice(1);
   }

@@ -16,6 +16,8 @@
 # explicit step (`pnpm install --frozen-lockfile`); scripts must not mutate
 # node_modules.
 verifyDepsBeforeRun: false
+overrides:
+  undici: '>=8.10.2'
 allowBuilds:
   electron: true
   esbuild: true

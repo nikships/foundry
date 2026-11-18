@@ -61,7 +61,7 @@ export function SmithChatUIProvider({
         draft: drafts[scope] ?? '',
         setDraft,
         discussPlan,
-        pinnedPlan: livePin ? smithRunPlanArtifact(livePin) : pin,
+        pinnedPlan: scope ? (livePin ? smithRunPlanArtifact(livePin) : pin) : null,
         pinnedPlanAvailable: livePin !== null,
         unpinPlan,
         withPinnedPlan,
