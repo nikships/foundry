@@ -6,12 +6,14 @@ interface SegmentOption {
   label: ReactNode;
   on: boolean;
   onClick: () => void;
+  ariaLabel?: string;
 }
 
 interface SegmentedControlProps {
   options: SegmentOption[];
   /** Appended to the container (e.g. a margin-bottom hook). */
   className?: string;
+  'aria-label'?: string;
 }
 
 /**
@@ -19,11 +21,23 @@ interface SegmentedControlProps {
  * The active segment is marked with `on`; a `className` lets a caller add site
  * spacing.
  */
-export function SegmentedControl({ options, className }: SegmentedControlProps): React.JSX.Element {
+export function SegmentedControl({
+  options,
+  className,
+  'aria-label': ariaLabel,
+}: SegmentedControlProps): React.JSX.Element {
   return (
-    <div className={cx(styles.modes, className)}>
+    <div className={cx(styles.modes, className)} role="radiogroup" aria-label={ariaLabel}>
       {options.map((opt, i) => (
-        <button key={i} className={cx(styles.mode, opt.on && styles.on)} onClick={opt.onClick}>
+        <button
+          key={i}
+          type="button"
+          role="radio"
+          aria-checked={opt.on}
+          aria-label={opt.ariaLabel}
+          className={cx(styles.mode, opt.on && styles.on)}
+          onClick={opt.onClick}
+        >
           {opt.label}
         </button>
       ))}

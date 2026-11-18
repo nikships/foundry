@@ -85,6 +85,7 @@ export default function SmithRunPlanDesign({
   const { agentColor, projects, refreshAll } = useApp();
   const { discussPlan } = useSmithChatUI();
   const [discussError, setDiscussError] = useState('');
+  const [discussing, setDiscussing] = useState(false);
   const [configuringCommands, setConfiguringCommands] = useState(false);
   const [inspecting, setInspecting] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -262,16 +263,17 @@ export default function SmithRunPlanDesign({
 
       <div className={styles.actions}>
         <Button
-          disabled={starting}
+          disabled={starting || discussing}
           onClick={() => {
             setDiscussError('');
-            void discussPlan(planId ?? plan.planId).catch((error: Error) =>
-              setDiscussError(error.message),
-            );
+            setDiscussing(true);
+            void discussPlan(planId ?? plan.planId)
+              .catch((error: Error) => setDiscussError(error.message))
+              .finally(() => setDiscussing(false));
           }}
           data-testid="plan-discuss"
         >
-          Discuss in Smith →
+          {discussing ? 'Opening…' : 'Discuss in Smith →'}
         </Button>
         <Button
           variant="primary"
