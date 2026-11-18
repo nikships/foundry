@@ -281,6 +281,8 @@ describe('CDP automation hooks', () => {
     expect(runDetailSrc).toContain('data-testid="run-open-inspector"');
     expect(runDetailSrc).toContain('<ResizableRunRequest');
     expect(phaseDrawerSrc).toContain('data-testid={`phase-tab-${t.id}`}');
+    expect(phaseDrawerSrc).toContain('aria-expanded={isOpen}');
+    expect(phaseDrawerSrc).toContain('aria-controls={`event-payload-${event.eventId}`}');
   });
 
   it('stamps the decision surfaces an agent driver must be able to answer', () => {
