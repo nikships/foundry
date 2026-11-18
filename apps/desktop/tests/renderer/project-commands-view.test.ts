@@ -113,6 +113,7 @@ describe('project command provisioning', () => {
     expect(editor).toContain('data-testid={`project-command-${command.name}`}');
     expect(editor).toContain('data-testid={`project-command-${command.name}-try`}');
     expect(editor).toContain('data-testid={`project-command-${command.name}-remove`}');
+    expect(editor).toContain('aria-label={');
     expect(editor).toContain('data-testid="project-command-add"');
   });
 });
